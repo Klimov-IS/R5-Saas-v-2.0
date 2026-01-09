@@ -236,6 +236,17 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
                 console.log(`[API REVIEWS] Added ${subChunks.length} sub-chunks to queue (now ${dateChunks.length} chunks remaining)`);
             }
+
+            // ✅ Periodic stats update: Update total_reviews counter every 5 chunks
+            // This allows monitoring progress in real-time and preserves partial progress on error
+            if (processedChunks % 5 === 0 && mode === 'full') {
+                const currentStats = await dbHelpers.getStoreStats(storeId);
+                await dbHelpers.updateStore(storeId, {
+                    total_reviews: currentStats.totalReviews,
+                    last_review_update_date: new Date().toISOString()
+                });
+                console.log(`[API REVIEWS] 📊 Progress update [${processedChunks} chunks]: ${currentStats.totalReviews} reviews in DB`);
+            }
         }
 
         console.log(`[API REVIEWS] Finished fetching. Total: ${totalFetchedReviews}. Recalculating store stats.`);
@@ -261,11 +272,18 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
     } catch (error: any) {
         console.error(`[API REVIEWS] ERROR for store ${storeId}:`, error);
 
-        // Update store with error status
+        // ✅ Recalculate stats EVEN on error to preserve partial progress
+        // If error happens on chunk #15, we still want to show chunks 1-14 were saved
+        const currentStats = await dbHelpers.getStoreStats(storeId);
+
+        // Update store with error status AND updated review count
         await dbHelpers.updateStore(storeId, {
             last_review_update_status: 'error',
-            last_review_update_error: error.message || 'Unknown error'
+            last_review_update_error: error.message || 'Unknown error',
+            total_reviews: currentStats.totalReviews // ✅ Preserve partial sync progress!
         });
+
+        console.log(`[API REVIEWS] ❌ Error occurred, but preserved partial progress: ${currentStats.totalReviews} reviews in DB`);
 
         // Re-throw the error so the API route can catch it
         throw error;
