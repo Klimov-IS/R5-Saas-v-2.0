@@ -700,9 +700,9 @@ export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_
       video = EXCLUDED.video,
       supplier_feedback_valuation = EXCLUDED.supplier_feedback_valuation,
       supplier_product_valuation = EXCLUDED.supplier_product_valuation,
-      complaint_text = EXCLUDED.complaint_text,
-      complaint_sent_date = EXCLUDED.complaint_sent_date,
-      draft_reply = EXCLUDED.draft_reply,
+      complaint_text = COALESCE(EXCLUDED.complaint_text, reviews.complaint_text),
+      complaint_sent_date = COALESCE(EXCLUDED.complaint_sent_date, reviews.complaint_sent_date),
+      draft_reply = COALESCE(EXCLUDED.draft_reply, reviews.draft_reply),
       updated_at = NOW()
     RETURNING *`,
     [

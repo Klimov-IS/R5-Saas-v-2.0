@@ -4,9 +4,40 @@ import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
 
 /**
+ * Generate date chunks for WB API to bypass 20k limit
+ * Strategy: Split time range into 30-day chunks, working backwards from today
+ */
+function generateDateChunks(startDate: Date, endDate: Date): Array<{ from: number; to: number }> {
+    const chunks: Array<{ from: number; to: number }> = [];
+    const CHUNK_DAYS = 30; // 30-day chunks
+
+    let currentEnd = endDate;
+    const start = startDate;
+
+    while (currentEnd > start) {
+        const currentStart = new Date(currentEnd);
+        currentStart.setDate(currentStart.getDate() - CHUNK_DAYS);
+
+        // Don't go before the start date
+        if (currentStart < start) {
+            currentStart.setTime(start.getTime());
+        }
+
+        chunks.push({
+            from: Math.floor(currentStart.getTime() / 1000), // Unix timestamp
+            to: Math.floor(currentEnd.getTime() / 1000)
+        });
+
+        currentEnd = new Date(currentStart.getTime() - 1000); // Move to 1 second before
+    }
+
+    return chunks;
+}
+
+/**
  * Refresh reviews for a store from WB Feedbacks API
  * @param storeId Store ID
- * @param mode 'full' = full sync (up to 20k reviews), 'incremental' = only new reviews since last sync
+ * @param mode 'full' = full sync (ALL reviews using date chunking), 'incremental' = only new reviews since last sync
  */
 async function refreshReviewsForStore(storeId: string, mode: 'full' | 'incremental') {
     console.log(`[API REVIEWS] Starting refresh for store ${storeId}, mode: ${mode}`);
@@ -35,109 +66,135 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         let totalFetchedReviews = 0;
         let sessionLatestReviewDate = new Date(0);
 
-        // For incremental mode, calculate dateFrom (go back 1 hour to be safe)
-        const dateFrom = (mode === 'incremental' && store.last_review_update_date)
-            ? Math.floor((new Date(store.last_review_update_date).getTime() / 1000) - 3600) // Unix timestamp
-            : undefined;
+        // Determine date range strategy
+        let dateChunks: Array<{ from: number; to: number }>;
 
-        console.log(`[API REVIEWS] Fetching from date: ${dateFrom ? new Date(dateFrom * 1000).toISOString() : 'beginning'}`);
+        if (mode === 'incremental') {
+            // Incremental: Only fetch reviews since last update (go back 1 hour to be safe)
+            const fromDate = store.last_review_update_date
+                ? new Date(new Date(store.last_review_update_date).getTime() - 3600 * 1000)
+                : new Date(Date.now() - 7 * 24 * 3600 * 1000); // Last 7 days as fallback
 
-        // Fetch both answered and unanswered reviews
-        for (const isAnswered of [false, true]) {
-            let skip = 0;
-            const BATCH_SIZE = 500;
-            console.log(`[API REVIEWS] Fetching ${isAnswered ? 'answered' : 'unanswered'} reviews.`);
+            dateChunks = [{
+                from: Math.floor(fromDate.getTime() / 1000),
+                to: Math.floor(Date.now() / 1000)
+            }];
 
-            while (true) {
-                // Build query params
-                const params: any = {
-                    isAnswered: String(isAnswered),
-                    take: String(BATCH_SIZE),
-                    skip: String(skip),
-                    order: 'dateDesc'
-                };
-                if (dateFrom) params.dateFrom = String(dateFrom);
+            console.log(`[API REVIEWS] Incremental mode: fetching from ${fromDate.toISOString()}`);
+        } else {
+            // Full mode: Fetch ALL reviews by splitting into date chunks
+            // Start from January 1, 2020 (WB reviews unlikely to be older)
+            const startDate = new Date('2020-01-01T00:00:00Z');
+            const endDate = new Date();
 
-                const url = new URL('https://feedbacks-api.wildberries.ru/api/v1/feedbacks');
-                url.search = new URLSearchParams(params).toString();
+            dateChunks = generateDateChunks(startDate, endDate);
+            console.log(`[API REVIEWS] Full mode: split into ${dateChunks.length} date chunks (30 days each)`);
+        }
 
-                // Fetch from WB API
-                const response = await fetch(url.toString(), {
-                    headers: { 'Authorization': wbToken }
-                });
+        // Fetch reviews for each date chunk
+        for (let chunkIndex = 0; chunkIndex < dateChunks.length; chunkIndex++) {
+            const chunk = dateChunks[chunkIndex];
+            const chunkStart = new Date(chunk.from * 1000);
+            const chunkEnd = new Date(chunk.to * 1000);
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`[API REVIEWS] WB API error: ${response.status} ${errorText}`);
-                    throw new Error(`Ошибка API отзывов WB: ${response.status}`);
-                }
+            console.log(`[API REVIEWS] Processing chunk ${chunkIndex + 1}/${dateChunks.length}: ${chunkStart.toISOString()} to ${chunkEnd.toISOString()}`);
 
-                const result = await response.json();
-                const feedbacks = result?.data?.feedbacks || [];
-                console.log(`[API REVIEWS] Fetched ${feedbacks.length} reviews from WB (skip: ${skip}).`);
+            // Fetch both answered and unanswered reviews for this chunk
+            for (const isAnswered of [false, true]) {
+                let skip = 0;
+                const BATCH_SIZE = 500;
+                const MAX_SKIP = 20000; // WB API hard limit per date range
 
-                if (feedbacks.length > 0) {
-                    // Process each review
-                    for (const review of feedbacks) {
-                        totalFetchedReviews++;
-                        const reviewDate = new Date(review.createdDate);
-                        if (reviewDate > sessionLatestReviewDate) {
-                            sessionLatestReviewDate = reviewDate;
-                        }
+                console.log(`[API REVIEWS] Fetching ${isAnswered ? 'answered' : 'unanswered'} reviews for chunk ${chunkIndex + 1}`);
 
-                        // Map WB nmId to product
-                        const nmId = String(review.productDetails?.nmId);
-                        const product = productMap.get(nmId);
-                        if (!product) {
-                            console.log(`[API REVIEWS] Product not found for nmId ${nmId}, skipping review ${review.id}`);
-                            continue;
-                        }
+                while (skip < MAX_SKIP) {
+                    // Build query params
+                    const params: any = {
+                        isAnswered: String(isAnswered),
+                        take: String(BATCH_SIZE),
+                        skip: String(skip),
+                        order: 'dateDesc',
+                        dateFrom: String(chunk.from),
+                        dateTo: String(chunk.to)
+                    };
 
-                        // Check if review has WB complaint
-                        const hasWbComplaint = !!review.supplierFeedbackValuation || !!review.supplierProductValuation;
+                    const url = new URL('https://feedbacks-api.wildberries.ru/api/v1/feedbacks');
+                    url.search = new URLSearchParams(params).toString();
 
-                        // Get existing review to preserve manual complaint data
-                        const existingReview = await dbHelpers.getReviewById(review.id);
+                    // Fetch from WB API
+                    const response = await fetch(url.toString(), {
+                        headers: { 'Authorization': wbToken }
+                    });
 
-                        // Prepare review payload
-                        const payload: Omit<dbHelpers.Review, 'created_at' | 'updated_at'> = {
-                            id: review.id,
-                            product_id: product.id,
-                            store_id: storeId,
-                            owner_id: store.owner_id,
-                            rating: review.productValuation,
-                            text: review.text || review.pros || review.cons || '', // Ensure non-null text
-                            pros: review.pros || '',
-                            cons: review.cons || '',
-                            author: review.userName || 'Anonymous',
-                            date: review.createdDate,
-                            answer: review.answer ? { text: review.answer.text || '', state: review.answer.state || '' } : null,
-                            photo_links: review.photoLinks || null,
-                            video: review.video || null,
-                            supplier_feedback_valuation: review.supplierFeedbackValuation || null,
-                            supplier_product_valuation: review.supplierProductValuation || null,
-                            // Preserve manual complaint if it exists
-                            complaint_text: existingReview?.complaint_text || null,
-                            complaint_sent_date: existingReview?.complaint_sent_date || null,
-                            draft_reply: existingReview?.draft_reply || null,
-                        };
-
-                        // Upsert review
-                        await dbHelpers.upsertReview(payload);
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        console.error(`[API REVIEWS] WB API error: ${response.status} ${errorText}`);
+                        throw new Error(`Ошибка API отзывов WB: ${response.status}`);
                     }
-                }
 
-                // Check if we should continue fetching
-                if (feedbacks.length < BATCH_SIZE) break;
-                skip += BATCH_SIZE;
-                if (mode === 'full' && skip >= 20000) {
-                    console.log(`[API REVIEWS] Reached 20k reviews limit in full mode.`);
-                    break;
-                }
+                    const result = await response.json();
+                    const feedbacks = result?.data?.feedbacks || [];
+                    console.log(`[API REVIEWS] Fetched ${feedbacks.length} reviews (chunk ${chunkIndex + 1}, skip: ${skip})`);
 
-                // Add small delay to avoid rate limiting
-                await new Promise(res => setTimeout(res, 500));
+                    if (feedbacks.length > 0) {
+                        // Process each review (upsert directly without fetching existing)
+                        for (const review of feedbacks) {
+                            totalFetchedReviews++;
+                            const reviewDate = new Date(review.createdDate);
+                            if (reviewDate > sessionLatestReviewDate) {
+                                sessionLatestReviewDate = reviewDate;
+                            }
+
+                            // Map WB nmId to product
+                            const nmId = String(review.productDetails?.nmId);
+                            const product = productMap.get(nmId);
+                            if (!product) {
+                                console.log(`[API REVIEWS] Product not found for nmId ${nmId}, skipping review ${review.id}`);
+                                continue;
+                            }
+
+                            // Prepare review payload
+                            // NOTE: upsertReview preserves complaint_text/complaint_sent_date/draft_reply automatically via ON CONFLICT DO UPDATE
+                            const payload: Omit<dbHelpers.Review, 'created_at' | 'updated_at'> = {
+                                id: review.id,
+                                product_id: product.id,
+                                store_id: storeId,
+                                owner_id: store.owner_id,
+                                rating: review.productValuation,
+                                text: review.text || review.pros || review.cons || '', // Ensure non-null text
+                                pros: review.pros || '',
+                                cons: review.cons || '',
+                                author: review.userName || 'Anonymous',
+                                date: review.createdDate,
+                                answer: review.answer ? { text: review.answer.text || '', state: review.answer.state || '' } : null,
+                                photo_links: review.photoLinks || null,
+                                video: review.video || null,
+                                supplier_feedback_valuation: review.supplierFeedbackValuation || null,
+                                supplier_product_valuation: review.supplierProductValuation || null,
+                                complaint_text: null, // Will be preserved by ON CONFLICT if exists
+                                complaint_sent_date: null, // Will be preserved by ON CONFLICT if exists
+                                draft_reply: null, // Will be preserved by ON CONFLICT if exists
+                            };
+
+                            // Upsert review
+                            await dbHelpers.upsertReview(payload);
+                        }
+                    }
+
+                    // Check if we should continue fetching
+                    if (feedbacks.length < BATCH_SIZE) {
+                        console.log(`[API REVIEWS] Chunk ${chunkIndex + 1} exhausted (got ${feedbacks.length} < ${BATCH_SIZE})`);
+                        break;
+                    }
+
+                    skip += BATCH_SIZE;
+
+                    // Add small delay to avoid rate limiting
+                    await new Promise(res => setTimeout(res, 300));
+                }
             }
+
+            console.log(`[API REVIEWS] Completed chunk ${chunkIndex + 1}/${dateChunks.length}`);
         }
 
         console.log(`[API REVIEWS] Finished fetching. Total: ${totalFetchedReviews}. Recalculating store stats.`);
@@ -158,7 +215,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         });
 
         console.log(`[API REVIEWS] Successfully updated store ${storeId}. Total reviews in DB: ${stats.totalReviews}`);
-        return `Успешно обновлено ${totalFetchedReviews} отзывов.`;
+        return `Успешно обновлено ${totalFetchedReviews} отзывов (всего в БД: ${stats.totalReviews}).`;
 
     } catch (error: any) {
         console.error(`[API REVIEWS] ERROR for store ${storeId}:`, error);
@@ -181,7 +238,14 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
  *     summary: Запустить обновление отзывов для магазина
  *     description: |
  *       Синхронизирует отзывы из WB Feedbacks API в PostgreSQL.
- *       Поддерживает два режима: `incremental` (только новые) и `full` (полная синхронизация до 20k отзывов).
+ *       Поддерживает два режима:
+ *       - `incremental`: Только новые отзывы с момента последней синхронизации
+ *       - `full`: Полная синхронизация ВСЕХ отзывов (обход лимита 20k через date chunking)
+ *
+ *       **Стратегия полной синхронизации:**
+ *       - Разбивает временной диапазон на 30-дневные куски (с 2020-01-01 до сегодня)
+ *       - Для каждого куска загружает до 20k отзывов
+ *       - Позволяет получить магазины с 1M+ отзывами
  *     tags:
  *       - Отзывы
  *     parameters:
@@ -197,7 +261,10 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
  *           type: string
  *           enum: [incremental, full]
  *           default: incremental
- *         description: Режим обновления.
+ *         description: |
+ *           Режим обновления:
+ *           - `incremental`: Только новые отзывы (быстро)
+ *           - `full`: Все отзывы через date chunking (медленно, для первичной загрузки)
  *     security:
  *       - ApiKeyAuth: []
  *     responses:
@@ -210,7 +277,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
  *               properties:
  *                 message:
  *                   type: string
- *                   example: "Успешно обновлено 150 отзывов."
+ *                   example: "Успешно обновлено 150000 отзывов (всего в БД: 1000000)."
  *       '401':
  *         description: Ошибка авторизации.
  *       '404':
