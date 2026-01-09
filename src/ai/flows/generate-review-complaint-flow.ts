@@ -2,6 +2,7 @@
 /**
  * @fileOverview Flow for generating a complaint about a customer review.
  * Migrated from Firebase to PostgreSQL.
+ * Optimized for token efficiency while maintaining quality.
  *
  * - generateReviewComplaint - A function that handles the complaint generation process.
  * - GenerateReviewComplaintInput - The input type for the generateReviewComplaint function.
@@ -10,11 +11,15 @@
 import { runChatCompletion } from '../assistant-utils';
 import { z } from 'zod';
 import * as dbHelpers from '@/db/helpers';
+import {
+  buildOptimizedSystemPrompt,
+  calculatePromptSavings,
+} from '../prompts/optimized-review-complaint-prompt';
 
 const GenerateReviewComplaintInputSchema = z.object({
     productName: z.string().describe('The name of the product being reviewed.'),
     productVendorCode: z.string().describe('The vendor code (article) of the product.'),
-    productCharacteristics: z.string().optional().describe('A JSON string of all product characteristics (name-value pairs).'),
+    productCharacteristics: z.string().optional().describe('Filtered string of key product characteristics (e.g., "Высота: 32 см, Ширина: 10 см, Материал: пластик").'),
     compensationMethod: z.string().optional().describe('Instructions on how to handle compensation or returns for this product.'),
     reviewAuthor: z.string().describe("The customer's name."),
     reviewText: z.string().describe("The customer's review text."),
@@ -30,6 +35,13 @@ export type GenerateReviewComplaintInput = z.infer<typeof GenerateReviewComplain
 
 const GenerateReviewComplaintOutputSchema = z.object({
   complaintText: z.string().describe('The generated complaint text to be sent to moderation.'),
+  reasonId: z.number().describe('WB complaint reason ID (11-20)'),
+  reasonName: z.string().describe('WB complaint reason name'),
+  promptTokens: z.number().optional().describe('AI input tokens used'),
+  completionTokens: z.number().optional().describe('AI output tokens generated'),
+  totalTokens: z.number().optional().describe('Total AI tokens used'),
+  costUsd: z.number().optional().describe('AI generation cost in USD'),
+  durationMs: z.number().optional().describe('Generation duration in milliseconds'),
 });
 export type GenerateReviewComplaintOutput = z.infer<typeof GenerateReviewComplaintOutputSchema>;
 
@@ -51,21 +63,27 @@ export async function generateReviewComplaint(input: GenerateReviewComplaintInpu
         userContent += `\n- **Недостатки:** "${input.reviewCons}"`;
     }
 
-    // Get settings from PostgreSQL
+    // Build optimized system prompt based on product category
+    const optimizedSystemPrompt = buildOptimizedSystemPrompt(
+        input.productName,
+        input.productCharacteristics || ''
+    );
+
+    // Get original prompt from DB for comparison (optional logging)
     const settings = await dbHelpers.getUserSettings();
-
-    if (!settings) {
-        throw new Error("Не найдены настройки AI.");
+    if (settings?.prompt_review_complaint) {
+        const savings = calculatePromptSavings(
+            settings.prompt_review_complaint.length,
+            optimizedSystemPrompt.length
+        );
+        console.log(`[AI OPTIMIZATION] Prompt token savings: ${savings.savedPercent}% (${savings.saved} chars)`);
     }
-    const systemPrompt = settings.prompt_review_complaint;
 
-    if (!systemPrompt) {
-        throw new Error("Системный промт для жалоб на отзывы не найден в настройках.");
-    }
+    const startTime = Date.now();
 
     const complaintText = await runChatCompletion({
         operation: 'generate-review-complaint',
-        systemPrompt: systemPrompt,
+        systemPrompt: optimizedSystemPrompt,
         userContent,
         storeId: input.storeId,
         ownerId: input.ownerId,
@@ -73,5 +91,51 @@ export async function generateReviewComplaint(input: GenerateReviewComplaintInpu
         entityId: input.reviewId,
     });
 
-    return { complaintText };
+    const durationMs = Date.now() - startTime;
+
+    // Parse JSON response from AI to extract reason_id, reason_name, complaintText
+    let parsedResponse: { reasonId: number; reasonName: string; complaintText: string };
+
+    try {
+        // Try to extract JSON from markdown code block
+        const jsonMatch = complaintText.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+            parsedResponse = JSON.parse(jsonMatch[1]);
+        } else {
+            // Try to parse as direct JSON
+            parsedResponse = JSON.parse(complaintText);
+        }
+    } catch (e) {
+        console.error('[AI ERROR] Failed to parse complaint JSON:', e);
+        // Fallback: use default values
+        parsedResponse = {
+            reasonId: 11,
+            reasonName: 'Отзыв не относится к товару',
+            complaintText: complaintText, // Use raw response as fallback
+        };
+    }
+
+    // Estimate tokens (rough approximation: 1 token ≈ 4 characters)
+    // TODO: Replace with actual token counts from Deepseek API if available
+    const promptChars = optimizedSystemPrompt.length + userContent.length;
+    const completionChars = parsedResponse.complaintText.length;
+    const estimatedPromptTokens = Math.ceil(promptChars / 4);
+    const estimatedCompletionTokens = Math.ceil(completionChars / 4);
+    const estimatedTotalTokens = estimatedPromptTokens + estimatedCompletionTokens;
+
+    // Calculate cost (Deepseek: $0.14 per 1M input, $0.28 per 1M output)
+    const costUsd =
+        (estimatedPromptTokens / 1_000_000) * 0.14 +
+        (estimatedCompletionTokens / 1_000_000) * 0.28;
+
+    return {
+        complaintText: parsedResponse.complaintText,
+        reasonId: parsedResponse.reasonId,
+        reasonName: parsedResponse.reasonName,
+        promptTokens: estimatedPromptTokens,
+        completionTokens: estimatedCompletionTokens,
+        totalTokens: estimatedTotalTokens,
+        costUsd,
+        durationMs,
+    };
 }

@@ -8,6 +8,9 @@
 import { query, transaction, getClient } from './client';
 import type { PoolClient } from 'pg';
 
+// Export complaint helpers
+export * from './complaint-helpers';
+
 // ============================================================================
 // Types (matching PostgreSQL schema and old Firebase structure)
 // ============================================================================
