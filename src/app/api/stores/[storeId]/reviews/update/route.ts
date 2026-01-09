@@ -4,19 +4,20 @@ import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
 
 /**
- * Generate date chunks for WB API to bypass 20k limit
- * Strategy: Split time range into 30-day chunks, working backwards from today
+ * Generate initial date chunks for WB API with adaptive sizing
+ * Strategy: Start with large chunks (90 days) working backwards from today
+ * Chunks will be split dynamically if they contain >19k reviews
  */
-function generateDateChunks(startDate: Date, endDate: Date): Array<{ from: number; to: number }> {
-    const chunks: Array<{ from: number; to: number }> = [];
-    const CHUNK_DAYS = 30; // 30-day chunks
+function generateInitialDateChunks(startDate: Date, endDate: Date): Array<{ from: number; to: number; days: number }> {
+    const chunks: Array<{ from: number; to: number; days: number }> = [];
+    const INITIAL_CHUNK_DAYS = 90; // Start with 90-day chunks
 
     let currentEnd = endDate;
     const start = startDate;
 
     while (currentEnd > start) {
         const currentStart = new Date(currentEnd);
-        currentStart.setDate(currentStart.getDate() - CHUNK_DAYS);
+        currentStart.setDate(currentStart.getDate() - INITIAL_CHUNK_DAYS);
 
         // Don't go before the start date
         if (currentStart < start) {
@@ -25,13 +26,33 @@ function generateDateChunks(startDate: Date, endDate: Date): Array<{ from: numbe
 
         chunks.push({
             from: Math.floor(currentStart.getTime() / 1000), // Unix timestamp
-            to: Math.floor(currentEnd.getTime() / 1000)
+            to: Math.floor(currentEnd.getTime() / 1000),
+            days: Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24))
         });
 
         currentEnd = new Date(currentStart.getTime() - 1000); // Move to 1 second before
     }
 
     return chunks;
+}
+
+/**
+ * Split a chunk into smaller chunks for adaptive processing
+ */
+function splitChunk(chunk: { from: number; to: number; days: number }, parts: number): Array<{ from: number; to: number; days: number }> {
+    const totalMs = (chunk.to - chunk.from) * 1000;
+    const chunkSizeMs = totalMs / parts;
+    const subChunks: Array<{ from: number; to: number; days: number }> = [];
+
+    for (let i = 0; i < parts; i++) {
+        const subStart = chunk.from + Math.floor((chunkSizeMs * i) / 1000);
+        const subEnd = i === parts - 1 ? chunk.to : chunk.from + Math.floor((chunkSizeMs * (i + 1)) / 1000) - 1;
+        const days = Math.ceil((subEnd - subStart) / (60 * 60 * 24));
+
+        subChunks.push({ from: subStart, to: subEnd, days });
+    }
+
+    return subChunks;
 }
 
 /**
@@ -67,7 +88,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         let sessionLatestReviewDate = new Date(0);
 
         // Determine date range strategy
-        let dateChunks: Array<{ from: number; to: number }>;
+        let dateChunks: Array<{ from: number; to: number; days: number }>;
 
         if (mode === 'incremental') {
             // Incremental: Only fetch reviews since last update (go back 1 hour to be safe)
@@ -77,35 +98,42 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
             dateChunks = [{
                 from: Math.floor(fromDate.getTime() / 1000),
-                to: Math.floor(Date.now() / 1000)
+                to: Math.floor(Date.now() / 1000),
+                days: Math.ceil((Date.now() - fromDate.getTime()) / (1000 * 60 * 60 * 24))
             }];
 
             console.log(`[API REVIEWS] Incremental mode: fetching from ${fromDate.toISOString()}`);
         } else {
-            // Full mode: Fetch ALL reviews by splitting into date chunks
+            // Full mode: Fetch ALL reviews using adaptive chunking
             // Start from January 1, 2020 (WB reviews unlikely to be older)
             const startDate = new Date('2020-01-01T00:00:00Z');
             const endDate = new Date();
 
-            dateChunks = generateDateChunks(startDate, endDate);
-            console.log(`[API REVIEWS] Full mode: split into ${dateChunks.length} date chunks (30 days each)`);
+            dateChunks = generateInitialDateChunks(startDate, endDate);
+            console.log(`[API REVIEWS] Full mode: starting with ${dateChunks.length} initial chunks (90 days each, adaptive)`);
         }
 
-        // Fetch reviews for each date chunk
-        for (let chunkIndex = 0; chunkIndex < dateChunks.length; chunkIndex++) {
-            const chunk = dateChunks[chunkIndex];
+        // Process chunks with adaptive splitting
+        let processedChunks = 0;
+        const totalEstimatedChunks = dateChunks.length;
+
+        while (dateChunks.length > 0) {
+            const chunk = dateChunks.shift()!;
+            processedChunks++;
+
             const chunkStart = new Date(chunk.from * 1000);
             const chunkEnd = new Date(chunk.to * 1000);
 
-            console.log(`[API REVIEWS] Processing chunk ${chunkIndex + 1}/${dateChunks.length}: ${chunkStart.toISOString()} to ${chunkEnd.toISOString()}`);
+            console.log(`[API REVIEWS] Processing chunk [${processedChunks}]: ${chunkStart.toISOString().split('T')[0]} → ${chunkEnd.toISOString().split('T')[0]} (${chunk.days} days)`);
+
+            let chunkTotalReviews = 0;
 
             // Fetch both answered and unanswered reviews for this chunk
             for (const isAnswered of [false, true]) {
                 let skip = 0;
                 const BATCH_SIZE = 500;
                 const MAX_SKIP = 20000; // WB API hard limit per date range
-
-                console.log(`[API REVIEWS] Fetching ${isAnswered ? 'answered' : 'unanswered'} reviews for chunk ${chunkIndex + 1}`);
+                let chunkReviewCount = 0;
 
                 while (skip < MAX_SKIP) {
                     // Build query params
@@ -134,7 +162,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
                     const result = await response.json();
                     const feedbacks = result?.data?.feedbacks || [];
-                    console.log(`[API REVIEWS] Fetched ${feedbacks.length} reviews (chunk ${chunkIndex + 1}, skip: ${skip})`);
+                    chunkReviewCount += feedbacks.length;
 
                     if (feedbacks.length > 0) {
                         // Process each review (upsert directly without fetching existing)
@@ -183,8 +211,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
                     // Check if we should continue fetching
                     if (feedbacks.length < BATCH_SIZE) {
-                        console.log(`[API REVIEWS] Chunk ${chunkIndex + 1} exhausted (got ${feedbacks.length} < ${BATCH_SIZE})`);
-                        break;
+                        break; // No more reviews in this chunk
                     }
 
                     skip += BATCH_SIZE;
@@ -192,9 +219,23 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
                     // Add small delay to avoid rate limiting
                     await new Promise(res => setTimeout(res, 300));
                 }
+
+                chunkTotalReviews += chunkReviewCount;
             }
 
-            console.log(`[API REVIEWS] Completed chunk ${chunkIndex + 1}/${dateChunks.length}`);
+            // Adaptive chunk splitting logic
+            console.log(`[API REVIEWS] Chunk completed: ${chunkTotalReviews} reviews fetched`);
+
+            if (mode === 'full' && chunkTotalReviews >= 19000 && chunk.days > 7) {
+                // Chunk is too large, split it into smaller chunks
+                console.log(`[API REVIEWS] ⚠️  Chunk has ${chunkTotalReviews} reviews (>19k limit). Splitting ${chunk.days}-day chunk into 3 parts...`);
+                const subChunks = splitChunk(chunk, 3);
+
+                // Add sub-chunks to the FRONT of the queue (process them next)
+                dateChunks.unshift(...subChunks);
+
+                console.log(`[API REVIEWS] Added ${subChunks.length} sub-chunks to queue (now ${dateChunks.length} chunks remaining)`);
+            }
         }
 
         console.log(`[API REVIEWS] Finished fetching. Total: ${totalFetchedReviews}. Recalculating store stats.`);
@@ -242,10 +283,11 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
  *       - `incremental`: Только новые отзывы с момента последней синхронизации
  *       - `full`: Полная синхронизация ВСЕХ отзывов (обход лимита 20k через date chunking)
  *
- *       **Стратегия полной синхронизации:**
- *       - Разбивает временной диапазон на 30-дневные куски (с 2020-01-01 до сегодня)
- *       - Для каждого куска загружает до 20k отзывов
- *       - Позволяет получить магазины с 1M+ отзывами
+ *       **Адаптивная стратегия полной синхронизации:**
+ *       - Начинает с больших 90-дневных chunks (с 2020-01-01 до сегодня)
+ *       - Если chunk содержит ≥19k отзывов → автоматически разбивает на 3 меньших chunk
+ *       - Минимальный размер chunk: 7 дней (не разбивается дальше)
+ *       - Позволяет получить магазины с 1M+ отзывами эффективно
  *     tags:
  *       - Отзывы
  *     parameters:
