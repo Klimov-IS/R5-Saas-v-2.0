@@ -1,0 +1,3263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WB Reputation Manager</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- ============================================================================
+         Sidebar Navigation (Always Visible)
+         ============================================================================ -->
+    <aside class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebarToggle" title="Закрыть боковую панель">
+        <i data-lucide="panel-left"></i>
+      </button>
+
+      <div class="sidebar-header">
+        <a href="/" class="sidebar-logo" data-link>
+          <div class="sidebar-logo-icon">
+            <i data-lucide="store"></i>
+          </div>
+          <span class="sidebar-logo-text">WB Manager</span>
+        </a>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="/" class="sidebar-nav-item" id="nav-stores" data-link>
+          <i data-lucide="briefcase"></i>
+          <span>Кабинеты</span>
+        </a>
+        <a href="/employees" class="sidebar-nav-item" id="nav-employees" data-link>
+          <i data-lucide="users"></i>
+          <span>Сотрудники</span>
+        </a>
+        <a href="/tasks" class="sidebar-nav-item" id="nav-tasks" data-link>
+          <i data-lucide="check-square"></i>
+          <span>Задачи</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a href="/settings" class="sidebar-nav-item" id="nav-settings" data-link>
+          <i data-lucide="settings"></i>
+          <span>Настройки</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- ============================================================================
+         Main Content (Dynamic - Changes Based on Route)
+         ============================================================================ -->
+    <main class="main-content" id="app">
+      <!-- Content will be dynamically rendered here -->
+    </main>
+  </div>
+
+  <!-- ============================================================================
+       PAGE TEMPLATES (Hidden)
+       ============================================================================ -->
+
+  <!-- Template: Stores List -->
+  <template id="page-stores">
+    <div class="container">
+      <header style="margin-bottom: 32px;">
+        <h1 style="font-size: 28px; margin-bottom: 8px;">Кабинеты</h1>
+        <p class="text-muted">Управление магазинами Wildberries</p>
+      </header>
+
+      <!-- KPI Section -->
+      <section class="section">
+        <h2 class="section-header">📊 Сводная статистика</h2>
+
+        <div class="kpi-container">
+          <div class="kpi-item">
+            <div class="kpi-icon" style="background-color: var(--category-chats-bg);">
+              <i data-lucide="store" style="width: 24px; height: 24px; color: var(--category-chats-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Всего магазинов</h3>
+              <p>45</p>
+            </div>
+          </div>
+
+          <div class="kpi-divider"></div>
+
+          <div class="kpi-item">
+            <div class="kpi-icon" style="background-color: var(--category-products-bg);">
+              <i data-lucide="package" style="width: 24px; height: 24px; color: var(--category-products-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Всего товаров</h3>
+              <p>1,247</p>
+            </div>
+          </div>
+
+          <div class="kpi-divider"></div>
+
+          <div class="kpi-item">
+            <div class="kpi-icon" style="background-color: var(--category-reviews-bg);">
+              <i data-lucide="star" style="width: 24px; height: 24px; color: var(--category-reviews-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Всего отзывов</h3>
+              <p>558,298</p>
+            </div>
+          </div>
+
+          <div class="kpi-divider"></div>
+
+          <div class="kpi-item">
+            <div class="kpi-icon" style="background-color: var(--category-chats-bg);">
+              <i data-lucide="message-square" style="width: 24px; height: 24px; color: var(--category-chats-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Всего диалогов</h3>
+              <p>15,924</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stores Table -->
+      <section class="section">
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">🏪 Список магазинов</h2>
+          <div class="section-header-actions">
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+              Пересчитать
+            </button>
+            <button class="btn btn-primary btn-sm btn-icon">
+              <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i>
+              Добавить магазин
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Название магазина</th>
+                  <th>Товары</th>
+                  <th>Отзывы</th>
+                  <th>Диалоги</th>
+                  <th>Статус</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div style="font-weight: 600; color: var(--color-foreground);">Магазин электроники "ТехноМир"</div>
+                    <div style="font-size: 12px; color: var(--color-muted); margin-top: 4px;">Добавлен: 15 дек 2024</div>
+                  </td>
+                  <td>
+                    <span class="badge badge-purple">
+                      <i data-lucide="package" style="width: 14px; height: 14px;"></i>
+                      342
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-gray">
+                      <i data-lucide="star" style="width: 14px; height: 14px;"></i>
+                      124,567
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-blue">
+                      <i data-lucide="message-square" style="width: 14px; height: 14px;"></i>
+                      3,421
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                      <i data-lucide="check-circle" style="width: 14px; height: 14px;"></i>
+                      Активен
+                    </span>
+                  </td>
+                  <td>
+                    <a href="/store/tehnomir" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px;" data-link>
+                      Перейти
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="font-weight: 600; color: var(--color-foreground);">Детские товары "Малышок"</div>
+                    <div style="font-size: 12px; color: var(--color-muted); margin-top: 4px;">Добавлен: 10 дек 2024</div>
+                  </td>
+                  <td>
+                    <span class="badge badge-purple">
+                      <i data-lucide="package" style="width: 14px; height: 14px;"></i>
+                      189
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-gray">
+                      <i data-lucide="star" style="width: 14px; height: 14px;"></i>
+                      67,234
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-blue">
+                      <i data-lucide="message-square" style="width: 14px; height: 14px;"></i>
+                      1,892
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                      <i data-lucide="check-circle" style="width: 14px; height: 14px;"></i>
+                      Активен
+                    </span>
+                  </td>
+                  <td>
+                    <a href="/store/malyshok" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px;" data-link>
+                      Перейти
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div style="font-weight: 600; color: var(--color-foreground);">Одежда "Модный стиль"</div>
+                    <div style="font-size: 12px; color: var(--color-muted); margin-top: 4px;">Добавлен: 5 дек 2024</div>
+                  </td>
+                  <td>
+                    <span class="badge badge-purple">
+                      <i data-lucide="package" style="width: 14px; height: 14px;"></i>
+                      524
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-gray">
+                      <i data-lucide="star" style="width: 14px; height: 14px;"></i>
+                      298,112
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-blue">
+                      <i data-lucide="message-square" style="width: 14px; height: 14px;"></i>
+                      7,234
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge" style="background-color: #fef3c7; color: #92400e;">
+                      <i data-lucide="alert-circle" style="width: 14px; height: 14px;"></i>
+                      Обновление
+                    </span>
+                  </td>
+                  <td>
+                    <a href="/store/modniy-stil" class="btn btn-outline" style="padding: 6px 12px; font-size: 13px;" data-link>
+                      Перейти
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Store Dashboard -->
+  <template id="page-store-dashboard">
+    <!-- Store Header -->
+    <div class="store-header">
+      <div class="store-header-main">
+        <a href="/" class="btn btn-outline btn-sm btn-icon" data-link>
+          <i data-lucide="arrow-left"></i>
+          Все магазины
+        </a>
+        <div class="store-header-info">
+          <h1 class="store-title">Магазин "ТехноМир"</h1>
+          <p class="store-meta">Добавлен: 15 дек 2024</p>
+        </div>
+      </div>
+      <div class="store-header-actions">
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="settings"></i>
+          Настройки
+        </button>
+        <button class="btn btn-primary btn-sm btn-icon">
+          <i data-lucide="refresh-cw"></i>
+          Синхронизировать всё
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-nav">
+      <a href="/store/tehnomir" class="tab-item active" data-link>
+        <i data-lucide="bar-chart-2"></i>
+        Обзор
+      </a>
+      <a href="/store/tehnomir/products" class="tab-item" data-link>
+        <i data-lucide="package"></i>
+        Товары
+      </a>
+      <a href="/store/tehnomir/rules" class="tab-item" data-link>
+        <i data-lucide="settings"></i>
+        Правила работы
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/logs" class="tab-item" data-link>
+        <i data-lucide="bot"></i>
+        Логи AI
+      </a>
+    </div>
+
+    <!-- Dashboard Content -->
+    <div class="dashboard-container">
+      <!-- KPI Cards -->
+      <section class="dashboard-section">
+        <h2 class="section-header-title">Ключевые метрики</h2>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background-color: var(--category-products-bg);">
+              <i data-lucide="package" style="color: var(--category-products-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Товаров</h3>
+              <p class="kpi-value">342</p>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background-color: var(--category-reviews-bg);">
+              <i data-lucide="star" style="color: var(--category-reviews-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Отзывов</h3>
+              <p class="kpi-value">124,567</p>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background-color: var(--category-chats-bg);">
+              <i data-lucide="message-square" style="color: var(--category-chats-text);"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Диалогов</h3>
+              <p class="kpi-value">3,421</p>
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-icon" style="background-color: #fef3c7;">
+              <i data-lucide="trending-up" style="color: #92400e;"></i>
+            </div>
+            <div class="kpi-content">
+              <h3>Средний рейтинг</h3>
+              <p class="kpi-value">4.7 ⭐</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Charts Grid -->
+      <div class="dashboard-grid">
+        <!-- Left Column -->
+        <div class="dashboard-left">
+          <!-- Reviews Chart -->
+          <section class="dashboard-section">
+            <div class="section-header-with-actions">
+              <h2 class="section-header-title">📈 Динамика отзывов</h2>
+              <div class="chart-period-toggle">
+                <button class="period-btn">7д</button>
+                <button class="period-btn active">30д</button>
+                <button class="period-btn">90д</button>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <div class="chart-placeholder">
+                <i data-lucide="activity"></i>
+                <p>Линейный график: количество отзывов и средний рейтинг по дням</p>
+                <small>Будет реализовано через recharts</small>
+              </div>
+            </div>
+          </section>
+
+          <!-- Rating Distribution -->
+          <section class="dashboard-section">
+            <h2 class="section-header-title">🎯 Распределение рейтингов</h2>
+
+            <div class="chart-container">
+              <div class="rating-distribution">
+                <div class="rating-bar-item">
+                  <span class="rating-label">5⭐</span>
+                  <div class="rating-bar-wrapper">
+                    <div class="rating-bar" style="width: 65%; background-color: var(--color-success);"></div>
+                  </div>
+                  <span class="rating-percentage">65%</span>
+                </div>
+                <div class="rating-bar-item">
+                  <span class="rating-label">4⭐</span>
+                  <div class="rating-bar-wrapper">
+                    <div class="rating-bar" style="width: 20%; background-color: var(--color-primary);"></div>
+                  </div>
+                  <span class="rating-percentage">20%</span>
+                </div>
+                <div class="rating-bar-item">
+                  <span class="rating-label">3⭐</span>
+                  <div class="rating-bar-wrapper">
+                    <div class="rating-bar" style="width: 8%; background-color: var(--color-warning);"></div>
+                  </div>
+                  <span class="rating-percentage">8%</span>
+                </div>
+                <div class="rating-bar-item">
+                  <span class="rating-label">2⭐</span>
+                  <div class="rating-bar-wrapper">
+                    <div class="rating-bar" style="width: 4%; background-color: #fb923c;"></div>
+                  </div>
+                  <span class="rating-percentage">4%</span>
+                </div>
+                <div class="rating-bar-item">
+                  <span class="rating-label">1⭐</span>
+                  <div class="rating-bar-wrapper">
+                    <div class="rating-bar" style="width: 3%; background-color: var(--color-error);"></div>
+                  </div>
+                  <span class="rating-percentage">3%</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right Column -->
+        <div class="dashboard-right">
+          <!-- Sync Status -->
+          <section class="dashboard-section">
+            <h2 class="section-header-title">🔄 Последняя синхронизация</h2>
+
+            <div class="sync-status-list">
+              <div class="sync-status-item">
+                <div class="sync-status-icon success">
+                  <i data-lucide="package"></i>
+                </div>
+                <div class="sync-status-content">
+                  <span class="sync-status-label">Товары</span>
+                  <span class="sync-status-time">2 часа назад</span>
+                </div>
+                <div class="sync-status-badge success">
+                  <i data-lucide="check"></i>
+                </div>
+              </div>
+
+              <div class="sync-status-item">
+                <div class="sync-status-icon success">
+                  <i data-lucide="star"></i>
+                </div>
+                <div class="sync-status-content">
+                  <span class="sync-status-label">Отзывы</span>
+                  <span class="sync-status-time">15 минут назад</span>
+                </div>
+                <div class="sync-status-badge success">
+                  <i data-lucide="check"></i>
+                </div>
+              </div>
+
+              <div class="sync-status-item">
+                <div class="sync-status-icon error">
+                  <i data-lucide="message-square"></i>
+                </div>
+                <div class="sync-status-content">
+                  <span class="sync-status-label">Чаты</span>
+                  <span class="sync-status-time">Ошибка</span>
+                </div>
+                <div class="sync-status-badge error">
+                  <i data-lucide="alert-circle"></i>
+                </div>
+              </div>
+            </div>
+
+            <button class="btn btn-outline btn-sm btn-full">
+              <i data-lucide="rotate-cw"></i>
+              Повторить попытку
+            </button>
+          </section>
+
+          <!-- Chat Stats -->
+          <section class="dashboard-section">
+            <h2 class="section-header-title">💬 Статистика чатов</h2>
+
+            <div class="chat-stats-list">
+              <div class="chat-stat-item">
+                <span class="chat-stat-dot" style="background-color: var(--color-success);"></span>
+                <span class="chat-stat-label">Активные</span>
+                <span class="chat-stat-value">45 (32%)</span>
+              </div>
+              <div class="chat-stat-item">
+                <span class="chat-stat-dot" style="background-color: var(--color-primary);"></span>
+                <span class="chat-stat-label">Успешные</span>
+                <span class="chat-stat-value">89 (64%)</span>
+              </div>
+              <div class="chat-stat-item">
+                <span class="chat-stat-dot" style="background-color: var(--color-error);"></span>
+                <span class="chat-stat-label">Неуспешные</span>
+                <span class="chat-stat-value">12 (9%)</span>
+              </div>
+              <div class="chat-stat-item">
+                <span class="chat-stat-dot" style="background-color: var(--color-warning);"></span>
+                <span class="chat-stat-label">Без ответа</span>
+                <span class="chat-stat-value">23 (16%)</span>
+              </div>
+              <div class="chat-stat-item">
+                <span class="chat-stat-dot" style="background-color: var(--color-muted);"></span>
+                <span class="chat-stat-label">Не размечено</span>
+                <span class="chat-stat-value">8 (6%)</span>
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-sm btn-full btn-icon">
+              <i data-lucide="bot"></i>
+              Классифицировать все
+            </button>
+          </section>
+
+          <!-- Problem Products -->
+          <section class="dashboard-section">
+            <h2 class="section-header-title">⚠️ Товары с низким рейтингом</h2>
+
+            <div class="problem-products-list">
+              <div class="problem-product-item">
+                <span class="problem-product-rank">1</span>
+                <div class="problem-product-content">
+                  <span class="problem-product-name">Наушники TWS Pro</span>
+                  <div class="problem-product-stats">
+                    <span class="product-rating bad">2.3⭐</span>
+                    <span class="product-reviews">(12 отзывов)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="problem-product-item">
+                <span class="problem-product-rank">2</span>
+                <div class="problem-product-content">
+                  <span class="problem-product-name">Чехол кожаный iPhone 15</span>
+                  <div class="problem-product-stats">
+                    <span class="product-rating bad">2.8⭐</span>
+                    <span class="product-reviews">(8 отзывов)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="problem-product-item">
+                <span class="problem-product-rank">3</span>
+                <div class="problem-product-content">
+                  <span class="problem-product-name">Зарядка быстрая 65W</span>
+                  <div class="problem-product-stats">
+                    <span class="product-rating medium">3.1⭐</span>
+                    <span class="product-reviews">(15 отзывов)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Attention Table -->
+      <section class="dashboard-section">
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">⚠️ Требуют внимания</h2>
+          <select class="filter-select">
+            <option>Все</option>
+            <option>Только отзывы</option>
+            <option>Только чаты</option>
+          </select>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Тип</th>
+                <th>Товар</th>
+                <th>Текст</th>
+                <th>Дата</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-error">1⭐</span></td>
+                <td>Наушники TWS Pro</td>
+                <td class="table-text-truncate">Не работают после двух дней использования...</td>
+                <td>2ч назад</td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-chat">💬 Чат</span></td>
+                <td>Чехол iPhone 15 Pro</td>
+                <td class="table-text-truncate">Когда будет доставка? Заказ оформлен 3 дня назад</td>
+                <td>5ч назад</td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-footer">
+          <button class="btn btn-outline btn-sm">Показать все →</button>
+        </div>
+      </section>
+
+      <!-- Quick Actions -->
+      <section class="dashboard-section">
+        <h2 class="section-header-title">🚀 Быстрые действия</h2>
+
+        <div class="quick-actions-grid">
+          <button class="quick-action-btn">
+            <i data-lucide="package"></i>
+            <span>Синхронизировать товары</span>
+          </button>
+          <button class="quick-action-btn">
+            <i data-lucide="star"></i>
+            <span>Обновить отзывы</span>
+          </button>
+          <button class="quick-action-btn">
+            <i data-lucide="message-square"></i>
+            <span>Загрузить чаты</span>
+          </button>
+          <button class="quick-action-btn">
+            <i data-lucide="bot"></i>
+            <span>Генерировать ответы на 10 отзывов</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Store Products Page -->
+  <template id="page-store-products">
+    <!-- Store Header -->
+    <div class="store-header">
+      <div class="store-header-main">
+        <a href="/" class="btn btn-outline btn-sm btn-icon" data-link>
+          <i data-lucide="arrow-left"></i>
+          Все магазины
+        </a>
+        <div class="store-header-info">
+          <h1 class="store-title">Магазин "ТехноМир"</h1>
+          <p class="store-meta">Добавлен: 15 дек 2024</p>
+        </div>
+      </div>
+      <div class="store-header-actions">
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="settings"></i>
+          Настройки
+        </button>
+        <button class="btn btn-primary btn-sm btn-icon">
+          <i data-lucide="refresh-cw"></i>
+          Синхронизировать всё
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-nav">
+      <a href="/store/tehnomir" class="tab-item" data-link>
+        <i data-lucide="bar-chart-2"></i>
+        Обзор
+      </a>
+      <a href="/store/tehnomir/products" class="tab-item active" data-link>
+        <i data-lucide="package"></i>
+        Товары
+      </a>
+      <a href="/store/tehnomir/rules" class="tab-item" data-link>
+        <i data-lucide="settings"></i>
+        Правила работы
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/logs" class="tab-item" data-link>
+        <i data-lucide="bot"></i>
+        Логи AI
+      </a>
+    </div>
+
+    <!-- Products Content -->
+    <div class="dashboard-container">
+      <section class="dashboard-section">
+        <!-- Header -->
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">📦 Товары магазина (342)</h2>
+          <div class="section-header-actions">
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="refresh-cw"></i>
+              Синхронизировать
+            </button>
+            <button class="btn btn-primary btn-sm btn-icon">
+              <i data-lucide="plus-circle"></i>
+              Добавить товар
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row" style="margin-top: 20px; margin-bottom: 20px;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+              <input
+                type="text"
+                placeholder="Поиск по названию или артикулу..."
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"
+              />
+            </div>
+            <select class="filter-select">
+              <option>Все товары</option>
+              <option>Активные</option>
+              <option>Неактивные</option>
+            </select>
+            <select class="filter-select">
+              <option>Сортировка</option>
+              <option>По дате (новые)</option>
+              <option>По дате (старые)</option>
+              <option>По рейтингу ↓</option>
+              <option>По рейтингу ↑</option>
+              <option>По кол-ву отзывов ↓</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Products Table -->
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 60px;">Фото</th>
+                <th>Название товара</th>
+                <th>Цена</th>
+                <th>Отзывы</th>
+                <th>Рейтинг</th>
+                <th>Обновлено</th>
+                <th>Статус</th>
+                <th style="width: 80px;">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Product 1 -->
+              <tr>
+                <td>
+                  <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 12px;">
+                    TWS
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px;">Наушники беспроводные TWS Pro</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: NP-2024-001</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px;">123456789</code>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-weight: 600; color: var(--color-foreground);">2,990₽</span>
+                </td>
+                <td>
+                  <span class="badge badge-gray">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    45
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 600; color: var(--color-warning);">4.2</span>
+                    <span>⭐</span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">2ч назад</span>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: var(--color-success-bg); color: var(--color-success);">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+
+              <!-- Product 2 -->
+              <tr>
+                <td>
+                  <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 12px;">
+                    📱
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px;">Чехол защитный iPhone 15 Pro Max</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: CH-IP15PM-001</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px;">234567890</code>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-weight: 600; color: var(--color-foreground);">1,490₽</span>
+                </td>
+                <td>
+                  <span class="badge badge-gray">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    128
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 600; color: var(--color-success);">4.8</span>
+                    <span>⭐</span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">5ч назад</span>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: var(--color-success-bg); color: var(--color-success);">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+
+              <!-- Product 3 -->
+              <tr>
+                <td>
+                  <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 12px;">
+                    ⚡
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px;">Зарядное устройство быстрое 65W GaN</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: ZU-65W-GAN</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px;">345678901</code>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-weight: 600; color: var(--color-foreground);">3,490₽</span>
+                </td>
+                <td>
+                  <span class="badge badge-gray">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    67
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 600; color: var(--color-primary);">4.5</span>
+                    <span>⭐</span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">1д назад</span>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: var(--color-success-bg); color: var(--color-success);">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+
+              <!-- Product 4 - Low Rating -->
+              <tr>
+                <td>
+                  <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 12px;">
+                    🔋
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px;">Powerbank портативный 20000mAh</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: PB-20K-BLK</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px;">456789012</code>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-weight: 600; color: var(--color-foreground);">2,790₽</span>
+                </td>
+                <td>
+                  <span class="badge badge-gray">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    34
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 600; color: var(--color-error);">2.8</span>
+                    <span>⭐</span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">3д назад</span>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: var(--color-warning-bg); color: var(--color-warning);">
+                    <i data-lucide="alert-triangle" style="width: 12px; height: 12px;"></i>
+                    Проблема
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+
+              <!-- Product 5 - Inactive -->
+              <tr style="opacity: 0.6;">
+                <td>
+                  <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); display: flex; align-items: center; justify-content: center; color: #666; font-weight: 600; font-size: 12px;">
+                    🎧
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px;">Наушники проводные с микрофоном</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: HP-WIRED-001</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px;">567890123</code>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-weight: 600; color: var(--color-foreground);">790₽</span>
+                </td>
+                <td>
+                  <span class="badge badge-gray">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    12
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 600; color: var(--color-muted);">3.9</span>
+                    <span>⭐</span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">7д назад</span>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: var(--color-border-light); color: var(--color-muted);">
+                    <i data-lucide="x-circle" style="width: 12px; height: 12px;"></i>
+                    Неактивен
+                  </span>
+                </td>
+                <td>
+                  <button class="btn-icon-sm" title="Просмотреть">
+                    <i data-lucide="eye"></i>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; padding: 16px 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 14px; color: var(--color-muted);">Показать:</span>
+            <select class="filter-select" style="width: 80px;">
+              <option>10</option>
+              <option selected>25</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+            <span style="font-size: 14px; color: var(--color-muted);">
+              Показано 1-5 из 342
+            </span>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline btn-sm" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button class="btn btn-primary btn-sm">1</button>
+            <button class="btn btn-outline btn-sm">2</button>
+            <button class="btn btn-outline btn-sm">3</button>
+            <span style="padding: 8px;">...</span>
+            <button class="btn btn-outline btn-sm">14</button>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Store Product Rules Page -->
+  <template id="page-store-rules">
+    <!-- Store Header -->
+    <div class="store-header">
+      <div class="store-header-main">
+        <a href="/" class="btn btn-outline btn-sm btn-icon" data-link>
+          <i data-lucide="arrow-left"></i>
+          Все магазины
+        </a>
+        <div class="store-header-info">
+          <h1 class="store-title">Магазин "ТехноМир"</h1>
+          <p class="store-meta">Добавлен: 15 дек 2024</p>
+        </div>
+      </div>
+      <div class="store-header-actions">
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="download"></i>
+          Импорт Excel
+        </button>
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="upload"></i>
+          Экспорт Excel
+        </button>
+        <button class="btn btn-primary btn-sm btn-icon">
+          <i data-lucide="plus"></i>
+          Применить ко всем
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-nav">
+      <a href="/store/tehnomir" class="tab-item" data-link>
+        <i data-lucide="bar-chart-2"></i>
+        Обзор
+      </a>
+      <a href="/store/tehnomir/products" class="tab-item" data-link>
+        <i data-lucide="package"></i>
+        Товары
+      </a>
+      <a href="/store/tehnomir/rules" class="tab-item active" data-link>
+        <i data-lucide="settings"></i>
+        Правила работы
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/logs" class="tab-item" data-link>
+        <i data-lucide="bot"></i>
+        Логи AI
+      </a>
+    </div>
+
+    <!-- Rules Content -->
+    <div class="dashboard-container">
+      <section class="dashboard-section">
+        <!-- Header -->
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">⚙️ Правила работы с артикулами (342)</h2>
+          <div class="section-header-actions">
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="copy"></i>
+              Копировать правила
+            </button>
+            <button class="btn btn-primary btn-sm btn-icon">
+              <i data-lucide="save"></i>
+              Сохранить изменения
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row" style="margin-top: 20px; margin-bottom: 20px;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+              <input
+                type="text"
+                placeholder="Поиск по клиенту или артикулу WB..."
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"
+              />
+            </div>
+            <select class="filter-select">
+              <option>Все товары</option>
+              <option>С жалобами</option>
+              <option>Без жалоб</option>
+              <option>Работа в чатах</option>
+              <option>С компенсацией</option>
+            </select>
+            <select class="filter-select">
+              <option>Все статусы</option>
+              <option>Активные</option>
+              <option>Неактивные</option>
+            </select>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="filter"></i>
+              Фильтры
+            </button>
+          </div>
+        </div>
+
+        <!-- Rules Table -->
+        <div class="table-container" style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">
+                  <input type="checkbox" />
+                </th>
+                <th>Товар</th>
+                <th style="width: 100px;">Статус</th>
+                <th style="width: 140px;">Подаём жалобы?</th>
+                <th style="width: 80px; text-align: center;">1⭐</th>
+                <th style="width: 80px; text-align: center;">2⭐</th>
+                <th style="width: 80px; text-align: center;">3⭐</th>
+                <th style="width: 80px; text-align: center;">4⭐</th>
+                <th style="width: 140px;">Работаем в чатах?</th>
+                <th style="width: 80px; text-align: center;">1⭐</th>
+                <th style="width: 80px; text-align: center;">2⭐</th>
+                <th style="width: 80px; text-align: center;">3⭐</th>
+                <th style="width: 80px; text-align: center;">4⭐</th>
+                <th style="width: 200px;">Компенсация для покупателей</th>
+                <th style="width: 150px;">Тип компенсации</th>
+                <th style="width: 120px;">Макс. компенсация</th>
+                <th style="width: 180px;">Кто делает компенсацию</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Row 1 - ИП Ахметов -->
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px; font-size: 13px;">Наушники беспроводные TWS Pro</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: NP-2024-001</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px; font-size: 11px;">218791291</code>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>нет</option>
+                    <option>да</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" disabled />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" disabled />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" disabled />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" disabled />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>нет</option>
+                    <option>да</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;" disabled>
+                    <option>—</option>
+                  </select>
+                </td>
+                <td>
+                  <input type="text" disabled placeholder="—" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; font-size: 12px; background: #f9fafb;" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;" disabled>
+                    <option>—</option>
+                  </select>
+                </td>
+              </tr>
+
+              <!-- Row 2 - КотоМото (with compensation) -->
+              <tr style="background-color: #f0fdf4;">
+                <td><input type="checkbox" /></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px; font-size: 13px;">Чехол защитный iPhone 15 Pro Max</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: CH-IP15PM-001</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px; font-size: 11px;">302396212</code>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>Кешбек</option>
+                    <option>Возврат стоимости</option>
+                  </select>
+                </td>
+                <td>
+                  <input type="text" value="р.500" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; font-size: 12px;" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>P5, 89245495018</option>
+                    <option>Р5</option>
+                    <option>Кабинет продавца</option>
+                  </select>
+                </td>
+              </tr>
+
+              <!-- Row 3 - КотоМото (return) -->
+              <tr style="background-color: #fef3c7;">
+                <td><input type="checkbox" /></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px; font-size: 13px;">Зарядное устройство быстрое 65W GaN</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: ZU-65W-GAN</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px; font-size: 11px;">302396211</code>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>Возврат стоимости</option>
+                    <option>Кешбек</option>
+                  </select>
+                </td>
+                <td>
+                  <input type="text" value="р.500" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; font-size: 12px;" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>P5, 89245495018</option>
+                    <option>Р5</option>
+                    <option>Кабинет продавца</option>
+                  </select>
+                </td>
+              </tr>
+
+              <!-- Row 4 - КотоМото (cashback type 2) -->
+              <tr style="background-color: #f0fdf4;">
+                <td><input type="checkbox" /></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px; font-size: 13px;">Powerbank портативный 20000mAh</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: PB-20K-BLK</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px; font-size: 11px;">302396210</code>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>Кешбек</option>
+                    <option>Возврат стоимости</option>
+                  </select>
+                </td>
+                <td>
+                  <input type="text" value="р.500" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; font-size: 12px;" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>P5, 89245495018</option>
+                    <option>Р5</option>
+                    <option>Кабинет продавца</option>
+                  </select>
+                </td>
+              </tr>
+
+              <!-- Row 5 - КотоМото (lower compensation) -->
+              <tr style="background-color: #f0fdf4;">
+                <td><input type="checkbox" /></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); margin-bottom: 4px; font-size: 13px;">Наушники проводные с микрофоном</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Артикул продавца: HP-WIRED-001</div>
+                  <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: <code style="font-family: monospace; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 3px; font-size: 11px;">302396209</code>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-success">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Активен
+                  </span>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" checked />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td style="text-align: center;">
+                  <input type="checkbox" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>да</option>
+                    <option>нет</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>Кешбек</option>
+                    <option>Возврат стоимости</option>
+                  </select>
+                </td>
+                <td>
+                  <input type="text" value="р.300" style="width: 100%; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 4px; font-size: 12px;" />
+                </td>
+                <td>
+                  <select class="filter-select" style="width: 100%; font-size: 12px;">
+                    <option>P5, 89245495018</option>
+                    <option>Р5</option>
+                    <option>Кабинет продавца</option>
+                  </select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; padding: 16px 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 14px; color: var(--color-muted);">Показать:</span>
+            <select class="filter-select" style="width: 80px;">
+              <option>10</option>
+              <option selected>25</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+            <span style="font-size: 14px; color: var(--color-muted);">
+              Показано 1-5 из 342
+            </span>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline btn-sm" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button class="btn btn-primary btn-sm">1</button>
+            <button class="btn btn-outline btn-sm">2</button>
+            <button class="btn btn-outline btn-sm">3</button>
+            <span style="padding: 8px;">...</span>
+            <button class="btn btn-outline btn-sm">14</button>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bulk Actions Panel (appears when checkboxes selected) -->
+        <div style="position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: white; padding: 16px 24px; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.15); border: 1px solid var(--color-border); display: none;" id="bulk-actions">
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <span style="font-size: 14px; font-weight: 600; color: var(--color-foreground);">
+              Выбрано: <span id="selected-count">3</span> товара
+            </span>
+            <div style="width: 1px; height: 24px; background: var(--color-border);"></div>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="copy"></i>
+              Копировать правила
+            </button>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="settings"></i>
+              Применить шаблон
+            </button>
+            <button class="btn btn-outline btn-sm" style="color: #dc2626;">
+              <i data-lucide="trash-2"></i>
+              Сбросить правила
+            </button>
+            <div style="width: 1px; height: 24px; background: var(--color-border);"></div>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('bulk-actions').style.display='none'">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Store Reviews Page -->
+  <template id="page-store-reviews">
+    <!-- Store Header -->
+    <div class="store-header">
+      <div class="store-header-main">
+        <a href="/" class="btn btn-outline btn-sm btn-icon" data-link>
+          <i data-lucide="arrow-left"></i>
+          Все магазины
+        </a>
+        <div class="store-header-info">
+          <h1 class="store-title">Магазин "ТехноМир"</h1>
+          <p class="store-meta">Добавлен: 15 дек 2024</p>
+        </div>
+      </div>
+      <div class="store-header-actions">
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="settings"></i>
+          Настройки
+        </button>
+        <button class="btn btn-primary btn-sm btn-icon">
+          <i data-lucide="refresh-cw"></i>
+          Синхронизировать всё
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-nav">
+      <a href="/store/tehnomir" class="tab-item" data-link>
+        <i data-lucide="bar-chart-2"></i>
+        Обзор
+      </a>
+      <a href="/store/tehnomir/products" class="tab-item" data-link>
+        <i data-lucide="package"></i>
+        Товары
+      </a>
+      <a href="/store/tehnomir/rules" class="tab-item" data-link>
+        <i data-lucide="settings"></i>
+        Правила работы
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item active" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/logs" class="tab-item" data-link>
+        <i data-lucide="bot"></i>
+        Логи AI
+      </a>
+    </div>
+
+    <!-- Reviews Content -->
+    <div class="dashboard-container">
+      <section class="dashboard-section">
+        <!-- Header -->
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">⭐ Отзывы магазина (124,567)</h2>
+          <div class="section-header-actions">
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="refresh-cw"></i>
+              Обновить отзывы
+            </button>
+            <button class="btn btn-primary btn-sm btn-icon">
+              <i data-lucide="bot"></i>
+              Генерировать ответы AI
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row" style="margin-top: 20px; margin-bottom: 20px;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+              <input
+                type="text"
+                placeholder="Поиск по тексту отзыва..."
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"
+              />
+            </div>
+            <select class="filter-select">
+              <option>Все рейтинги</option>
+              <option>5 звёзд</option>
+              <option>4 звезды</option>
+              <option>3 звезды</option>
+              <option>1-2 звезды (низкие)</option>
+            </select>
+            <select class="filter-select">
+              <option>Все отзывы</option>
+              <option>Без ответа</option>
+              <option>С черновиком</option>
+              <option>Отвечено</option>
+            </select>
+            <select class="filter-select">
+              <option>Сортировка</option>
+              <option>По дате (новые)</option>
+              <option>По дате (старые)</option>
+              <option>По рейтингу ↓</option>
+              <option>По рейтингу ↑</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Reviews Table -->
+        <div class="table-container" style="overflow-x: auto;">
+          <table class="data-table" style="min-width: 1600px; table-layout: fixed;">
+            <thead>
+              <tr>
+                <th style="width: 40px;">
+                  <input type="checkbox" id="selectAllReviews" />
+                </th>
+                <th style="width: 120px;">Дата и время</th>
+                <th style="width: 280px;">Товар</th>
+                <th style="width: 90px;">Рейтинг</th>
+                <th style="width: 600px;">Отзыв</th>
+                <th style="width: 280px;">Статусы</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Review 1 - Low rating, needs response -->
+              <tr style="background-color: #fef2f2;">
+                <td>
+                  <input type="checkbox" class="review-checkbox" />
+                </td>
+                <td>
+                  <div style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">06.01.2026</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">18:20</div>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <div style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 11px; flex-shrink: 0; text-align: center; line-height: 1.2;">
+                      TWS<br/>Pro
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Наушники TWS Pro</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Арт. продавца: NP-2024-001</div>
+                      <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: 123456789</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-error" style="font-size: 18px; padding: 8px 12px; display: inline-block;">
+                    1⭐
+                  </span>
+                </td>
+                <td>
+                  <div style="margin-bottom: 10px;">
+                    <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Алексей М.</div>
+                    <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 8px;">Подтверждён</div>
+                    <p style="font-size: 13px; line-height: 1.5; margin: 0 0 8px 0; color: var(--color-foreground);">
+                      Очень разочарован покупкой! Наушники перестали работать на третий день использования.
+                    </p>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 12px; margin-bottom: 8px;">
+                    <div>
+                      <span style="color: var(--color-success); font-weight: 600;">Плюсы:</span>
+                      <span style="color: var(--color-muted);">Хорошая упаковка</span>
+                    </div>
+                    <div>
+                      <span style="color: var(--color-error); font-weight: 600;">Минусы:</span>
+                      <span style="color: var(--color-muted);">Сломались через 3 дня</span>
+                    </div>
+                  </div>
+                  <div style="font-size: 11px; color: var(--color-muted); border-top: 1px solid var(--color-border-light); padding-top: 6px;">
+                    ID отзыва: MPMRtlx1GFZ2JuSoyMKJ
+                  </div>
+                </td>
+                <td>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start;">
+                    <span class="badge" style="background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-size: 11px;">
+                      <i data-lucide="x-circle" style="width: 10px; height: 10px;"></i>
+                      Отказ
+                    </span>
+                    <span class="badge" style="background-color: #fef2f2; color: #dc2626; border: 1px solid #fecaca; font-size: 11px;">
+                      <i data-lucide="alert-circle" style="width: 10px; height: 10px;"></i>
+                      Без ответа
+                    </span>
+                    <span class="badge" style="background-color: #fef3c7; color: #92400e; border: 1px solid #fcd34d; font-size: 11px;">
+                      <i data-lucide="flag" style="width: 10px; height: 10px;"></i>
+                      Жалоба подана
+                    </span>
+                    <span class="badge" style="background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; font-size: 11px;">
+                      <i data-lucide="message-circle" style="width: 10px; height: 10px;"></i>
+                      Чат открыт
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Review 2 - High rating, answered -->
+              <tr>
+                <td>
+                  <input type="checkbox" class="review-checkbox" />
+                </td>
+                <td>
+                  <div style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">06.01.2026</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">13:20</div>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <div style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 18px; flex-shrink: 0;">
+                      📱
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Чехол iPhone 15 Pro Max</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Арт. продавца: CH-IP15PM-001</div>
+                      <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: 234567890</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-success" style="font-size: 18px; padding: 8px 12px; display: inline-block;">
+                    5⭐
+                  </span>
+                </td>
+                <td>
+                  <div style="margin-bottom: 10px;">
+                    <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Мария К.</div>
+                    <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 8px;">Подтверждён</div>
+                    <p style="font-size: 13px; line-height: 1.5; margin: 0 0 8px 0; color: var(--color-foreground);">
+                      Отличный чехол! Качество материалов на высоте, телефон защищён со всех сторон.
+                    </p>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 12px; margin-bottom: 12px;">
+                    <div>
+                      <span style="color: var(--color-success); font-weight: 600;">Плюсы:</span>
+                      <span style="color: var(--color-muted);">Качество, защита, дизайн</span>
+                    </div>
+                    <div>
+                      <span style="color: var(--color-error); font-weight: 600;">Минусы:</span>
+                      <span style="color: var(--color-muted);">Не обнаружено</span>
+                    </div>
+                  </div>
+                  <!-- Answer indicator -->
+                  <div style="margin-bottom: 8px; padding: 8px 12px; background-color: #f0fdf4; border-left: 3px solid #22c55e; border-radius: 4px;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                      <i data-lucide="corner-down-right" style="width: 14px; height: 14px; color: #16a34a;"></i>
+                      <span style="font-size: 11px; font-weight: 600; color: #16a34a; text-transform: uppercase;">Ваш ответ</span>
+                    </div>
+                    <p style="font-size: 12px; margin: 0; color: #166534; line-height: 1.4;">
+                      Спасибо за ваш отзыв, Мария! Рады, что чехол вам понравился. Желаем приятного использования! 🎉
+                    </p>
+                  </div>
+                  <div style="font-size: 11px; color: var(--color-muted); border-top: 1px solid var(--color-border-light); padding-top: 6px;">
+                    ID отзыва: XH8PqN2vKmLoR4TyWzJf
+                  </div>
+                </td>
+                <td>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start;">
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; font-size: 11px;">
+                      <i data-lucide="check-circle" style="width: 10px; height: 10px;"></i>
+                      Выкуплен
+                    </span>
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; font-size: 11px;">
+                      <i data-lucide="message-square-check" style="width: 10px; height: 10px;"></i>
+                      Отвечено
+                    </span>
+                    <span class="badge" style="background-color: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 11px;">
+                      <i data-lucide="check-square" style="width: 10px; height: 10px;"></i>
+                      Чат завершён
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Review 3 - Medium rating, draft exists -->
+              <tr>
+                <td>
+                  <input type="checkbox" class="review-checkbox" />
+                </td>
+                <td>
+                  <div style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">05.01.2026</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">10:15</div>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <div style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 20px; flex-shrink: 0;">
+                      ⚡
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Зарядка 65W GaN</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Арт. продавца: ZU-65W-GAN</div>
+                      <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: 345678901</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-warning" style="font-size: 18px; padding: 8px 12px; display: inline-block;">
+                    3⭐
+                  </span>
+                </td>
+                <td>
+                  <div style="margin-bottom: 10px;">
+                    <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Иван П.</div>
+                    <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 8px;">Подтверждён</div>
+                    <p style="font-size: 13px; line-height: 1.5; margin: 0 0 8px 0; color: var(--color-foreground);">
+                      Зарядка работает, но греется сильнее, чем ожидал. В целом нормально.
+                    </p>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 12px; margin-bottom: 8px;">
+                    <div>
+                      <span style="color: var(--color-success); font-weight: 600;">Плюсы:</span>
+                      <span style="color: var(--color-muted);">Быстрая зарядка</span>
+                    </div>
+                    <div>
+                      <span style="color: var(--color-error); font-weight: 600;">Минусы:</span>
+                      <span style="color: var(--color-muted);">Сильно греется</span>
+                    </div>
+                  </div>
+                  <div style="font-size: 11px; color: var(--color-muted); border-top: 1px solid var(--color-border-light); padding-top: 6px;">
+                    ID отзыва: Kv3NpL7RmQ9TyXwZs5Uf
+                  </div>
+                </td>
+                <td>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start;">
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; font-size: 11px;">
+                      <i data-lucide="check-circle" style="width: 10px; height: 10px;"></i>
+                      Выкуплен
+                    </span>
+                    <span class="badge" style="background-color: #fef3c7; color: #92400e; border: 1px solid #fcd34d; font-size: 11px;">
+                      <i data-lucide="file-edit" style="width: 10px; height: 10px;"></i>
+                      Черновик ответа
+                    </span>
+                    <span class="badge" style="background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; font-size: 11px;">
+                      <i data-lucide="message-circle-more" style="width: 10px; height: 10px;"></i>
+                      Чат активен
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Review 4 - Good rating, no answer -->
+              <tr>
+                <td>
+                  <input type="checkbox" class="review-checkbox" />
+                </td>
+                <td>
+                  <div style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">03.01.2026</div>
+                  <div style="font-size: 12px; color: var(--color-muted); margin-top: 2px;">14:45</div>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 10px; align-items: flex-start;">
+                    <div style="width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 20px; flex-shrink: 0;">
+                      🔋
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Powerbank 20000mAh</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 2px;">Арт. продавца: PB-20K-BLK</div>
+                      <div style="font-size: 11px; color: var(--color-muted);">Артикул WB: 456789012</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-primary" style="font-size: 18px; padding: 8px 12px; display: inline-block;">
+                    4⭐
+                  </span>
+                </td>
+                <td>
+                  <div style="margin-bottom: 10px;">
+                    <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px; margin-bottom: 4px;">Ольга С.</div>
+                    <div style="font-size: 11px; color: var(--color-muted); margin-bottom: 8px;">Подтверждён</div>
+                    <p style="font-size: 13px; line-height: 1.5; margin: 0 0 8px 0; color: var(--color-foreground);">
+                      Хороший повербанк, держит заряд долго. Немного тяжеловат, но это нормально для такой ёмкости.
+                    </p>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 12px; margin-bottom: 8px;">
+                    <div>
+                      <span style="color: var(--color-success); font-weight: 600;">Плюсы:</span>
+                      <span style="color: var(--color-muted);">Большая ёмкость, быстрая зарядка</span>
+                    </div>
+                    <div>
+                      <span style="color: var(--color-error); font-weight: 600;">Минусы:</span>
+                      <span style="color: var(--color-muted);">Тяжёлый</span>
+                    </div>
+                  </div>
+                  <div style="font-size: 11px; color: var(--color-muted); border-top: 1px solid var(--color-border-light); padding-top: 6px;">
+                    ID отзыва: Bw8YqD5nCpJmRvTxLz3A
+                  </div>
+                </td>
+                <td>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start;">
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; font-size: 11px;">
+                      <i data-lucide="check-circle" style="width: 10px; height: 10px;"></i>
+                      Выкуплен
+                    </span>
+                    <span class="badge" style="background-color: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; font-size: 11px;">
+                      <i data-lucide="minus-circle" style="width: 10px; height: 10px;"></i>
+                      Без ответа
+                    </span>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Review 5 - Excellent rating, answered -->
+              <tr>
+                <td>
+                  <span class="badge badge-success" style="font-size: 16px; padding: 6px 10px;">
+                    5⭐
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Наушники проводные</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 567890123</div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Дмитрий В.</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">Подтверждён</div>
+                </td>
+                <td>
+                  <div style="margin-bottom: 8px;">
+                    <p style="font-size: 13px; line-height: 1.5; margin: 0; color: var(--color-foreground);">
+                      За свою цену — отличные наушники! Звук чистый, провод крепкий.
+                    </p>
+                  </div>
+                  <div style="display: flex; gap: 12px; font-size: 12px;">
+                    <div>
+                      <span style="color: var(--color-success); font-weight: 600;">Плюсы:</span>
+                      <span style="color: var(--color-muted);">Цена, качество звука</span>
+                    </div>
+                  </div>
+                  <!-- Answer indicator -->
+                  <div style="margin-top: 12px; padding: 8px 12px; background-color: #f0fdf4; border-left: 3px solid #22c55e; border-radius: 4px;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                      <i data-lucide="corner-down-right" style="width: 14px; height: 14px; color: #16a34a;"></i>
+                      <span style="font-size: 11px; font-weight: 600; color: #16a34a; text-transform: uppercase;">Ваш ответ</span>
+                    </div>
+                    <p style="font-size: 12px; margin: 0; color: #166534; line-height: 1.4;">
+                      Благодарим за покупку, Дмитрий! Приятно слышать, что наушники оправдали ваши ожидания. 🎧
+                    </p>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">7д назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">30 дек 2025</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Отвечено
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Просмотреть">
+                      <i data-lucide="eye"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; padding: 16px 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 14px; color: var(--color-muted);">Показать:</span>
+            <select class="filter-select" style="width: 80px;">
+              <option>10</option>
+              <option selected>25</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+            <span style="font-size: 14px; color: var(--color-muted);">
+              Показано 1-5 из 124,567
+            </span>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline btn-sm" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button class="btn btn-primary btn-sm">1</button>
+            <button class="btn btn-outline btn-sm">2</button>
+            <button class="btn btn-outline btn-sm">3</button>
+            <span style="padding: 8px;">...</span>
+            <button class="btn btn-outline btn-sm">4,982</button>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Store Chats Page -->
+  <template id="page-store-chats">
+    <!-- Store Header -->
+    <div class="store-header">
+      <div class="store-header-main">
+        <a href="/" class="btn btn-outline btn-sm btn-icon" data-link>
+          <i data-lucide="arrow-left"></i>
+          Все магазины
+        </a>
+        <div class="store-header-info">
+          <h1 class="store-title">Магазин "ТехноМир"</h1>
+          <p class="store-meta">Добавлен: 15 дек 2024</p>
+        </div>
+      </div>
+      <div class="store-header-actions">
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="settings"></i>
+          Настройки
+        </button>
+        <button class="btn btn-primary btn-sm btn-icon">
+          <i data-lucide="refresh-cw"></i>
+          Синхронизировать всё
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-nav">
+      <a href="/store/tehnomir" class="tab-item" data-link>
+        <i data-lucide="bar-chart-2"></i>
+        Обзор
+      </a>
+      <a href="/store/tehnomir/products" class="tab-item" data-link>
+        <i data-lucide="package"></i>
+        Товары
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/rules" class="tab-item" data-link>
+        <i data-lucide="settings"></i>
+        Правила работы
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item active" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/logs" class="tab-item" data-link>
+        <i data-lucide="bot"></i>
+        Логи AI
+      </a>
+    </div>
+
+    <!-- Chats Content -->
+    <div class="dashboard-container">
+      <section class="dashboard-section">
+        <!-- Header -->
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">💬 Чаты магазина (8,456)</h2>
+          <div class="section-header-actions">
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="refresh-cw"></i>
+              Обновить чаты
+            </button>
+            <button class="btn btn-primary btn-sm btn-icon">
+              <i data-lucide="bot"></i>
+              Классифицировать все AI
+            </button>
+          </div>
+        </div>
+
+        <!-- Tag Statistics -->
+        <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+          <div style="padding: 12px 16px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: var(--radius-md); border: 1px solid #6ee7b7;">
+            <div style="font-size: 11px; font-weight: 600; color: #065f46; text-transform: uppercase; margin-bottom: 4px;">Активные</div>
+            <div style="font-size: 20px; font-weight: 700; color: #047857;">1,234</div>
+          </div>
+          <div style="padding: 12px 16px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: var(--radius-md); border: 1px solid #93c5fd;">
+            <div style="font-size: 11px; font-weight: 600; color: #1e40af; text-transform: uppercase; margin-bottom: 4px;">Успешные</div>
+            <div style="font-size: 20px; font-weight: 700; color: #1e3a8a;">3,567</div>
+          </div>
+          <div style="padding: 12px 16px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: var(--radius-md); border: 1px solid #fca5a5;">
+            <div style="font-size: 11px; font-weight: 600; color: #991b1b; text-transform: uppercase; margin-bottom: 4px;">Неуспешные</div>
+            <div style="font-size: 20px; font-weight: 700; color: #7f1d1d;">456</div>
+          </div>
+          <div style="padding: 12px 16px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: var(--radius-md); border: 1px solid #fcd34d;">
+            <div style="font-size: 11px; font-weight: 600; color: #92400e; text-transform: uppercase; margin-bottom: 4px;">Нет ответа</div>
+            <div style="font-size: 20px; font-weight: 700; color: #78350f;">2,123</div>
+          </div>
+          <div style="padding: 12px 16px; background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); border-radius: var(--radius-md); border: 1px solid #d1d5db;">
+            <div style="font-size: 11px; font-weight: 600; color: #4b5563; text-transform: uppercase; margin-bottom: 4px;">Не размечено</div>
+            <div style="font-size: 20px; font-weight: 700; color: #374151;">1,076</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row" style="margin-top: 20px; margin-bottom: 20px;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+              <input
+                type="text"
+                placeholder="Поиск по клиенту, товару или сообщению..."
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"
+              />
+            </div>
+            <select class="filter-select">
+              <option>Все теги</option>
+              <option>🟢 Активные</option>
+              <option>🔵 Успешные</option>
+              <option>🔴 Неуспешные</option>
+              <option>🟡 Нет ответа</option>
+              <option>⚪ Не размечено</option>
+            </select>
+            <select class="filter-select">
+              <option>Сортировка</option>
+              <option>По дате (новые)</option>
+              <option>По дате (старые)</option>
+              <option>По клиенту А-Я</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Chats Table -->
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Клиент</th>
+                <th>Товар</th>
+                <th>Последнее сообщение</th>
+                <th>Дата</th>
+                <th style="width: 140px;">Тег (AI)</th>
+                <th style="width: 80px;">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Chat 1 - Active -->
+              <tr style="cursor: pointer;" onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor=''">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">
+                      АМ
+                    </div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Алексей Михайлов</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">ID: 123456</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Наушники TWS Pro</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 123456789</div>
+                </td>
+                <td>
+                  <p style="font-size: 13px; margin: 0; color: var(--color-foreground); line-height: 1.4;">
+                    Добрый день! Подскажите, когда ожидается доставка заказа?
+                  </p>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background-color: #dbeafe; color: #1e40af; font-size: 10px; padding: 2px 6px;">
+                      Вопрос о доставке
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">15 мин назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">6 янв 2026, 14:32</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46; font-weight: 600;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #10b981; margin-right: 4px;"></span>
+                    Активный
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Открыть чат">
+                      <i data-lucide="message-circle"></i>
+                    </button>
+                    <button class="btn-icon-sm" title="Ответить AI">
+                      <i data-lucide="bot"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Chat 2 - Successful -->
+              <tr style="cursor: pointer;" onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor=''">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">
+                      МК
+                    </div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Мария Кузнецова</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">ID: 234567</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Чехол iPhone 15 Pro Max</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 234567890</div>
+                </td>
+                <td>
+                  <p style="font-size: 13px; margin: 0; color: var(--color-foreground); line-height: 1.4;">
+                    Спасибо большое! Чехол получила, всё отлично! 😊
+                  </p>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background-color: #d1fae5; color: #065f46; font-size: 10px; padding: 2px 6px;">
+                      Благодарность
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">2 часа назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">6 янв 2026, 12:15</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #dbeafe; color: #1e40af; font-weight: 600;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #3b82f6; margin-right: 4px;"></span>
+                    Успешный
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Открыть чат">
+                      <i data-lucide="message-circle"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Chat 3 - Unsuccessful -->
+              <tr style="cursor: pointer; background-color: #fef2f2;" onmouseover="this.style.backgroundColor='#fee2e2'" onmouseout="this.style.backgroundColor='#fef2f2'">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">
+                      ИП
+                    </div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Иван Петров</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">ID: 345678</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Зарядка 65W GaN</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 345678901</div>
+                </td>
+                <td>
+                  <p style="font-size: 13px; margin: 0; color: var(--color-foreground); line-height: 1.4;">
+                    Зарядка не работает! Требую возврат денег!
+                  </p>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background-color: #fee2e2; color: #991b1b; font-size: 10px; padding: 2px 6px;">
+                      Жалоба / Возврат
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">5 часов назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">6 янв 2026, 09:22</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #fee2e2; color: #991b1b; font-weight: 600;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; margin-right: 4px;"></span>
+                    Неуспешный
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Открыть чат">
+                      <i data-lucide="message-circle"></i>
+                    </button>
+                    <button class="btn-icon-sm" title="Ответить AI">
+                      <i data-lucide="bot"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Chat 4 - No Reply -->
+              <tr style="cursor: pointer;" onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor=''">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">
+                      ОС
+                    </div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Ольга Сергеева</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">ID: 456789</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Powerbank 20000mAh</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 456789012</div>
+                </td>
+                <td>
+                  <p style="font-size: 13px; margin: 0; color: var(--color-foreground); line-height: 1.4;">
+                    Здравствуйте! Можно ли забрать заказ из пункта выдачи завтра?
+                  </p>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background-color: #fef3c7; color: #92400e; font-size: 10px; padding: 2px 6px;">
+                      Вопрос о получении
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">1 день назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">5 янв 2026, 16:45</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #fef3c7; color: #92400e; font-weight: 600;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #f59e0b; margin-right: 4px;"></span>
+                    Нет ответа
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Открыть чат">
+                      <i data-lucide="message-circle"></i>
+                    </button>
+                    <button class="btn-icon-sm" title="Ответить AI">
+                      <i data-lucide="bot"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Chat 5 - Untagged -->
+              <tr style="cursor: pointer;" onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor=''">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">
+                      ДВ
+                    </div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Дмитрий Васильев</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">ID: 567890</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Наушники проводные</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 567890123</div>
+                </td>
+                <td>
+                  <p style="font-size: 13px; margin: 0; color: var(--color-foreground); line-height: 1.4;">
+                    Есть ли в наличии другой цвет?
+                  </p>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span class="badge badge-gray" style="font-size: 10px; padding: 2px 6px;">
+                      Требует классификации
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">3 дня назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">3 янв 2026, 11:20</div>
+                </td>
+                <td>
+                  <span class="badge badge-gray" style="font-weight: 600;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #9ca3af; margin-right: 4px;"></span>
+                    Не размечено
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Открыть чат">
+                      <i data-lucide="message-circle"></i>
+                    </button>
+                    <button class="btn-icon-sm" title="Классифицировать AI">
+                      <i data-lucide="tag"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Chat 6 - Active with draft -->
+              <tr style="cursor: pointer;" onmouseover="this.style.backgroundColor='#f9fafb'" onmouseout="this.style.backgroundColor=''">
+                <td>
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px;">
+                      ЕН
+                    </div>
+                    <div>
+                      <div style="font-weight: 600; color: var(--color-foreground); font-size: 13px;">Елена Новикова</div>
+                      <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">ID: 678901</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">Зарядка 65W GaN</div>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">WB: 345678901</div>
+                </td>
+                <td>
+                  <p style="font-size: 13px; margin: 0; color: var(--color-foreground); line-height: 1.4;">
+                    Какая комплектация у зарядки? Есть ли кабель?
+                  </p>
+                  <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span class="badge" style="background-color: #dbeafe; color: #1e40af; font-size: 10px; padding: 2px 6px;">
+                      Вопрос о товаре
+                    </span>
+                    <span class="badge" style="background-color: #fef3c7; color: #92400e; font-size: 10px; padding: 2px 6px;">
+                      <i data-lucide="file-edit" style="width: 10px; height: 10px;"></i>
+                      Черновик
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-muted);">6 часов назад</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">6 янв 2026, 08:10</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46; font-weight: 600;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #10b981; margin-right: 4px;"></span>
+                    Активный
+                  </span>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 4px;">
+                    <button class="btn-icon-sm" title="Открыть чат">
+                      <i data-lucide="message-circle"></i>
+                    </button>
+                    <button class="btn-icon-sm" title="Редактировать черновик">
+                      <i data-lucide="edit-3"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; padding: 16px 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 14px; color: var(--color-muted);">Показать:</span>
+            <select class="filter-select" style="width: 80px;">
+              <option>10</option>
+              <option selected>25</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+            <span style="font-size: 14px; color: var(--color-muted);">
+              Показано 1-6 из 8,456
+            </span>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline btn-sm" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button class="btn btn-primary btn-sm">1</button>
+            <button class="btn btn-outline btn-sm">2</button>
+            <button class="btn btn-outline btn-sm">3</button>
+            <span style="padding: 8px;">...</span>
+            <button class="btn btn-outline btn-sm">338</button>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Store AI Logs Page -->
+  <template id="page-store-logs">
+    <!-- Store Header -->
+    <div class="store-header">
+      <div class="store-header-main">
+        <a href="/" class="btn btn-outline btn-sm btn-icon" data-link>
+          <i data-lucide="arrow-left"></i>
+          Все магазины
+        </a>
+        <div class="store-header-info">
+          <h1 class="store-title">Магазин "ТехноМир"</h1>
+          <p class="store-meta">Добавлен: 15 дек 2024</p>
+        </div>
+      </div>
+      <div class="store-header-actions">
+        <button class="btn btn-outline btn-sm btn-icon">
+          <i data-lucide="settings"></i>
+          Настройки
+        </button>
+        <button class="btn btn-primary btn-sm btn-icon">
+          <i data-lucide="refresh-cw"></i>
+          Синхронизировать всё
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <div class="tabs-nav">
+      <a href="/store/tehnomir" class="tab-item" data-link>
+        <i data-lucide="bar-chart-2"></i>
+        Обзор
+      </a>
+      <a href="/store/tehnomir/products" class="tab-item" data-link>
+        <i data-lucide="package"></i>
+        Товары
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/rules" class="tab-item" data-link>
+        <i data-lucide="settings"></i>
+        Правила работы
+      </a>
+      <a href="/store/tehnomir/reviews" class="tab-item" data-link>
+        <i data-lucide="star"></i>
+        Отзывы
+      </a>
+      <a href="/store/tehnomir/chats" class="tab-item" data-link>
+        <i data-lucide="message-square"></i>
+        Чаты
+      </a>
+      <a href="/store/tehnomir/logs" class="tab-item active" data-link>
+        <i data-lucide="bot"></i>
+        Логи AI
+      </a>
+    </div>
+
+    <!-- AI Logs Content -->
+    <div class="dashboard-container">
+      <section class="dashboard-section">
+        <!-- Header -->
+        <div class="section-header-with-actions">
+          <h2 class="section-header-title">🤖 Логи AI операций (45,892)</h2>
+          <div class="section-header-actions">
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="download"></i>
+              Экспорт
+            </button>
+            <button class="btn btn-outline btn-sm btn-icon">
+              <i data-lucide="trash-2"></i>
+              Очистить старые
+            </button>
+          </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+          <div style="padding: 16px; background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); border-radius: var(--radius-md); border: 1px solid #a5b4fc;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <i data-lucide="zap" style="width: 18px; height: 18px; color: #4338ca;"></i>
+              <div style="font-size: 11px; font-weight: 600; color: #3730a3; text-transform: uppercase;">Всего токенов</div>
+            </div>
+            <div style="font-size: 24px; font-weight: 700; color: #312e81;">12.4M</div>
+            <div style="font-size: 11px; color: #4338ca; margin-top: 4px;">За последние 30 дней</div>
+          </div>
+
+          <div style="padding: 16px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: var(--radius-md); border: 1px solid #6ee7b7;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <i data-lucide="dollar-sign" style="width: 18px; height: 18px; color: #065f46;"></i>
+              <div style="font-size: 11px; font-weight: 600; color: #047857; text-transform: uppercase;">Общая стоимость</div>
+            </div>
+            <div style="font-size: 24px; font-weight: 700; color: #065f46;">$248.50</div>
+            <div style="font-size: 11px; color: #059669; margin-top: 4px;">За последние 30 дней</div>
+          </div>
+
+          <div style="padding: 16px; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: var(--radius-md); border: 1px solid #93c5fd;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <i data-lucide="check-circle" style="width: 18px; height: 18px; color: #1e40af;"></i>
+              <div style="font-size: 11px; font-weight: 600; color: #1e3a8a; text-transform: uppercase;">Успешных запросов</div>
+            </div>
+            <div style="font-size: 24px; font-weight: 700; color: #1e3a8a;">45,234</div>
+            <div style="font-size: 11px; color: #1e40af; margin-top: 4px;">98.6% success rate</div>
+          </div>
+
+          <div style="padding: 16px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: var(--radius-md); border: 1px solid #fca5a5;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <i data-lucide="alert-circle" style="width: 18px; height: 18px; color: #991b1b;"></i>
+              <div style="font-size: 11px; font-weight: 600; color: #7f1d1d; text-transform: uppercase;">Ошибок</div>
+            </div>
+            <div style="font-size: 24px; font-weight: 700; color: #7f1d1d;">658</div>
+            <div style="font-size: 11px; color: #991b1b; margin-top: 4px;">1.4% error rate</div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-row" style="margin-top: 20px; margin-bottom: 20px;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+              <input
+                type="text"
+                placeholder="Поиск по Entity ID..."
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 14px;"
+              />
+            </div>
+            <select class="filter-select">
+              <option>Все типы</option>
+              <option>⭐ Отзывы (Review)</option>
+              <option>💬 Чаты (Chat)</option>
+              <option>❓ Вопросы (Question)</option>
+            </select>
+            <select class="filter-select">
+              <option>Все действия</option>
+              <option>🤖 Генерация ответа</option>
+              <option>🏷️ Классификация</option>
+              <option>⚖️ Генерация жалобы</option>
+            </select>
+            <select class="filter-select">
+              <option>Все статусы</option>
+              <option>✓ Успешные</option>
+              <option>✗ С ошибками</option>
+            </select>
+            <select class="filter-select">
+              <option>Сортировка</option>
+              <option>По дате (новые)</option>
+              <option>По дате (старые)</option>
+              <option>По стоимости ↓</option>
+              <option>По токенам ↓</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Logs Table -->
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Дата/Время</th>
+                <th>Тип</th>
+                <th>Действие</th>
+                <th>Entity ID</th>
+                <th>Модель</th>
+                <th style="width: 100px;">Токены</th>
+                <th style="width: 90px;">Стоимость</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Log 1 - Recent success -->
+              <tr>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">6 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">14:45:32</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #fef3c7; color: #92400e;">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    Review
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="message-square" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Генерация ответа
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    rev_abc123...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">deepseek-chat</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">v1.5</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--color-foreground); text-align: right;">2,341</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px; text-align: right;">in: 1.8K, out: 541</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #059669; text-align: right;">$0.047</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Успех
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Log 2 - Chat classification -->
+              <tr>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">6 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">14:32:18</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #dbeafe; color: #1e40af;">
+                    <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+                    Chat
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="tag" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Классификация
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    chat_xyz789...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">deepseek-chat</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">v1.5</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--color-foreground); text-align: right;">856</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px; text-align: right;">in: 720, out: 136</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #059669; text-align: right;">$0.017</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Успех
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Log 3 - Error case -->
+              <tr style="background-color: #fef2f2;">
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">6 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">13:58:47</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #fef3c7; color: #92400e;">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    Review
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="message-square" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Генерация ответа
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    rev_def456...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">gpt-4</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">openai</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #6b7280; text-align: right;">—</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #6b7280; text-align: right;">—</div>
+                </td>
+                <td>
+                  <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <span class="badge" style="background-color: #fee2e2; color: #991b1b;">
+                      <i data-lucide="x-circle" style="width: 12px; height: 12px;"></i>
+                      Ошибка
+                    </span>
+                    <div style="font-size: 10px; color: #991b1b; line-height: 1.3;">
+                      Rate limit exceeded
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Log 4 - Complaint generation -->
+              <tr>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">6 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">12:15:03</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #fef3c7; color: #92400e;">
+                    <i data-lucide="star" style="width: 12px; height: 12px;"></i>
+                    Review
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="scale" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Генерация жалобы
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    rev_ghi789...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">deepseek-chat</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">v1.5</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--color-foreground); text-align: right;">3,124</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px; text-align: right;">in: 2.1K, out: 1.0K</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #059669; text-align: right;">$0.062</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Успех
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Log 5 - Question response -->
+              <tr>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">6 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">11:42:55</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #e0e7ff; color: #4338ca;">
+                    <i data-lucide="help-circle" style="width: 12px; height: 12px;"></i>
+                    Question
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="message-square" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Генерация ответа
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    qst_jkl012...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">deepseek-chat</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">v1.5</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--color-foreground); text-align: right;">1,567</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px; text-align: right;">in: 1.2K, out: 367</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #059669; text-align: right;">$0.031</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Успех
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Log 6 - Chat reply with high tokens -->
+              <tr>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">6 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">10:28:12</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #dbeafe; color: #1e40af;">
+                    <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+                    Chat
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="message-square" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Генерация ответа
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    chat_mno345...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">gpt-4</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">openai</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--color-foreground); text-align: right;">
+                    <span style="padding: 2px 6px; background: #fef3c7; border-radius: 4px;">4,892</span>
+                  </div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px; text-align: right;">in: 3.5K, out: 1.4K</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; text-align: right;">
+                    <span style="color: #dc2626;">$0.293</span>
+                  </div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Успех
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Log 7 - Batch classification -->
+              <tr>
+                <td>
+                  <span style="font-size: 13px; color: var(--color-foreground); font-weight: 500;">5 янв 2026</span>
+                  <div style="font-size: 11px; color: var(--color-muted); margin-top: 2px;">23:14:08</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #dbeafe; color: #1e40af;">
+                    <i data-lucide="message-circle" style="width: 12px; height: 12px;"></i>
+                    Chat
+                  </span>
+                </td>
+                <td>
+                  <div style="font-weight: 500; color: var(--color-foreground); font-size: 13px;">
+                    <i data-lucide="tag" style="width: 14px; height: 14px; display: inline; vertical-align: middle;"></i>
+                    Классификация
+                  </div>
+                </td>
+                <td>
+                  <code style="font-size: 11px; background: var(--color-muted-bg); padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace;">
+                    chat_pqr678...
+                  </code>
+                </td>
+                <td>
+                  <div style="font-size: 12px; color: var(--color-foreground); font-weight: 500;">deepseek-chat</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px;">v1.5</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--color-foreground); text-align: right;">623</div>
+                  <div style="font-size: 10px; color: var(--color-muted); margin-top: 2px; text-align: right;">in: 502, out: 121</div>
+                </td>
+                <td>
+                  <div style="font-size: 13px; font-weight: 600; color: #059669; text-align: right;">$0.012</div>
+                </td>
+                <td>
+                  <span class="badge" style="background-color: #d1fae5; color: #065f46;">
+                    <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
+                    Успех
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div style="margin-top: 24px; display: flex; align-items: center; justify-content: space-between; padding: 16px 0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 14px; color: var(--color-muted);">Показать:</span>
+            <select class="filter-select" style="width: 80px;">
+              <option>10</option>
+              <option selected>25</option>
+              <option>50</option>
+              <option>100</option>
+            </select>
+            <span style="font-size: 14px; color: var(--color-muted);">
+              Показано 1-7 из 45,892
+            </span>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-outline btn-sm" disabled style="opacity: 0.5; cursor: not-allowed;">
+              <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button class="btn btn-primary btn-sm">1</button>
+            <button class="btn btn-outline btn-sm">2</button>
+            <button class="btn btn-outline btn-sm">3</button>
+            <span style="padding: 8px;">...</span>
+            <button class="btn btn-outline btn-sm">1,836</button>
+            <button class="btn btn-outline btn-sm">
+              <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Template: Employees -->
+  <template id="page-employees">
+    <div class="container">
+      <header style="margin-bottom: 32px;">
+        <h1 style="font-size: 28px; margin-bottom: 8px;">Сотрудники</h1>
+        <p class="text-muted">Управление командой и правами доступа</p>
+      </header>
+
+      <div style="text-align: center; padding: 80px 20px;">
+        <div style="width: 64px; height: 64px; margin: 0 auto 20px; background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center;">
+          <i data-lucide="users" style="width: 32px; height: 32px; color: #7c3aed;"></i>
+        </div>
+        <h2 style="font-size: 24px; margin-bottom: 12px; color: var(--color-foreground);">Раздел в разработке</h2>
+        <p class="text-muted" style="max-width: 400px; margin: 0 auto;">Здесь будет управление сотрудниками: приглашение в команду, назначение ролей, контроль доступа к кабинетам.</p>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: Tasks -->
+  <template id="page-tasks">
+    <div class="container">
+      <header style="margin-bottom: 32px;">
+        <h1 style="font-size: 28px; margin-bottom: 8px;">Задачи</h1>
+        <p class="text-muted">Управление задачами и автоматизация</p>
+      </header>
+
+      <div style="text-align: center; padding: 80px 20px;">
+        <div style="width: 64px; height: 64px; margin: 0 auto 20px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center;">
+          <i data-lucide="clipboard-list" style="width: 32px; height: 32px; color: #059669;"></i>
+        </div>
+        <h2 style="font-size: 24px; margin-bottom: 12px; color: var(--color-foreground);">Раздел в разработке</h2>
+        <p class="text-muted" style="max-width: 400px; margin: 0 auto;">Здесь будет система задач: автоматические проверки, напоминания, планирование обновлений кабинетов.</p>
+      </div>
+    </div>
+  </template>
+
+  <!-- ============================================================================
+       JAVASCRIPT - SPA Router & App Logic
+       ============================================================================ -->
+  <script>
+    // ========================================================================
+    // SPA Router
+    // ========================================================================
+
+    const routes = {
+      '/': 'page-stores',
+      '/store/:id': 'page-store-dashboard',
+      '/store/:id/products': 'page-store-products',
+      '/store/:id/reviews': 'page-store-reviews',
+      '/store/:id/chats': 'page-store-chats',
+      '/store/:id/logs': 'page-store-logs',
+      '/employees': 'page-employees',
+      '/tasks': 'page-tasks',
+    };
+
+    // Navigate to a route
+    function navigate(url) {
+      // Update hash
+      window.location.hash = url;
+    }
+
+    // Render page based on current URL
+    function renderPage() {
+      // Get path from hash (remove #)
+      const path = window.location.hash.slice(1) || '/';
+
+      // Find matching template
+      let templateId = null;
+
+      if (path === '/') {
+        templateId = 'page-stores';
+      } else if (path.includes('/products')) {
+        templateId = 'page-store-products';
+      } else if (path.includes('/rules')) {
+        templateId = 'page-store-rules';
+      } else if (path.includes('/reviews')) {
+        templateId = 'page-store-reviews';
+      } else if (path.includes('/chats')) {
+        templateId = 'page-store-chats';
+      } else if (path.includes('/logs')) {
+        templateId = 'page-store-logs';
+      } else if (path.startsWith('/store/')) {
+        templateId = 'page-store-dashboard';
+      } else if (path === '/employees') {
+        templateId = 'page-employees';
+      } else if (path === '/tasks') {
+        templateId = 'page-tasks';
+      } else {
+        templateId = 'page-stores'; // Default fallback
+      }
+
+      // Get template
+      const template = document.getElementById(templateId);
+      if (!template) {
+        console.error('Template not found:', templateId);
+        return;
+      }
+
+      // Clone template content
+      const content = template.content.cloneNode(true);
+
+      // Replace app content
+      const app = document.getElementById('app');
+      app.innerHTML = '';
+      app.appendChild(content);
+
+      // Update sidebar active state
+      updateSidebarActiveState(path);
+
+      // Re-initialize Lucide icons
+      lucide.createIcons();
+
+      // Attach event listeners for period toggles
+      attachPeriodToggles();
+
+      // Scroll to top
+      window.scrollTo(0, 0);
+    }
+
+    // Update sidebar active navigation item
+    function updateSidebarActiveState(path) {
+      // Remove all active classes
+      document.querySelectorAll('.sidebar-nav-item').forEach(item => {
+        item.classList.remove('active');
+      });
+
+      // Add active class based on path
+      if (path === '/') {
+        document.getElementById('nav-stores')?.classList.add('active');
+      } else if (path.startsWith('/store/')) {
+        document.getElementById('nav-stores')?.classList.add('active');
+      } else if (path === '/employees') {
+        document.getElementById('nav-employees')?.classList.add('active');
+      } else if (path === '/tasks') {
+        document.getElementById('nav-tasks')?.classList.add('active');
+      } else if (path === '/settings') {
+        document.getElementById('nav-settings')?.classList.add('active');
+      }
+    }
+
+    // Attach period toggle listeners
+    function attachPeriodToggles() {
+      document.querySelectorAll('.period-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+        });
+      });
+    }
+
+    // Handle clicks on links with data-link attribute
+    document.addEventListener('click', function(e) {
+      const link = e.target.closest('[data-link]');
+
+      if (link) {
+        e.preventDefault();
+        const url = link.getAttribute('href');
+        navigate(url);
+      }
+    });
+
+    // Handle hash changes (back/forward buttons)
+    window.addEventListener('hashchange', function() {
+      renderPage();
+    });
+
+    // ========================================================================
+    // Sidebar Toggle
+    // ========================================================================
+
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebarToggle');
+
+    function updateTooltip() {
+      const isCollapsed = sidebar.classList.contains('collapsed');
+      sidebarToggle.setAttribute('title',
+        isCollapsed ? 'Открыть боковую панель' : 'Закрыть боковую панель'
+      );
+    }
+
+    // Load saved state
+    const isSidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+    if (isSidebarCollapsed) {
+      sidebar.classList.add('collapsed');
+    }
+    updateTooltip();
+
+    // Toggle on click
+    sidebarToggle.addEventListener('click', function() {
+      sidebar.classList.toggle('collapsed');
+      const isCollapsed = sidebar.classList.contains('collapsed');
+      localStorage.setItem('sidebarCollapsed', isCollapsed);
+      updateTooltip();
+    });
+
+    // ========================================================================
+    // Initialize App
+    // ========================================================================
+
+    // Render initial page
+    renderPage();
+  </script>
+</body>
+</html>
