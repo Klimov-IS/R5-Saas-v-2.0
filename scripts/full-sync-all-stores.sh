@@ -19,7 +19,7 @@ STORES_JSON=$(curl -s -X GET "$API_URL/api/stores" \
   -H "Authorization: Bearer $API_KEY")
 
 # Extract store IDs and names for active stores
-STORE_IDS=$(echo "$STORES_JSON" | jq -r '.data[] | select(.status == "active") | .id')
+STORE_IDS=$(echo "$STORES_JSON" | jq -r '.[] | select(.status == "active") | .id')
 STORE_COUNT=$(echo "$STORE_IDS" | wc -l)
 
 echo "✅ Found $STORE_COUNT active stores"
@@ -32,7 +32,7 @@ FAILED=0
 # Loop through each store
 while IFS= read -r STORE_ID; do
   # Get store name
-  STORE_NAME=$(echo "$STORES_JSON" | jq -r ".data[] | select(.id == \"$STORE_ID\") | .name")
+  STORE_NAME=$(echo "$STORES_JSON" | jq -r ".[] | select(.id == \"$STORE_ID\") | .name")
 
   echo "-----------------------------------"
   echo "[$((COMPLETED + FAILED + 1))/$STORE_COUNT] Store: $STORE_NAME"
