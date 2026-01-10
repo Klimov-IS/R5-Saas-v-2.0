@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import { ToastProvider } from "@/lib/toast";
+import { ToastProvider } from "@/components/providers/ToastProvider";
 import { ProgressWidgetContainer } from "@/components/sync/ProgressWidgetContainer";
 import { QueryProvider } from "@/lib/query-provider";
 import Link from "next/link";

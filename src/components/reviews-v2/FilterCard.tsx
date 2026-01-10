@@ -31,6 +31,7 @@ type Props = {
   };
   ratingCounts: { [key: number]: number };
   onSync?: () => void;
+  isSyncing?: boolean;
 };
 
 export const FilterCard: React.FC<Props> = ({
@@ -41,6 +42,7 @@ export const FilterCard: React.FC<Props> = ({
   stats,
   ratingCounts,
   onSync,
+  isSyncing = false,
 }) => {
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     onFiltersChange({ ...filters, [key]: value });
@@ -63,9 +65,16 @@ export const FilterCard: React.FC<Props> = ({
         </h3>
         <div className="filter-actions">
           {onSync && (
-            <button className="btn btn-primary btn-sm" onClick={onSync}>
-              <RefreshCw style={{ width: '14px', height: '14px' }} />
-              Синхронизировать
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={onSync}
+              disabled={isSyncing}
+            >
+              <RefreshCw
+                style={{ width: '14px', height: '14px' }}
+                className={isSyncing ? 'spinning' : ''}
+              />
+              {isSyncing ? 'Синхронизация...' : 'Синхронизировать'}
             </button>
           )}
           <button className="save-view-button">
@@ -257,10 +266,28 @@ export const FilterCard: React.FC<Props> = ({
           box-shadow: var(--shadow-sm);
         }
 
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
           background-color: var(--color-primary-hover);
           box-shadow: var(--shadow-md);
           transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .spinning {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
         }
 
         .save-view-button {

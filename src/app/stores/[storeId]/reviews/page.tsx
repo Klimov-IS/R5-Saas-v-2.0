@@ -9,6 +9,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import type { Review } from '@/types/reviews';
 import { FilterCard, type FilterState, type PresetFilter } from '@/components/reviews-v2/FilterCard';
 import { ReviewRow } from '@/components/reviews-v2/ReviewRow';
@@ -217,10 +218,42 @@ export default function ReviewsPageV2() {
   };
 
   // Handle sync
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const handleSync = async () => {
-    // TODO: Implement sync
-    console.log('Syncing reviews...');
-    refetch();
+    setIsSyncing(true);
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+
+    const syncToast = toast.loading('Синхронизация отзывов...');
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/reviews/update?mode=incremental`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка синхронизации');
+      }
+
+      const result = await response.json();
+      toast.success(`Синхронизация завершена. Обновлено: ${result.newReviews || 0} отзывов`, {
+        id: syncToast,
+      });
+
+      // Refresh data
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Не удалось синхронизировать отзывы', {
+        id: syncToast,
+      });
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
@@ -234,6 +267,7 @@ export default function ReviewsPageV2() {
         stats={stats}
         ratingCounts={ratingCounts}
         onSync={handleSync}
+        isSyncing={isSyncing}
       />
 
       {/* Results Bar */}

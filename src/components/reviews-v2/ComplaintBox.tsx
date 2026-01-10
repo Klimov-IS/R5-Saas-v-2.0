@@ -5,6 +5,9 @@
 
 import React, { useState } from 'react';
 import { AlertTriangle, Edit2, RefreshCw, Send, CheckCircle } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { Review } from '@/types/reviews';
 import { StatusBadge } from './StatusBadge';
 
@@ -12,14 +15,159 @@ type Props = {
   review: Review;
 };
 
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+
 export const ComplaintBox: React.FC<Props> = ({ review }) => {
+  const params = useParams();
+  const storeId = params?.storeId as string;
+  const queryClient = useQueryClient();
+
+  // Helper function to extract complaint text from JSON format or return as-is
+  const extractComplaintText = (text: string | null): string => {
+    if (!text) return '';
+
+    try {
+      // Try to extract JSON from markdown code block
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        const jsonObj = JSON.parse(jsonMatch[1]);
+        return jsonObj.complaintText || text;
+      }
+
+      // Try to parse as direct JSON
+      const jsonObj = JSON.parse(text);
+      if (jsonObj.complaintText) {
+        return jsonObj.complaintText;
+      }
+    } catch {
+      // If parsing fails, return original text
+    }
+
+    return text;
+  };
+
   const [isEditing, setIsEditing] = useState(false);
-  const [complaintText, setComplaintText] = useState(review.complaint_text || '');
+  const [complaintText, setComplaintText] = useState(extractComplaintText(review.complaint_text));
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isMarking, setIsMarking] = useState(false);
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return null;
     const date = new Date(dateString);
     return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Generate complaint
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    const generateToast = toast.loading('Генерация жалобы через AI...');
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/reviews/${review.id}/generate-complaint`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка генерации жалобы');
+      }
+
+      const result = await response.json();
+      setComplaintText(result.complaintText);
+
+      toast.success('Жалоба успешно сгенерирована', {
+        id: generateToast,
+      });
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['reviews-v2', storeId] });
+    } catch (error: any) {
+      toast.error(error.message || 'Не удалось сгенерировать жалобу', {
+        id: generateToast,
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Save complaint draft
+  const handleSave = async () => {
+    setIsSaving(true);
+    const saveToast = toast.loading('Сохранение черновика...');
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/reviews/${review.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          complaintText: complaintText,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка сохранения');
+      }
+
+      toast.success('Черновик сохранен', {
+        id: saveToast,
+      });
+
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['reviews-v2', storeId] });
+    } catch (error: any) {
+      toast.error(error.message || 'Не удалось сохранить черновик', {
+        id: saveToast,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Regenerate complaint
+  const handleRegenerate = async () => {
+    await handleGenerate();
+  };
+
+  // Mark as sent
+  const handleMarkAsSent = async () => {
+    setIsMarking(true);
+    const markToast = toast.loading('Отметка как отправленная...');
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/reviews/${review.id}/mark-complaint-sent`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка');
+      }
+
+      toast.success('Жалоба отмечена как отправленная', {
+        id: markToast,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['reviews-v2', storeId] });
+    } catch (error: any) {
+      toast.error(error.message || 'Не удалось отметить жалобу', {
+        id: markToast,
+      });
+    } finally {
+      setIsMarking(false);
+    }
   };
 
   // Handle different complaint states
@@ -31,9 +179,13 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
           <p className="no-complaint-text">
             Жалоба еще не сгенерирована. Система автоматически генерирует жалобы на негативные отзывы (1-3★) каждый день в 6-8 утра МСК для активных товаров.
           </p>
-          <button className="btn btn-outline btn-sm">
-            <RefreshCw style={{ width: '14px', height: '14px' }} />
-            Сгенерировать сейчас
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={handleGenerate}
+            disabled={isGenerating}
+          >
+            <RefreshCw style={{ width: '14px', height: '14px' }} className={isGenerating ? 'spinning' : ''} />
+            {isGenerating ? 'Генерация...' : 'Сгенерировать сейчас'}
           </button>
         </div>
       );
@@ -58,35 +210,58 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
                 rows={6}
               />
               <div className="complaint-actions">
-                <button className="btn btn-outline btn-sm" onClick={() => setIsEditing(false)}>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setComplaintText(extractComplaintText(review.complaint_text));
+                  }}
+                  disabled={isSaving}
+                >
                   Отмена
                 </button>
-                <button className="btn btn-primary btn-sm">
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                >
                   <CheckCircle style={{ width: '14px', height: '14px' }} />
-                  Сохранить
+                  {isSaving ? 'Сохранение...' : 'Сохранить'}
                 </button>
               </div>
             </>
           ) : (
             <>
-              <div className="complaint-text">{review.complaint_text}</div>
+              <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
               {review.complaint_generated_at && (
                 <div className="complaint-meta">
                   Сгенерирована: {formatDate(review.complaint_generated_at)}
                 </div>
               )}
               <div className="complaint-actions">
-                <button className="btn btn-outline btn-sm" onClick={() => setIsEditing(true)}>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setIsEditing(true)}
+                  disabled={isGenerating}
+                >
                   <Edit2 style={{ width: '14px', height: '14px' }} />
                   Редактировать
                 </button>
-                <button className="btn btn-outline btn-sm">
-                  <RefreshCw style={{ width: '14px', height: '14px' }} />
-                  Перегенерировать
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={handleRegenerate}
+                  disabled={isGenerating}
+                >
+                  <RefreshCw style={{ width: '14px', height: '14px' }} className={isGenerating ? 'spinning' : ''} />
+                  {isGenerating ? 'Генерация...' : 'Перегенерировать'}
                 </button>
-                <button className="btn btn-primary btn-sm">
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleMarkAsSent}
+                  disabled={isMarking}
+                >
                   <Send style={{ width: '14px', height: '14px' }} />
-                  Отметить отправленной
+                  {isMarking ? 'Отметка...' : 'Отметить отправленной'}
                 </button>
               </div>
             </>
@@ -104,7 +279,7 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
             <span className="complaint-title">Жалоба отправлена</span>
             <StatusBadge type="complaint_status" status="sent" />
           </div>
-          <div className="complaint-text">{review.complaint_text}</div>
+          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
           <div className="complaint-meta">
             Отправлена: {formatDate(review.complaint_sent_date)}
           </div>
@@ -121,7 +296,7 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
             <span className="complaint-title">Жалоба одобрена WB</span>
             <StatusBadge type="complaint_status" status="approved" />
           </div>
-          <div className="complaint-text">{review.complaint_text}</div>
+          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
           <div className="complaint-success">
             ✅ Wildberries рассмотрел вашу жалобу и принял меры согласно правилам площадки.
           </div>
@@ -138,7 +313,7 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
             <span className="complaint-title">Жалоба отклонена WB</span>
             <StatusBadge type="complaint_status" status="rejected" />
           </div>
-          <div className="complaint-text">{review.complaint_text}</div>
+          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
           <div className="complaint-error">
             ❌ Wildberries отклонил жалобу. Отзыв не нарушает правила площадки.
           </div>
@@ -155,7 +330,7 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
             <span className="complaint-title">Жалоба на рассмотрении</span>
             <StatusBadge type="complaint_status" status="pending" />
           </div>
-          <div className="complaint-text">{review.complaint_text}</div>
+          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
           <div className="complaint-pending">
             ⏳ Wildberries рассматривает вашу жалобу. Обычно это занимает 1-3 дня.
           </div>
@@ -319,6 +494,11 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
           outline: none;
         }
 
+        .btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
         .btn-sm {
           padding: var(--spacing-xs) var(--spacing-sm);
           font-size: var(--font-size-xs);
@@ -330,7 +510,7 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
           box-shadow: var(--shadow-sm);
         }
 
-        .btn-primary:hover {
+        .btn-primary:hover:not(:disabled) {
           background-color: var(--color-primary-hover);
           box-shadow: var(--shadow-md);
           transform: translateY(-1px);
@@ -343,9 +523,22 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
           box-shadow: var(--shadow-sm);
         }
 
-        .btn-outline:hover {
+        .btn-outline:hover:not(:disabled) {
           background-color: var(--color-border-light);
           box-shadow: var(--shadow-md);
+        }
+
+        .spinning {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from {
+            transform: rotate(0deg);
+          }
+          to {
+            transform: rotate(360deg);
+          }
         }
       `}</style>
     </>

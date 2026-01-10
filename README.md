@@ -1,336 +1,421 @@
-# WB Reputation Manager | Supabase + Yandex Cloud
+# WB Reputation Manager
 
-**Новый проект на Supabase** для миграции с Firebase.
+**Production-ready B2B SaaS platform** for Wildberries sellers to manage reviews, chats, complaints, and customer communication with AI-powered automation.
 
-**Статус:** 🚧 В разработке (Sprint M1)
-**Дата начала:** 30 декабря 2024
+**🚀 Status:** Production (deployed on Yandex Cloud)
+**📊 Scale:** 44 active stores, 2M+ reviews
+**🌐 Production URL:** http://158.160.217.236
 
 ---
 
-## 📁 Структура проекта
+## 🎯 Overview
+
+WB Reputation Manager helps Wildberries sellers:
+- Sync and manage **reviews, chats, questions** from multiple stores
+- Generate **AI-powered responses** to reviews and customer messages
+- Automate **complaint generation** for problematic reviews
+- Track product performance and customer sentiment
+- Bulk operations and background synchronization
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend
+- **Framework:** Next.js 14.2.35 (App Router)
+- **Runtime:** Node.js v22.21.0
+- **Database:** Yandex Managed PostgreSQL 15
+- **Process Manager:** PM2 (cluster mode, 2 instances)
+- **Web Server:** Nginx (reverse proxy)
+
+### Frontend
+- **Framework:** React 18 (Next.js)
+- **UI Library:** Tailwind CSS 3
+- **State Management:** React Context
+- **Type Safety:** TypeScript 5
+
+### AI & APIs
+- **AI Engine:** Deepseek API (review replies, complaint generation)
+- **External APIs:**
+  - Wildberries Feedbacks API (reviews)
+  - Wildberries Content API (products)
+  - Wildberries Chat API (customer messages)
+
+### Deployment
+- **Cloud Provider:** Yandex Cloud Compute
+- **Region:** ru-central1-d
+- **Configuration:** 2 vCPU, 4GB RAM, 20GB SSD
+- **OS:** Ubuntu 24.04 LTS
+
+---
+
+## ✨ Key Features
+
+### 1. **Multi-Store Management**
+- Manage multiple WB stores from single dashboard
+- Store-specific API tokens and settings
+- Bulk operations across all stores
+
+### 2. **Review Synchronization**
+- **Adaptive chunking** to bypass WB API 20k limit
+- Full sync: fetch ALL reviews (1M+ reviews per store)
+- Incremental sync: only new reviews since last update
+- **Real-time progress tracking** (updates every 5 chunks)
+- **Retry logic** with exponential backoff (3 attempts)
+- Background sync jobs (daily at 8:00 AM MSK)
+
+### 3. **AI-Powered Review Replies**
+- Automatic reply generation using Deepseek AI
+- Context-aware responses based on review sentiment
+- 75% token optimization (838 → 208 tokens)
+- Review classification (positive, neutral, negative)
+
+### 4. **Complaint System**
+- Dedicated `review_complaints` table with 30+ fields
+- AI-powered complaint text generation
+- Track complaint lifecycle (draft → sent → resolved)
+- WB marketplace policy compliance
+
+### 5. **Product Rules & Settings**
+- 17 configurable fields per product
+- Auto-reply settings
+- AI assistant customization per product
+- Bulk rule updates
+
+### 6. **Chat Management**
+- Real-time chat synchronization from WB
+- AI classification (complaints, questions, feedback)
+- Tag-based organization (active, no_reply, completed)
+- Bulk messaging capabilities
+
+### 7. **Background Jobs**
+- Daily review sync (cron: 0 5 * * *)
+- Automatic retry on failures
+- Progress monitoring and logging
+
+---
+
+## 📁 Project Structure
 
 ```
-wb-reputation-supabase/
-├── README.md                           # Этот файл
-├── YANDEX_POSTGRESQL_SETUP.md          # Инструкция по созданию PostgreSQL
-├── .env.local                          # Credentials (НЕ КОММИТИТЬ!)
-├── .env.example                        # Пример env variables
-├── .gitignore                          # Git ignore файл
-├── supabase/
-│   ├── config.toml                     # Supabase конфигурация
-│   ├── seed.sql                        # Тестовые данные
-│   └── migrations/                     # SQL миграции
-│       ├── 00000000000000_init.sql     # Начальная миграция
-│       ├── 20250101000000_create_stores.sql
-│       ├── 20250102000000_create_products.sql
-│       ├── 20250103000000_create_reviews.sql
-│       └── ...
-├── scripts/
-│   ├── backup-firebase.sh              # Backup старой Firebase БД
-│   ├── migrate-data.ts                 # Firestore → PostgreSQL migration
-│   └── verify-integrity.ts             # Проверка целостности данных
-└── docs/
-    ├── architecture.md                 # Архитектура нового проекта
-    ├── migration-plan.md               # План миграции
-    └── api-changes.md                  # Изменения в API
+wb-reputation/
+├── src/
+│   ├── app/                        # Next.js App Router
+│   │   ├── api/                    # REST API endpoints
+│   │   │   ├── stores/             # Store management
+│   │   │   ├── cron/               # Background jobs
+│   │   │   └── wb-proxy/           # WB API proxy
+│   │   ├── stores/[storeId]/       # Store pages
+│   │   │   ├── products/
+│   │   │   ├── reviews/
+│   │   │   └── chats/
+│   │   └── layout.tsx
+│   ├── components/                 # React components
+│   │   ├── reviews-v2/             # Review UI components
+│   │   └── providers/              # Context providers
+│   ├── db/                         # Database layer
+│   │   ├── helpers.ts              # PostgreSQL queries
+│   │   ├── complaint-helpers.ts    # Complaint CRUD
+│   │   └── review-filters.ts       # Filter logic
+│   ├── ai/                         # AI integration
+│   │   ├── flows/                  # AI workflows
+│   │   ├── prompts/                # Prompt templates
+│   │   └── utils/                  # AI utilities
+│   ├── lib/                        # Utilities
+│   │   ├── server-utils.ts         # API auth, rate limiting
+│   │   ├── wb-api.ts               # WB API client
+│   │   └── cron-jobs.ts            # Cron configuration
+│   └── types/                      # TypeScript definitions
+├── scripts/                        # Utility scripts
+│   ├── full-sync-all-stores-v2.sh  # Batch sync (43 stores)
+│   ├── check-sync-status.sh        # Monitoring
+│   └── sync-config.sh              # Configuration
+├── supabase/migrations/            # PostgreSQL migrations
+├── docs/                           # Documentation
+├── .env.production                 # Production credentials
+├── ecosystem.config.js             # PM2 configuration
+└── next.config.mjs                 # Next.js config
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Development)
 
-### Prerequisite:
+### Prerequisites
+- Node.js 18+
+- PostgreSQL 15+
+- Git
 
-1. **Node.js 18+** установлен
-2. **Docker Desktop** установлен и запущен
-3. **Supabase CLI** установлен глобально:
-   ```bash
-   npm install -g supabase
-   ```
-4. **Yandex Cloud PostgreSQL** кластер создан (см. [YANDEX_POSTGRESQL_SETUP.md](./YANDEX_POSTGRESQL_SETUP.md))
-
----
-
-### Шаг 1: Clone и setup
+### Installation
 
 ```bash
-# Перейти в папку проекта
-cd c:/Users/79025/Desktop/проекты/R5/wb-reputation-supabase
+# Clone repository
+git clone https://github.com/Klimov-IS/R5-Saas-v-2.0.git
+cd R5-Saas-v-2.0
 
-# Установить зависимости (когда будут)
+# Install dependencies
 npm install
 
-# Создать .env.local из примера
+# Setup environment
 cp .env.example .env.local
+# Edit .env.local with your credentials
 
-# Отредактировать .env.local (добавить свои credentials)
+# Run database migrations (if needed)
+# Apply migrations from supabase/migrations/ to your PostgreSQL
+
+# Start development server
+npm run dev
+
+# Open http://localhost:3000
 ```
 
 ---
 
-### Шаг 2: Запустить Supabase локально
+## 📊 Database Schema
 
-```bash
-# Запустить локальный Supabase (первый раз скачает Docker images ~2GB)
-supabase start
+### Core Tables
+- **stores** - WB seller accounts
+- **products** - Product catalog (synced from WB)
+- **reviews** - Customer reviews
+- **review_complaints** - Complaint tracking system (30+ fields)
+- **chats** - Customer messages
+- **questions** - Product questions
+- **logs** - System activity logs
 
-# Дождаться запуска (3-5 минут)
-# В конце увидите:
-# API URL: http://localhost:54321
-# DB URL: postgresql://postgres:postgres@localhost:54322/postgres
-# Studio URL: http://localhost:54323
-# anon key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-# service_role key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-**Открыть Supabase Studio:**
-```bash
-# Откроется в браузере
-open http://localhost:54323
-```
-
----
-
-### Шаг 3: Применить миграции
-
-```bash
-# Применить все миграции к локальной БД
-supabase db reset
-
-# Или применить только новые миграции
-supabase migration up
-```
-
----
-
-### Шаг 4: Подключиться к Yandex Cloud PostgreSQL (production)
-
-```bash
-# Отредактировать supabase/config.toml
-# Раскомментировать секцию [db] и указать Yandex Cloud URL
-
-# Применить миграции к production БД
-supabase db push
-```
-
----
-
-## 📊 Sprint M1 Progress
-
-**Цель Sprint M1:** Настроить инфраструктуру и создать схему БД
-
-### Tasks:
-
-- [x] ✅ TASK-M01: Создать Yandex Cloud PostgreSQL кластер
-- [ ] 🚧 TASK-M02: Инициализировать Supabase проект
-- [ ] ⏳ TASK-M03: Создать базовую схему (stores, products, reviews)
-- [ ] ⏳ TASK-M04: Настроить миграции
-- [ ] ⏳ TASK-M05: Backup Firebase
-
-**Progress:** 1/5 tasks (20%)
-
----
-
-## 🔧 Available Commands
-
-```bash
-# Supabase
-supabase start              # Запустить локально
-supabase stop               # Остановить
-supabase status             # Проверить статус
-supabase db reset           # Пересоздать БД (reset + all migrations)
-supabase migration new <name>  # Создать новую миграцию
-supabase db push            # Применить миграции к production
-
-# Database
-psql "postgresql://..."     # Подключиться к PostgreSQL
-npm run db:migrate          # Применить миграции (когда настроим)
-npm run db:seed             # Заполнить тестовыми данными
-npm run db:backup           # Создать backup
-
-# Development (будет позже)
-npm run dev                 # Запустить Next.js dev server
-npm run build               # Build production
-npm run test                # Запустить тесты
-```
-
----
-
-## 🗄️ Database Schema
-
-### Основные таблицы:
-
+### Key Relationships
 ```sql
--- Пользователи (из Supabase Auth)
-auth.users
-  ├── id (UUID)
-  ├── email
-  ├── created_at
-  └── ...
-
--- Магазины
-public.stores
-  ├── id (UUID)
-  ├── user_id (UUID) → auth.users.id
-  ├── name (TEXT)
-  ├── wb_api_key (TEXT, encrypted)
-  ├── created_at (TIMESTAMPTZ)
-  └── updated_at (TIMESTAMPTZ)
-
--- Товары
-public.products
-  ├── id (UUID)
-  ├── store_id (UUID) → stores.id
-  ├── wb_product_id (TEXT)
-  ├── name (TEXT)
-  ├── sku (TEXT)
-  └── ...
-
--- Отзывы
-public.reviews
-  ├── id (UUID)
-  ├── store_id (UUID) → stores.id
-  ├── product_id (UUID) → products.id
-  ├── wb_review_id (TEXT)
-  ├── text (TEXT)
-  ├── rating (INTEGER 1-5)
-  ├── answered (BOOLEAN)
-  ├── created_at (TIMESTAMPTZ)
-  └── ...
+stores (1) → (N) products
+products (1) → (N) reviews
+reviews (1) → (1) review_complaints
+stores (1) → (N) chats
 ```
-
-**Полная схема:** См. [supabase/migrations/](./supabase/migrations/)
 
 ---
 
-## 🔐 Environment Variables
+## 🔑 API Authentication
 
-### `.env.local` (локальная разработка):
+All API endpoints require Bearer token authentication:
 
 ```bash
-# Yandex Cloud PostgreSQL (Production)
-DATABASE_URL="postgresql://admin:PASSWORD@c-xxx.rw.mdb.yandexcloud.net:6432/wb_reputation?sslmode=verify-full"
-
-# Supabase (Local)
-NEXT_PUBLIC_SUPABASE_URL="http://localhost:54321"
-NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-SUPABASE_SERVICE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-
-# Wildberries API (копируем из старого проекта)
-WB_API_KEY="..."
-
-# Deepseek AI (копируем из старого проекта)
-DEEPSEEK_API_KEY="..."
+curl -X GET "http://158.160.217.236/api/stores" \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**⚠️ НИКОГДА не коммитить `.env.local` в Git!**
+**API Key Format:** `wbrm_*` (stored in database)
 
 ---
 
-## 📚 Documentation
+## 📖 API Documentation
 
-### Supabase:
-- [Supabase Docs](https://supabase.com/docs)
-- [PostgreSQL 15 Docs](https://www.postgresql.org/docs/15/)
-- [Row Level Security](https://supabase.com/docs/guides/auth/row-level-security)
+**Swagger UI:** http://158.160.217.236/api/docs
 
-### Yandex Cloud:
-- [Managed PostgreSQL Docs](https://cloud.yandex.ru/docs/managed-postgresql/)
-- [Getting Started](https://cloud.yandex.ru/docs/managed-postgresql/quickstart)
+### Key Endpoints
 
-### Migration:
-- [EPIC-019: Migration Plan](../Pilot-entry/wb-reputation/product-management/migrations/MIGRATION-001-supabase-yandex/EPIC-019-russian-tech-migration.md)
-- [Sprint M1 Planning](../Pilot-entry/wb-reputation/product-management/migrations/MIGRATION-001-supabase-yandex/sprints/sprint-M1-planning.md)
+#### Store Management
+```
+GET    /api/stores                    # List all stores
+POST   /api/stores                    # Create new store
+GET    /api/stores/:id                # Get store details
+PATCH  /api/stores/:id                # Update store
+DELETE /api/stores/:id                # Delete store
+```
+
+#### Product Sync
+```
+POST   /api/stores/:id/products/update           # Sync products from WB
+GET    /api/stores/:id/products                  # List products
+POST   /api/stores/:id/products/bulk-actions     # Bulk operations
+```
+
+#### Review Sync
+```
+POST   /api/stores/:id/reviews/update?mode=full         # Full sync (all reviews)
+POST   /api/stores/:id/reviews/update?mode=incremental  # Incremental sync
+GET    /api/stores/:id/reviews                          # List reviews
+GET    /api/stores/:id/reviews/stats                    # Review statistics
+```
+
+#### AI Operations
+```
+POST   /api/stores/:id/reviews/:reviewId/generate-reply      # Generate AI reply
+POST   /api/stores/:id/reviews/:reviewId/generate-complaint  # Generate complaint
+POST   /api/stores/:id/chats/classify-all                    # Classify all chats
+```
 
 ---
 
-## 🐛 Troubleshooting
+## 🔧 Configuration
 
-### Supabase не запускается:
+### Environment Variables
 
 ```bash
-# Проверить Docker запущен
-docker ps
+# Database (Yandex Managed PostgreSQL)
+POSTGRES_HOST=rc1a-xxx.mdb.yandexcloud.net
+POSTGRES_PORT=6432
+POSTGRES_DATABASE=wb_reputation
+POSTGRES_USER=admin_R5
+POSTGRES_PASSWORD=***
 
-# Остановить и очистить
-supabase stop
-docker system prune -a
+# AI (Deepseek)
+DEEPSEEK_API_KEY=sk-***
 
-# Перезапустить
-supabase start
+# Application
+NODE_ENV=production
+PORT=3000
+API_KEY=wbrm_***
 ```
 
-### Не могу подключиться к Yandex PostgreSQL:
+### Sync Configuration
 
-См. [YANDEX_POSTGRESQL_SETUP.md - Troubleshooting](./YANDEX_POSTGRESQL_SETUP.md#troubleshooting)
+Edit `scripts/sync-config.sh`:
+
+```bash
+# Delay between stores (seconds)
+DELAY_BETWEEN_STORES=600  # 10 minutes
+
+# Retry configuration
+MAX_RETRIES=3
+RETRY_DELAY_1=600   # 10 min
+RETRY_DELAY_2=1200  # 20 min
+
+# Exclude stores (already synced)
+EXCLUDE_STORE_ID="UiLCn5HyzRPphSRvR11G"  # Тайди Центр
+```
+
+---
+
+## 🚀 Deployment
+
+### Production Deployment
+
+```bash
+# SSH to production server
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+
+# Navigate to project
+cd /var/www/wb-reputation
+
+# Pull latest changes
+git pull origin main
+
+# Install dependencies
+npm ci --production=false
+
+# Build production bundle
+npm run build
+
+# Reload PM2
+pm2 reload wb-reputation
+
+# Check status
+pm2 status
+pm2 logs wb-reputation --lines 50
+```
+
+**One-command update:**
+```bash
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+  "cd /var/www/wb-reputation && bash deploy/update-app.sh"
+```
+
+---
+
+## 📊 Monitoring
+
+### Check Application Status
+
+```bash
+# Quick health check
+curl http://158.160.217.236/health
+
+# PM2 status
+pm2 status
+
+# Live logs
+pm2 logs wb-reputation
+
+# Check sync status (custom script)
+bash scripts/check-sync-status.sh
+```
+
+### Sync Progress Monitoring
+
+```bash
+# View v2 sync logs
+tail -f sync-v2-*.log
+
+# Check store statistics
+curl -s http://localhost:3000/api/stores \
+  -H "Authorization: Bearer YOUR_KEY" | jq
+```
+
+---
+
+## 🎯 Performance
+
+### Current Scale
+- **44 active stores**
+- **2,072,693 total reviews**
+- **Largest store:** 1,344,055 reviews (Тайди Центр)
+- **Sync speed:** ~2-3 minutes per chunk (90 days)
+- **AI optimization:** 75% token reduction (838 → 208 tokens)
+
+### Optimization Highlights
+- Adaptive date chunking (bypass WB API 20k limit)
+- COALESCE in SQL for preserving manual edits
+- Connection pooling (max 50 connections)
+- PM2 cluster mode (2 instances)
+- Periodic stats updates (every 5 chunks)
+
+---
+
+## 📚 Additional Documentation
+
+- **[DEPLOYMENT_SUCCESS.md](./DEPLOYMENT_SUCCESS.md)** - Production deployment details
+- **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** - Common commands and troubleshooting
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deployment guide
+- **[docs/complaint-auto-generation-rules.md](./docs/complaint-auto-generation-rules.md)** - Complaint system rules
+- **[docs/complaints-table-schema.md](./docs/complaints-table-schema.md)** - Database schema details
+- **[docs/ai-optimization-report.md](./docs/ai-optimization-report.md)** - AI optimization results
+
+---
+
+## 🔐 Security
+
+- ✅ SSH key authentication (no passwords)
+- ✅ API Bearer token authentication
+- ✅ PM2 auto-restart on crashes
+- ✅ Nginx reverse proxy
+- ⚠️ HTTP only (SSL recommended for production domain)
+- ⏳ Firewall configuration (recommended)
 
 ---
 
 ## 🤝 Contributing
 
-Этот проект в активной разработке. Пока коммитим только в feature branches.
-
-**Workflow:**
-1. Создать branch от `main`: `git checkout -b feature/task-m02`
-2. Сделать изменения
-3. Commit: `git commit -m "feat: add stores migration"`
-4. Push: `git push origin feature/task-m02`
-5. Создать PR для review
+1. Create feature branch: `git checkout -b feature/your-feature`
+2. Make changes and test locally
+3. Commit: `git commit -m "feat: description"`
+4. Push: `git push origin feature/your-feature`
+5. Create Pull Request
 
 ---
 
-## 📞 Support
+## 📞 Support & Links
 
-**Вопросы по миграции:**
-- Telegram: Migration Channel
-- GitHub Issues: тег `migration`
-
-**Вопросы по Yandex Cloud:**
-- Email: support@cloud.yandex.ru
+- **Production URL:** http://158.160.217.236
+- **GitHub Repository:** https://github.com/Klimov-IS/R5-Saas-v-2.0
+- **API Documentation:** http://158.160.217.236/api/docs
 
 ---
 
-## 📅 Timeline
+## 📝 License
 
-| Sprint | Даты | Статус |
-|--------|------|--------|
-| Sprint M1 | 7-20 апреля | 🚧 In Progress |
-| Sprint M2 | 21 апр - 4 мая | ⏳ Pending |
-| Sprint M3 | 5-18 мая | ⏳ Pending |
-| Sprint M4 | 19 мая - 1 июня | ⏳ Pending |
-| Sprint M5 | 2-15 июня | ⏳ Pending |
-| Sprint M6 | 16-29 июня | ⏳ Pending |
-| **Production Cutover** | **28 июня, 22:00** | 🎯 Target |
+Proprietary - All rights reserved
 
 ---
 
----
-
-## 🎉 Недавние обновления
-
-### 2026-01-06: Реализована функция "Правила работы"
-✅ **Завершена полная реализация вкладки "Правила работы"**
-
-**Что добавлено:**
-- 📊 База данных: таблица `product_rules` с 17 полями
-- 🔧 5 новых функций в `db/helpers.ts` для работы с правилами
-- 🌐 REST API: GET и POST endpoints для загрузки/сохранения правил
-- 🎨 UI в стиле прототипа с поиском, фильтрами, 17-колоночной таблицей
-- ⚙️ Настройка автоматизации для каждого товара:
-  - Подача жалоб на отзывы (1-4 звезды)
-  - Работа в чатах (1-4 звезды)
-  - Компенсация покупателям (тип, сумма, ответственный)
-
-**Технические детали:**
-- PostgreSQL миграция с индексами и внешними ключами
-- UPSERT логика для сохранения правил
-- Disabled states для зависимых полей
-- Реактивный поиск и фильтрация
-- Toast уведомления
-
-**Документация:** [docs/changes/2026-01-06_product-rules-implementation.md](./docs/changes/2026-01-06_product-rules-implementation.md)
-
----
-
-**Last Updated:** 6 января 2026
-**Next Review:** После завершения Sprint 4
+**Last Updated:** January 10, 2026
+**Version:** 2.0.0
+**Database:** PostgreSQL 15 on Yandex Cloud
+**Status:** 🟢 Production
