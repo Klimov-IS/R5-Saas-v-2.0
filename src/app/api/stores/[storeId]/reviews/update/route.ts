@@ -237,6 +237,13 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
                 console.log(`[API REVIEWS] Added ${subChunks.length} sub-chunks to queue (now ${dateChunks.length} chunks remaining)`);
             }
 
+            // ⏳ Add delay between chunks to avoid WB API Rate Limit (429)
+            // WB API has per-seller rate limit (~5-10 requests/min), so we add 10s delay after each chunk
+            if (dateChunks.length > 0) {
+                console.log(`[API REVIEWS] ⏳ Waiting 10 seconds before next chunk (Rate Limit prevention)...`);
+                await new Promise(res => setTimeout(res, 10000));
+            }
+
             // ✅ Periodic stats update: Update total_reviews counter every 5 chunks
             // This allows monitoring progress in real-time and preserves partial progress on error
             if (processedChunks % 5 === 0 && mode === 'full') {
