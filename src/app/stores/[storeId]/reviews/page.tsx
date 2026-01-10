@@ -33,7 +33,7 @@ async function fetchReviewsData(
   take: number,
   filters: FilterState
 ): Promise<{ reviews: Review[]; totalCount: number }> {
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
   // Build query params
   const params = new URLSearchParams({
@@ -115,7 +115,7 @@ export default function ReviewsPageV2() {
   const { data: statsData } = useQuery({
     queryKey: ['reviews-stats', storeId],
     queryFn: async () => {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/stats`, {
         headers: { 'Authorization': `Bearer ${apiKey}` },
       });
@@ -222,7 +222,7 @@ export default function ReviewsPageV2() {
 
   const handleSync = async () => {
     setIsSyncing(true);
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
     const syncToast = toast.loading('Синхронизация отзывов...');
 

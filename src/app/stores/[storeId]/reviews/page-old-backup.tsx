@@ -57,7 +57,7 @@ async function fetchReviewsData(
     search: string;
   }
 ): Promise<{ reviews: Review[]; totalCount: number }> {
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
   // Build query string for filters
   const params = new URLSearchParams({
@@ -246,7 +246,7 @@ export default function ReviewsPage() {
     setSyncError(null);
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/update?mode=incremental`, {
         method: 'POST',
         headers: {
@@ -290,7 +290,7 @@ export default function ReviewsPage() {
     setGeneratingReply(prev => ({ ...prev, [reviewId]: true }));
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}/generate-reply`, {
         method: 'POST',
         headers: {
@@ -337,7 +337,7 @@ export default function ReviewsPage() {
     setSendingReply(prev => ({ ...prev, [reviewId]: true }));
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}/send`, {
         method: 'POST',
         headers: {
@@ -374,7 +374,7 @@ export default function ReviewsPage() {
     setGeneratingComplaint(prev => ({ ...prev, [reviewId]: true }));
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}/generate-complaint`, {
         method: 'POST',
         headers: {
@@ -415,7 +415,7 @@ export default function ReviewsPage() {
     setMarkingComplaint(prev => ({ ...prev, [reviewId]: true }));
 
     try {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}/mark-complaint-sent`, {
         method: 'POST',
         headers: {

@@ -46,7 +46,7 @@ async function fetchChatsData(
   tagFilter: string,
   searchQuery: string
 ): Promise<{ chats: Chat[]; totalCount: number; tagStats: TagStats }> {
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
   const itemsPerPage = 25;
   const skip = (page - 1) * itemsPerPage;
 
@@ -317,7 +317,7 @@ export default function ChatsPage() {
 
   // Handle sync
   const handleSync = async () => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
     try {
       const response = await fetch(`/api/stores/${storeId}/dialogues/update`, {
         method: 'POST',

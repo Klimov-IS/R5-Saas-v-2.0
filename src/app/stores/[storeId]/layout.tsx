@@ -25,7 +25,7 @@ export default function StoreDetailLayout({
   useEffect(() => {
     async function fetchStore() {
       try {
-        const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+        const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
         const response = await fetch(`/api/stores/${storeId}`, {
           headers: { 'Authorization': `Bearer ${apiKey}` }
         });

@@ -53,7 +53,7 @@ type Product = {
   created_at: string;
 };
 
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
 // API fetch functions
 async function fetchProducts(storeId: string): Promise<Product[]> {

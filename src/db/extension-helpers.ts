@@ -438,9 +438,11 @@ export async function getUserByApiToken(token: string) {
   const result = await query<{
     id: string;
     email: string;
-    name: string | null;
   }>(
-    'SELECT id, email, name FROM users WHERE api_token = $1',
+    `SELECT u.id, u.email
+     FROM users u
+     JOIN user_settings us ON u.id = us.id
+     WHERE us.api_key = $1`,
     [token]
   );
 

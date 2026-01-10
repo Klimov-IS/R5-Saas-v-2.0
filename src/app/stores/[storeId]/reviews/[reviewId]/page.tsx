@@ -49,7 +49,7 @@ export default function ReviewDetailPage() {
   async function fetchReview() {
     try {
       setIsLoading(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}`, {
         headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -81,7 +81,7 @@ export default function ReviewDetailPage() {
   async function handleSaveDraft() {
     try {
       setIsSaving(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}`, {
         method: 'PUT',
@@ -129,7 +129,7 @@ export default function ReviewDetailPage() {
 
     try {
       setIsSending(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
       const response = await fetch(`/api/stores/${storeId}/reviews/${reviewId}/send`, {
         method: 'POST',

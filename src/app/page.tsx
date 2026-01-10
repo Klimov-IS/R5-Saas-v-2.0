@@ -35,7 +35,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
 // Fetch stores function
 async function fetchStores(): Promise<Store[]> {
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
   const response = await fetch('/api/stores', {
     headers: {
@@ -128,7 +128,7 @@ export default function Home() {
 
   // Handle status change
   const handleStatusChange = async (storeId: string, newStatus: StoreStatus) => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
     setUpdatingStatus((prev) => ({ ...prev, [storeId]: true }));
 
@@ -159,7 +159,7 @@ export default function Home() {
 
   // Handle sync products (single store)
   const handleSyncProducts = async (storeId: string) => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
     setSyncingProducts((prev) => ({ ...prev, [storeId]: true }));
 
     const storeName = stores.find(s => s.id === storeId)?.name || 'Магазин';
@@ -183,7 +183,7 @@ export default function Home() {
 
   // Handle sync reviews (single store)
   const handleSyncReviews = async (storeId: string) => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
     setSyncingReviews((prev) => ({ ...prev, [storeId]: true }));
 
     const storeName = stores.find(s => s.id === storeId)?.name || 'Магазин';
@@ -207,7 +207,7 @@ export default function Home() {
 
   // Handle sync chats (single store)
   const handleSyncChats = async (storeId: string) => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
     setSyncingChats((prev) => ({ ...prev, [storeId]: true }));
 
     const storeName = stores.find(s => s.id === storeId)?.name || 'Магазин';
@@ -231,7 +231,7 @@ export default function Home() {
 
   // Handle global sync with progress widget
   const handleGlobalSync = async (type: SyncType) => {
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
     // Filter active stores
     const activeStores = stores.filter(s => s.status === 'active' || s.status === 'trial');

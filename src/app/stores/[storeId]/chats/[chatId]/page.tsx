@@ -70,7 +70,7 @@ export default function ChatDetailPage() {
   async function fetchChat() {
     try {
       setIsLoading(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
       const response = await fetch(`/api/stores/${storeId}/chats/${chatId}`, {
         headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -112,7 +112,7 @@ export default function ChatDetailPage() {
 
     try {
       setIsSending(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
       const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/send`, {
         method: 'POST',
@@ -154,7 +154,7 @@ export default function ChatDetailPage() {
   async function handleUpdateTag(newTag: ChatTag) {
     try {
       setIsUpdatingTag(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
       const response = await fetch(`/api/stores/${storeId}/chats/${chatId}`, {
         method: 'PUT',
