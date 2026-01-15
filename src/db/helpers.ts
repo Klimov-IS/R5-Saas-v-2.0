@@ -368,7 +368,10 @@ export async function getStoreById(id: string): Promise<Store | null> {
 }
 
 export async function getAllStores(): Promise<Store[]> {
-  const result = await query<Store>('SELECT * FROM stores ORDER BY name');
+  // Only return active stores for CRON jobs and automated operations
+  const result = await query<Store>(
+    "SELECT * FROM stores WHERE status = 'active' ORDER BY name"
+  );
   return result.rows;
 }
 

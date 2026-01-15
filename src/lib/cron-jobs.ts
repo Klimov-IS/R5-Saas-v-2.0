@@ -50,13 +50,13 @@ async function syncStoreReviews(storeId: string, storeName: string): Promise<voi
  */
 export function startDailyReviewSync() {
   // For production: '0 5 * * *' (5:00 AM UTC = 8:00 AM MSK)
-  // For testing: every 2 minutes
+  // For testing: every 5 minutes (full sync cycle takes ~4 minutes)
   const cronSchedule = process.env.NODE_ENV === 'production'
     ? '0 5 * * *'  // 8:00 AM MSK daily
-    : '*/2 * * * *'; // Every 2 minutes for testing
+    : '*/5 * * * *'; // Every 5 minutes for testing
 
   console.log(`[CRON] Scheduling daily review sync: ${cronSchedule}`);
-  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (8:00 AM MSK)' : 'TESTING (every 2 min)'}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (8:00 AM MSK)' : 'TESTING (every 5 min)'}`);
 
   const job = cron.schedule(cronSchedule, async () => {
     const jobName = 'daily-review-sync';
