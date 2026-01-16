@@ -25,10 +25,42 @@ export async function GET(
     // Get chat messages
     const messages = await getChatMessages(chatId);
 
+    // Map snake_case to camelCase for chat
+    const mappedChat = {
+      id: chat.id,
+      storeId: chat.store_id,
+      ownerId: chat.owner_id,
+      clientName: chat.client_name,
+      productNmId: chat.product_nm_id,
+      productName: chat.product_name,
+      productVendorCode: chat.product_vendor_code,
+      lastMessageDate: chat.last_message_date,
+      lastMessageText: chat.last_message_text,
+      lastMessageSender: chat.last_message_sender,
+      replySign: chat.reply_sign,
+      tag: chat.tag,
+      draftReply: chat.draft_reply,
+      draftReplyThreadId: chat.draft_reply_thread_id,
+      createdAt: chat.created_at,
+      updatedAt: chat.updated_at,
+    };
+
+    // Map snake_case to camelCase for messages
+    const mappedMessages = messages.map(msg => ({
+      id: msg.id,
+      chatId: msg.chat_id,
+      storeId: msg.store_id,
+      ownerId: msg.owner_id,
+      text: msg.text,
+      sender: msg.sender,
+      timestamp: msg.timestamp,
+      createdAt: msg.created_at,
+    }));
+
     return NextResponse.json({
       data: {
-        chat,
-        messages,
+        chat: mappedChat,
+        messages: mappedMessages,
       },
     }, { status: 200 });
   } catch (error: any) {

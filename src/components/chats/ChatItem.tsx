@@ -35,7 +35,6 @@ export function ChatItem({ chat, isActive, onClick }: ChatItemProps) {
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    toggleChatSelection(chat.id);
   };
 
   // Collapsed view
@@ -71,7 +70,9 @@ export function ChatItem({ chat, isActive, onClick }: ChatItemProps) {
       <div className="absolute left-4 top-1/2 -translate-y-1/2" onClick={handleCheckboxClick}>
         <Checkbox
           checked={selected}
-          onCheckedChange={() => toggleChatSelection(chat.id)}
+          onCheckedChange={() => {
+            toggleChatSelection(chat.id);
+          }}
           className="accent-blue-500"
         />
       </div>

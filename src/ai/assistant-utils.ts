@@ -115,10 +115,11 @@ export async function runChatCompletion({
             throw new Error("Не найдены настройки AI. Пожалуйста, укажите API-ключ в настройках.");
         }
 
-        const apiKey = settings.deepseek_api_key;
+        // Try user settings first, then fall back to environment variable
+        const apiKey = settings.deepseek_api_key || process.env.DEEPSEEK_API_KEY;
 
         if (!apiKey) {
-            throw new Error("API-ключ Deepseek не найден. Пожалуйста, укажите его в настройках.");
+            throw new Error("API-ключ Deepseek не найден. Пожалуйста, укажите его в настройках или добавьте DEEPSEEK_API_KEY в .env.local файл.");
         }
 
         const body: any = {

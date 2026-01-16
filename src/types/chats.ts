@@ -1,4 +1,17 @@
-export type ChatTag = 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'untagged' | 'completed';
+export type ChatTag =
+  | 'active'
+  | 'successful'
+  | 'unsuccessful'
+  | 'no_reply'
+  | 'untagged'
+  | 'completed'
+  // Deletion workflow tags (added 2026-01-16)
+  | 'deletion_candidate'  // AI identified deletion opportunity
+  | 'deletion_offered'    // Compensation offer sent
+  | 'deletion_agreed'     // Client agreed to delete
+  | 'deletion_confirmed'  // Review deleted/modified
+  | 'refund_requested'    // Client wants refund
+  | 'spam';               // Spam or competitor messages
 
 export type MessageSender = 'client' | 'seller';
 

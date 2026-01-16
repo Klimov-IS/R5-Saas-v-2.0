@@ -116,8 +116,9 @@ export async function upsertReviewsFromExtension(
         `INSERT INTO reviews (
           id, product_id, store_id, owner_id, rating, text, author, date,
           review_status_wb, product_status_by_review, chat_status_by_review, complaint_status,
+          purchase_date, parsed_at, page_number,
           created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
         ON CONFLICT (id) DO UPDATE SET
           rating = EXCLUDED.rating,
           text = EXCLUDED.text,
@@ -127,6 +128,9 @@ export async function upsertReviewsFromExtension(
           product_status_by_review = EXCLUDED.product_status_by_review,
           chat_status_by_review = EXCLUDED.chat_status_by_review,
           complaint_status = EXCLUDED.complaint_status,
+          purchase_date = EXCLUDED.purchase_date,
+          parsed_at = EXCLUDED.parsed_at,
+          page_number = EXCLUDED.page_number,
           updated_at = NOW()`,
         [
           rev.review_id,
@@ -141,6 +145,9 @@ export async function upsertReviewsFromExtension(
           rev.product_status_by_review,
           rev.chat_status_by_review,
           rev.complaint_status,
+          rev.purchase_date || null,
+          rev.parsed_at || null,
+          rev.page_number || null,
         ]
       );
 
@@ -453,13 +460,21 @@ export async function getUserByApiToken(token: string) {
  * Get user's stores by user ID
  *
  * @param userId User ID
- * @returns Array of store IDs
+ * @returns Array of store objects with id, name, and stats
  */
-export async function getUserStores(userId: string): Promise<string[]> {
-  const result = await query<{ id: string }>(
-    'SELECT id FROM stores WHERE owner_id = $1',
+export async function getUserStores(userId: string): Promise<Array<{
+  id: string;
+  name: string;
+  total_reviews: number;
+}>> {
+  const result = await query<{
+    id: string;
+    name: string;
+    total_reviews: number;
+  }>(
+    'SELECT id, name, total_reviews FROM stores WHERE owner_id = $1 ORDER BY name ASC',
     [userId]
   );
 
-  return result.rows.map(row => row.id);
+  return result.rows;
 }

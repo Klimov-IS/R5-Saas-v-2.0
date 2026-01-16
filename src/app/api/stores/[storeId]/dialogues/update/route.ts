@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
 import type { ChatTag } from '@/db/helpers';
-import { classifyChatTag } from '@/ai/flows/classify-chat-tag-flow';
+import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -174,13 +174,20 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         `${m.sender === 'client' ? 'Клиент' : 'Продавец'}: ${m.text || '[Вложение]'}`
                     ).join('\n');
 
-                    // Classify using AI
-                    const { tag } = await classifyChatTag({
+                    // Get chat for full context
+                    const chat = await dbHelpers.getChatById(chatId);
+
+                    // Classify using AI deletion flow (hybrid regex + AI)
+                    const result = await classifyChatDeletion({
                         chatHistory,
+                        lastMessageText: chat?.last_message_text || '',
                         storeId,
                         ownerId,
                         chatId,
+                        productName: chat?.product_name || undefined,
                     });
+
+                    const tag = result.tag;
 
                     // Update chat with new tag
                     await dbHelpers.updateChat(chatId, {
@@ -205,13 +212,21 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         const allStoreChats = await dbHelpers.getChats(storeId);
         const totalChats = allStoreChats.length;
 
-        const chatTagCounts: Record<ChatTag, number> = {
+        // Initialize all possible tag counts (including new deletion workflow tags)
+        const chatTagCounts: Record<string, number> = {
             active: 0,
             no_reply: 0,
             successful: 0,
             unsuccessful: 0,
             untagged: 0,
             completed: 0,
+            // Deletion workflow tags
+            deletion_candidate: 0,
+            deletion_offered: 0,
+            deletion_agreed: 0,
+            deletion_confirmed: 0,
+            refund_requested: 0,
+            spam: 0,
         };
 
         allStoreChats.forEach(chat => {
@@ -219,6 +234,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
             if (chatTagCounts.hasOwnProperty(tag)) {
                 chatTagCounts[tag]++;
             } else {
+                // Unknown tag, count as untagged
                 chatTagCounts['untagged']++;
             }
         });

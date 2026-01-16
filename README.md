@@ -369,14 +369,34 @@ curl -s http://localhost:3000/api/stores \
 
 ---
 
-## 📚 Additional Documentation
+## 📚 Documentation
 
-- **[DEPLOYMENT_SUCCESS.md](./DEPLOYMENT_SUCCESS.md)** - Production deployment details
-- **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)** - Common commands and troubleshooting
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Deployment guide
-- **[docs/complaint-auto-generation-rules.md](./docs/complaint-auto-generation-rules.md)** - Complaint system rules
-- **[docs/complaints-table-schema.md](./docs/complaints-table-schema.md)** - Database schema details
-- **[docs/ai-optimization-report.md](./docs/ai-optimization-report.md)** - AI optimization results
+### 🚀 Quick Start Guides
+
+- **[QUICK_REFERENCE.md](./docs/QUICK_REFERENCE.md)** - Copy-paste ready commands for common tasks
+- **[DEPLOYMENT.md](./docs/DEPLOYMENT.md)** - Production deployment guide (SSH, PM2, one-command deploy)
+- **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** - Local development setup and workflows
+
+### ⚙️ Operational Guides
+
+- **[CRON_JOBS.md](./docs/CRON_JOBS.md)** - Background jobs, auto-start, monitoring
+- **[TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
+
+### 📖 Technical Reference
+
+- **[database-schema.md](./docs/database-schema.md)** - Complete PostgreSQL schema documentation
+- **[complaint-auto-generation-rules.md](./docs/complaint-auto-generation-rules.md)** - Complaint system rules
+- **[complaints-table-schema.md](./docs/complaints-table-schema.md)** - Review complaints table details
+
+### 🏗️ Architecture Decision Records (ADR)
+
+- **[ADR-001: Why Instrumentation Hook](./docs/decisions/ADR-001-why-instrumentation-hook.md)** - CRON auto-start decision
+- **[ADR-002: Active Stores Filter](./docs/decisions/ADR-002-active-stores-filter.md)** - Filtering by store status
+- **[ADR-003: CRON Intervals](./docs/decisions/ADR-003-cron-intervals.md)** - 5 min dev, daily prod schedule
+
+### 📦 Historical Documentation
+
+- **[docs/archive/](./docs/archive/)** - Sprint reports, migration changelogs, historical analysis
 
 ---
 
@@ -415,7 +435,8 @@ Proprietary - All rights reserved
 
 ---
 
-**Last Updated:** January 10, 2026
+**Last Updated:** January 15, 2026
 **Version:** 2.0.0
 **Database:** PostgreSQL 15 on Yandex Cloud
 **Status:** 🟢 Production
+**Documentation:** ✅ Comprehensive (see [docs/](./docs/))

@@ -21,6 +21,13 @@ interface FilterPanelProps {
     unsuccessful: number;
     no_reply: number;
     untagged: number;
+    // Deletion workflow tags (added 2026-01-16)
+    deletion_candidate?: number;
+    deletion_offered?: number;
+    deletion_agreed?: number;
+    deletion_confirmed?: number;
+    refund_requested?: number;
+    spam?: number;
   };
 }
 
@@ -32,6 +39,7 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
   } = useChatsStore();
 
   const [isFiltersOpen, setIsFiltersOpen] = useState(true);
+  const [isDeletionFiltersOpen, setIsDeletionFiltersOpen] = useState(true);
   const [isActionsOpen, setIsActionsOpen] = useState(true);
 
   const bulkGenerateAI = useBulkGenerateAI(storeId);
@@ -133,6 +141,66 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
               count={tagStats?.unsuccessful || 0}
               checked={tagFilter === 'unsuccessful'}
               onChange={() => setTagFilter(tagFilter === 'unsuccessful' ? 'all' : 'unsuccessful')}
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* Deletion Workflow Filters - Collapsible */}
+      <Collapsible open={isDeletionFiltersOpen} onOpenChange={setIsDeletionFiltersOpen} className="mb-3">
+        <CollapsibleTrigger className="flex items-center justify-between w-full px-1 py-1.5 hover:bg-slate-50 rounded-md transition-colors">
+          <h3 className="text-xs font-semibold text-slate-700">
+            🎯 Удаление отзывов
+          </h3>
+          {isDeletionFiltersOpen ? (
+            <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+          )}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-2">
+          <div className="flex flex-wrap gap-1.5">
+            <FilterChip
+              icon="🎯"
+              label="Кандидаты"
+              count={tagStats?.deletion_candidate || 0}
+              checked={tagFilter === 'deletion_candidate'}
+              onChange={() => setTagFilter(tagFilter === 'deletion_candidate' ? 'all' : 'deletion_candidate')}
+            />
+            <FilterChip
+              icon="💰"
+              label="Предложена компенсация"
+              count={tagStats?.deletion_offered || 0}
+              checked={tagFilter === 'deletion_offered'}
+              onChange={() => setTagFilter(tagFilter === 'deletion_offered' ? 'all' : 'deletion_offered')}
+            />
+            <FilterChip
+              icon="🤝"
+              label="Согласились"
+              count={tagStats?.deletion_agreed || 0}
+              checked={tagFilter === 'deletion_agreed'}
+              onChange={() => setTagFilter(tagFilter === 'deletion_agreed' ? 'all' : 'deletion_agreed')}
+            />
+            <FilterChip
+              icon="✔️"
+              label="Подтверждено"
+              count={tagStats?.deletion_confirmed || 0}
+              checked={tagFilter === 'deletion_confirmed'}
+              onChange={() => setTagFilter(tagFilter === 'deletion_confirmed' ? 'all' : 'deletion_confirmed')}
+            />
+            <FilterChip
+              icon="💸"
+              label="Возврат"
+              count={tagStats?.refund_requested || 0}
+              checked={tagFilter === 'refund_requested'}
+              onChange={() => setTagFilter(tagFilter === 'refund_requested' ? 'all' : 'refund_requested')}
+            />
+            <FilterChip
+              icon="🚫"
+              label="Спам"
+              count={tagStats?.spam || 0}
+              checked={tagFilter === 'spam'}
+              onChange={() => setTagFilter(tagFilter === 'spam' ? 'all' : 'spam')}
             />
           </div>
         </CollapsibleContent>

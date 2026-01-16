@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatById, getChatMessages } from '@/db/helpers';
+import { getChatById, getChatMessages, getStoreById } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 
 /**
@@ -12,6 +12,18 @@ export async function POST(
 ) {
   try {
     const { storeId, chatId } = params;
+
+    // Get store to retrieve owner_id
+    const store = await getStoreById(storeId);
+    if (!store) {
+      return NextResponse.json(
+        { error: 'Store not found' },
+        { status: 404 }
+      );
+    }
+
+    const ownerId = store.owner_id;
+    console.log(`[GENERATE-AI] Store: ${store.name}, owner_id: ${ownerId}`);
 
     // Get chat data
     const chat = await getChatById(chatId);
@@ -51,7 +63,7 @@ ${chatHistory}
     const result = await generateChatReply({
       context,
       storeId,
-      ownerId: 'default', // TODO: Get from auth
+      ownerId,
       chatId,
     });
 

@@ -745,7 +745,16 @@ export async function getChats(storeId: string): Promise<Chat[]> {
 }
 
 export async function getChatById(id: string): Promise<Chat | null> {
-  const result = await query<Chat>('SELECT * FROM chats WHERE id = $1', [id]);
+  const sql = `
+    SELECT
+      c.*,
+      p.name as product_name,
+      p.vendor_code as product_vendor_code
+    FROM chats c
+    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    WHERE c.id = $1
+  `;
+  const result = await query<Chat>(sql, [id]);
   return result.rows[0] || null;
 }
 
@@ -1425,23 +1434,33 @@ export async function getChatsByStoreWithPagination(
   storeId: string,
   options?: { limit?: number; offset?: number; tag?: string; search?: string }
 ): Promise<Chat[]> {
-  const whereClauses: string[] = ['store_id = $1'];
+  const whereClauses: string[] = ['c.store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
 
   // Filter by tag
   if (options?.tag && options.tag !== 'all') {
-    whereClauses.push(`tag = $${paramIndex++}`);
+    whereClauses.push(`c.tag = $${paramIndex++}`);
     params.push(options.tag);
   }
 
-  // Search in last message text
+  // Search in last message text or client name
   if (options?.search && options.search.trim()) {
-    whereClauses.push(`last_message_text ILIKE $${paramIndex++}`);
+    whereClauses.push(`(c.last_message_text ILIKE $${paramIndex} OR c.client_name ILIKE $${paramIndex})`);
     params.push(`%${options.search.trim()}%`);
+    paramIndex++;
   }
 
-  let sql = `SELECT * FROM chats WHERE ${whereClauses.join(' AND ')} ORDER BY last_message_date DESC NULLS LAST`;
+  let sql = `
+    SELECT
+      c.*,
+      p.name as product_name,
+      p.vendor_code as product_vendor_code
+    FROM chats c
+    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    WHERE ${whereClauses.join(' AND ')}
+    ORDER BY c.last_message_date DESC NULLS LAST
+  `;
 
   if (options?.limit !== undefined) {
     sql += ` LIMIT $${paramIndex++}`;

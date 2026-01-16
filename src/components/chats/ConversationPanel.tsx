@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useChatMessages } from '@/hooks/useChats';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
+import { DeletionCaseInfo } from './DeletionCaseInfo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ChatTag } from '@/types/chats';
 import { Loader2 } from 'lucide-react';
@@ -20,6 +21,13 @@ const TAG_LABELS: Record<ChatTag, string> = {
   no_reply: '🟡 Нет ответа',
   untagged: '⚪ Не размечено',
   completed: '✅ Завершён',
+  // Deletion workflow tags
+  deletion_candidate: '🎯 Кандидат на удаление',
+  deletion_offered: '💰 Предложена компенсация',
+  deletion_agreed: '🤝 Клиент согласился',
+  deletion_confirmed: '✔️ Отзыв удалён',
+  refund_requested: '💸 Запрос возврата',
+  spam: '🚫 Спам',
 };
 
 export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
@@ -112,6 +120,9 @@ export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Deletion Case Info */}
+        <DeletionCaseInfo storeId={storeId} chatId={chatId} chatTag={chat.tag} />
       </div>
 
       {/* Messages Container */}
