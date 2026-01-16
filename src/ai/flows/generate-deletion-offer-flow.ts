@@ -63,7 +63,7 @@ export type GenerateDeletionOfferOutput = z.infer<typeof GenerateDeletionOfferOu
  * - Always respect product_rules.max_compensation
  * - Return both amount and reasoning
  */
-export function calculateCompensation(
+function calculateCompensation(
   reviewRating: number | undefined,
   maxCompensation: number,
   productPrice?: number
