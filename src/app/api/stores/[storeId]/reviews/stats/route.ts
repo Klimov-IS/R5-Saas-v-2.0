@@ -1,85 +1,61 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { query } from '@/db/client';
+import * as dbHelpers from '@/db/helpers';
 
 /**
- * Get review statistics for filters
- * Returns counts for preset filters and rating distribution
+ * @swagger
+ * /api/stores/{storeId}/reviews/stats:
+ *   get:
+ *     summary: Получить статистику по отзывам
+ *     description: Возвращает общее количество отзывов для каждого рейтинга (1-5) независимо от фильтров
+ *     tags:
+ *       - Отзывы
+ *     parameters:
+ *       - in: path
+ *         name: storeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID магазина
+ *     security:
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       '200':
+ *         description: Успешный ответ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 ratingCounts:
+ *                   type: object
+ *                   properties:
+ *                     1:
+ *                       type: number
+ *                     2:
+ *                       type: number
+ *                     3:
+ *                       type: number
+ *                     4:
+ *                       type: number
+ *                     5:
+ *                       type: number
+ *       '401':
+ *         description: Ошибка авторизации.
+ *       '404':
+ *         description: Магазин не найден.
+ *       '500':
+ *         description: Внутренняя ошибка сервера.
  */
 export async function GET(request: NextRequest, { params }: { params: { storeId: string } }) {
   const { storeId } = params;
 
   try {
-    // Get preset filter counts
-    const presetStatsQuery = `
-      SELECT
-        -- Требуют внимания: 1-3 stars, active, not_sent
-        COUNT(*) FILTER (
-          WHERE rating <= 3
-          AND complaint_status = 'not_sent'
-          AND EXISTS (SELECT 1 FROM products WHERE products.id = reviews.product_id AND products.is_active = true)
-        ) as attention,
-
-        -- Одобрены
-        COUNT(*) FILTER (WHERE complaint_status = 'approved') as approved,
-
-        -- Отклонены
-        COUNT(*) FILTER (WHERE complaint_status = 'rejected') as rejected,
-
-        -- Черновики
-        COUNT(*) FILTER (WHERE complaint_status = 'draft') as drafts,
-
-        -- Всего
-        COUNT(*) as total
-      FROM reviews
-      WHERE store_id = $1
-    `;
-
-    // Get rating distribution
-    const ratingStatsQuery = `
-      SELECT
-        rating,
-        COUNT(*) as count
-      FROM reviews
-      WHERE store_id = $1
-      GROUP BY rating
-      ORDER BY rating
-    `;
-
-    const [presetStats, ratingStats] = await Promise.all([
-      query<{ attention: string; approved: string; rejected: string; drafts: string; total: string }>(
-        presetStatsQuery,
-        [storeId]
-      ),
-      query<{ rating: number; count: string }>(ratingStatsQuery, [storeId])
-    ]);
-
-    // Format preset stats
-    const stats = {
-      attention: parseInt(presetStats.rows[0]?.attention || '0', 10),
-      approved: parseInt(presetStats.rows[0]?.approved || '0', 10),
-      rejected: parseInt(presetStats.rows[0]?.rejected || '0', 10),
-      drafts: parseInt(presetStats.rows[0]?.drafts || '0', 10),
-      total: parseInt(presetStats.rows[0]?.total || '0', 10),
-    };
-
-    // Format rating counts
-    const ratingCounts: { [key: number]: number } = {
-      1: 0,
-      2: 0,
-      3: 0,
-      4: 0,
-      5: 0,
-    };
-
-    ratingStats.rows.forEach(row => {
-      if (row.rating >= 1 && row.rating <= 5) {
-        ratingCounts[row.rating] = parseInt(row.count, 10);
-      }
-    });
+    // Get rating statistics using helper function
+    // This returns total counts for ALL reviews (ignoring filters)
+    const ratingCounts = await dbHelpers.getReviewRatingStats(storeId);
 
     return NextResponse.json({
-      stats,
       ratingCounts
     }, { status: 200 });
 

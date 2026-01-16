@@ -1128,6 +1128,33 @@ export async function getStoreStats(storeId: string) {
 }
 
 /**
+ * Get review rating statistics for a store (used for filter badges)
+ * Returns total count for each rating (1-5) regardless of filters
+ */
+export async function getReviewRatingStats(storeId: string): Promise<Record<number, number>> {
+  const result = await query<{ rating: number; count: string }>(
+    `SELECT rating, COUNT(*) as count
+     FROM reviews
+     WHERE store_id = $1
+     GROUP BY rating
+     ORDER BY rating`,
+    [storeId]
+  );
+
+  // Initialize with zeros for all ratings
+  const stats: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+  // Fill in actual counts
+  result.rows.forEach(row => {
+    if (row.rating >= 1 && row.rating <= 5) {
+      stats[row.rating] = parseInt(row.count, 10);
+    }
+  });
+
+  return stats;
+}
+
+/**
  * Verify API key and return user settings
  */
 export async function verifyApiKey(apiKey: string): Promise<UserSettings | null> {
@@ -1169,7 +1196,7 @@ export async function getReviewsByStoreWithPagination(
     complaintStatus?: string; // 'all' | 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending'
   }
 ): Promise<Review[]> {
-  const whereClauses: string[] = ['store_id = $1'];
+  const whereClauses: string[] = ['r.store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
 
@@ -1177,16 +1204,16 @@ export async function getReviewsByStoreWithPagination(
   if (options?.rating && options.rating !== 'all') {
     // Check if it's a range shortcut
     if (options.rating === '1-2') {
-      whereClauses.push(`rating <= 2`);
+      whereClauses.push(`r.rating <= 2`);
     } else if (options.rating === '3') {
-      whereClauses.push(`rating = 3`);
+      whereClauses.push(`r.rating = 3`);
     } else if (options.rating === '4-5') {
-      whereClauses.push(`rating >= 4`);
+      whereClauses.push(`r.rating >= 4`);
     } else {
       // Check if comma-separated (e.g., "1,2,3") or single number (e.g., "1")
       const ratings = options.rating.split(',').map(r => parseInt(r.trim(), 10)).filter(r => !isNaN(r));
       if (ratings.length > 0) {
-        whereClauses.push(`rating = ANY($${paramIndex})`);
+        whereClauses.push(`r.rating = ANY($${paramIndex})`);
         params.push(ratings);
         paramIndex++;
       }
@@ -1196,62 +1223,77 @@ export async function getReviewsByStoreWithPagination(
   // Filter by answer status
   if (options?.hasAnswer && options.hasAnswer !== 'all') {
     if (options.hasAnswer === 'yes') {
-      whereClauses.push(`answer IS NOT NULL`);
+      whereClauses.push(`r.answer IS NOT NULL`);
     } else if (options.hasAnswer === 'no') {
-      whereClauses.push(`answer IS NULL`);
+      whereClauses.push(`r.answer IS NULL`);
     }
   }
 
-  // Filter by complaint status
+  // Filter by complaint status (using review_complaints join)
   if (options?.hasComplaint && options.hasComplaint !== 'all') {
     if (options.hasComplaint === 'with') {
-      whereClauses.push(`complaint_sent_date IS NOT NULL`);
+      whereClauses.push(`rc.sent_at IS NOT NULL`);
     } else if (options.hasComplaint === 'draft') {
-      whereClauses.push(`complaint_text IS NOT NULL AND complaint_sent_date IS NULL`);
+      whereClauses.push(`rc.complaint_text IS NOT NULL AND rc.sent_at IS NULL`);
     } else if (options.hasComplaint === 'without') {
-      whereClauses.push(`complaint_text IS NULL AND complaint_sent_date IS NULL`);
+      whereClauses.push(`rc.complaint_text IS NULL`);
     }
   }
 
   // Filter by product ID
   if (options?.productId && options.productId.trim()) {
-    whereClauses.push(`product_id = $${paramIndex}`);
+    whereClauses.push(`r.product_id = $${paramIndex}`);
     params.push(options.productId.trim());
     paramIndex++;
   }
 
   // Filter by active products only
   if (options?.activeOnly) {
-    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = reviews.product_id AND products.is_active = true)`);
+    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.is_active = true)`);
   }
 
   // Search in text
   if (options?.search && options.search.trim()) {
-    whereClauses.push(`(text ILIKE $${paramIndex} OR pros ILIKE $${paramIndex} OR cons ILIKE $${paramIndex})`);
+    whereClauses.push(`(r.text ILIKE $${paramIndex} OR r.pros ILIKE $${paramIndex} OR r.cons ILIKE $${paramIndex})`);
     params.push(`%${options.search.trim()}%`);
     paramIndex++;
   }
 
   // New status filters
   if (options?.reviewStatusWB && options.reviewStatusWB !== 'all') {
-    whereClauses.push(`review_status_wb = $${paramIndex}`);
+    whereClauses.push(`r.review_status_wb = $${paramIndex}`);
     params.push(options.reviewStatusWB);
     paramIndex++;
   }
 
   if (options?.productStatusByReview && options.productStatusByReview !== 'all') {
-    whereClauses.push(`product_status_by_review = $${paramIndex}`);
+    whereClauses.push(`r.product_status_by_review = $${paramIndex}`);
     params.push(options.productStatusByReview);
     paramIndex++;
   }
 
   if (options?.complaintStatus && options.complaintStatus !== 'all') {
-    whereClauses.push(`complaint_status = $${paramIndex}`);
+    whereClauses.push(`rc.status = $${paramIndex}`);
     params.push(options.complaintStatus);
     paramIndex++;
   }
 
-  let sql = `SELECT * FROM reviews WHERE ${whereClauses.join(' AND ')} ORDER BY date DESC`;
+  let sql = `
+    SELECT
+      r.*,
+      rc.id as complaint_id,
+      rc.complaint_text,
+      rc.reason_id as complaint_reason_id,
+      rc.reason_name as complaint_category,
+      rc.status as complaint_status,
+      rc.generated_at as complaint_generated_at,
+      rc.sent_at as complaint_sent_date,
+      rc.regenerated_count
+    FROM reviews r
+    LEFT JOIN review_complaints rc ON r.id = rc.review_id
+    WHERE ${whereClauses.join(' AND ')}
+    ORDER BY r.date DESC
+  `;
 
   if (options?.limit !== undefined) {
     sql += ` LIMIT $${paramIndex++}`;
@@ -1284,7 +1326,7 @@ export async function getReviewsCount(
     complaintStatus?: string;
   }
 ): Promise<number> {
-  const whereClauses: string[] = ['store_id = $1'];
+  const whereClauses: string[] = ['r.store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
 
@@ -1292,16 +1334,16 @@ export async function getReviewsCount(
   if (options?.rating && options.rating !== 'all') {
     // Check if it's a range shortcut
     if (options.rating === '1-2') {
-      whereClauses.push(`rating <= 2`);
+      whereClauses.push(`r.rating <= 2`);
     } else if (options.rating === '3') {
-      whereClauses.push(`rating = 3`);
+      whereClauses.push(`r.rating = 3`);
     } else if (options.rating === '4-5') {
-      whereClauses.push(`rating >= 4`);
+      whereClauses.push(`r.rating >= 4`);
     } else {
       // Check if comma-separated (e.g., "1,2,3") or single number (e.g., "1")
       const ratings = options.rating.split(',').map(r => parseInt(r.trim(), 10)).filter(r => !isNaN(r));
       if (ratings.length > 0) {
-        whereClauses.push(`rating = ANY($${paramIndex})`);
+        whereClauses.push(`r.rating = ANY($${paramIndex})`);
         params.push(ratings);
         paramIndex++;
       }
@@ -1311,62 +1353,67 @@ export async function getReviewsCount(
   // Filter by answer status
   if (options?.hasAnswer && options.hasAnswer !== 'all') {
     if (options.hasAnswer === 'yes') {
-      whereClauses.push(`answer IS NOT NULL`);
+      whereClauses.push(`r.answer IS NOT NULL`);
     } else if (options.hasAnswer === 'no') {
-      whereClauses.push(`answer IS NULL`);
+      whereClauses.push(`r.answer IS NULL`);
     }
   }
 
-  // Filter by complaint status
+  // Filter by complaint status (using review_complaints join)
   if (options?.hasComplaint && options.hasComplaint !== 'all') {
     if (options.hasComplaint === 'with') {
-      whereClauses.push(`complaint_sent_date IS NOT NULL`);
+      whereClauses.push(`rc.sent_at IS NOT NULL`);
     } else if (options.hasComplaint === 'draft') {
-      whereClauses.push(`complaint_text IS NOT NULL AND complaint_sent_date IS NULL`);
+      whereClauses.push(`rc.complaint_text IS NOT NULL AND rc.sent_at IS NULL`);
     } else if (options.hasComplaint === 'without') {
-      whereClauses.push(`complaint_text IS NULL AND complaint_sent_date IS NULL`);
+      whereClauses.push(`rc.complaint_text IS NULL`);
     }
   }
 
   // Filter by product ID
   if (options?.productId && options.productId.trim()) {
-    whereClauses.push(`product_id = $${paramIndex}`);
+    whereClauses.push(`r.product_id = $${paramIndex}`);
     params.push(options.productId.trim());
     paramIndex++;
   }
 
   // Filter by active products only
   if (options?.activeOnly) {
-    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = reviews.product_id AND products.is_active = true)`);
+    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.is_active = true)`);
   }
 
   // Search in text
   if (options?.search && options.search.trim()) {
-    whereClauses.push(`(text ILIKE $${paramIndex} OR pros ILIKE $${paramIndex} OR cons ILIKE $${paramIndex})`);
+    whereClauses.push(`(r.text ILIKE $${paramIndex} OR r.pros ILIKE $${paramIndex} OR r.cons ILIKE $${paramIndex})`);
     params.push(`%${options.search.trim()}%`);
     paramIndex++;
   }
 
   // New status filters
   if (options?.reviewStatusWB && options.reviewStatusWB !== 'all') {
-    whereClauses.push(`review_status_wb = $${paramIndex}`);
+    whereClauses.push(`r.review_status_wb = $${paramIndex}`);
     params.push(options.reviewStatusWB);
     paramIndex++;
   }
 
   if (options?.productStatusByReview && options.productStatusByReview !== 'all') {
-    whereClauses.push(`product_status_by_review = $${paramIndex}`);
+    whereClauses.push(`r.product_status_by_review = $${paramIndex}`);
     params.push(options.productStatusByReview);
     paramIndex++;
   }
 
   if (options?.complaintStatus && options.complaintStatus !== 'all') {
-    whereClauses.push(`complaint_status = $${paramIndex}`);
+    whereClauses.push(`rc.status = $${paramIndex}`);
     params.push(options.complaintStatus);
     paramIndex++;
   }
 
-  const sql = `SELECT COUNT(*) as count FROM reviews WHERE ${whereClauses.join(' AND ')}`;
+  const sql = `
+    SELECT COUNT(*) as count
+    FROM reviews r
+    LEFT JOIN review_complaints rc ON r.id = rc.review_id
+    WHERE ${whereClauses.join(' AND ')}
+  `;
   const result = await query<{ count: string }>(sql, params);
   return parseInt(result.rows[0].count, 10);
 }

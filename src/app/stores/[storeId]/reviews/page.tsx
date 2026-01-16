@@ -5,13 +5,13 @@
 
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import type { Review } from '@/types/reviews';
-import { FilterCard, type FilterState, type PresetFilter } from '@/components/reviews-v2/FilterCard';
+import { FilterCard, type FilterState } from '@/components/reviews-v2/FilterCard';
 import { ReviewRow } from '@/components/reviews-v2/ReviewRow';
 
 type Product = {
@@ -91,16 +91,15 @@ export default function ReviewsPageV2() {
   const [skip, setSkip] = useState(0);
   const [take, setTake] = useState(50);
 
-  // Filter state with DEFAULT values (1-3 stars, active products, complaints not sent)
+  // Filter state with DEFAULT values (1-3 stars, active products, all complaint statuses)
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     ratings: [1, 2, 3], // DEFAULT: 1-3 stars
-    complaintStatus: 'not_sent', // DEFAULT: not sent
+    complaintStatus: 'all', // DEFAULT: all statuses
     productStatus: 'active', // DEFAULT: active only
     reviewStatusWB: 'all',
   });
 
-  const [activePreset, setActivePreset] = useState<PresetFilter>('attention');
   const [selectedReviews, setSelectedReviews] = useState<Set<string>>(new Set());
 
   // Fetch reviews data
@@ -111,92 +110,24 @@ export default function ReviewsPageV2() {
     enabled: !!storeId,
   });
 
-  // Fetch stats for preset filters and rating counts
+  // Fetch rating statistics separately (independent of filters)
+  // This shows TOTAL counts for ALL reviews, not just filtered ones
   const { data: statsData } = useQuery({
-    queryKey: ['reviews-stats', storeId],
+    queryKey: ['review-stats', storeId],
     queryFn: async () => {
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/reviews/stats`, {
         headers: { 'Authorization': `Bearer ${apiKey}` },
       });
       if (!response.ok) throw new Error('Failed to fetch stats');
-      return response.json();
+      return response.json() as Promise<{ ratingCounts: Record<number, number> }>;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     enabled: !!storeId,
   });
 
-  const stats = statsData?.stats || {
-    attention: 0,
-    approved: 0,
-    rejected: 0,
-    drafts: 0,
-    total: 0,
-  };
-
-  const ratingCounts = statsData?.ratingCounts || {
-    1: 0,
-    2: 0,
-    3: 0,
-    4: 0,
-    5: 0,
-  };
-
-  // Handle preset filter changes
-  const handlePresetChange = (preset: PresetFilter) => {
-    setActivePreset(preset);
-
-    switch (preset) {
-      case 'attention':
-        // Требуют внимания: 1-3★, active, not_sent
-        setFilters({
-          search: '',
-          ratings: [1, 2, 3],
-          complaintStatus: 'not_sent',
-          productStatus: 'active',
-          reviewStatusWB: 'all',
-        });
-        break;
-      case 'approved':
-        setFilters({
-          search: '',
-          ratings: [],
-          complaintStatus: 'approved',
-          productStatus: 'all',
-          reviewStatusWB: 'all',
-        });
-        break;
-      case 'rejected':
-        setFilters({
-          search: '',
-          ratings: [],
-          complaintStatus: 'rejected',
-          productStatus: 'all',
-          reviewStatusWB: 'all',
-        });
-        break;
-      case 'drafts':
-        setFilters({
-          search: '',
-          ratings: [],
-          complaintStatus: 'draft',
-          productStatus: 'all',
-          reviewStatusWB: 'all',
-        });
-        break;
-      case 'all':
-        setFilters({
-          search: '',
-          ratings: [],
-          complaintStatus: 'all',
-          productStatus: 'all',
-          reviewStatusWB: 'all',
-        });
-        break;
-    }
-
-    setSkip(0); // Reset pagination
-  };
+  // Use stats from API (or fallback to zeros)
+  const ratingCounts = statsData?.ratingCounts || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
   // Handle review selection
   const handleSelectReview = (id: string, selected: boolean) => {
@@ -262,9 +193,6 @@ export default function ReviewsPageV2() {
       <FilterCard
         filters={filters}
         onFiltersChange={setFilters}
-        activePreset={activePreset}
-        onPresetChange={handlePresetChange}
-        stats={stats}
         ratingCounts={ratingCounts}
         onSync={handleSync}
         isSyncing={isSyncing}

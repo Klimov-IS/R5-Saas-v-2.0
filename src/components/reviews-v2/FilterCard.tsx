@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Search, Filter, Save, RefreshCw } from 'lucide-react';
+import { Search, Filter, RefreshCw } from 'lucide-react';
 import type { ReviewStatusWB, ProductStatusByReview, ComplaintStatus } from '@/types/reviews';
 
 export type FilterState = {
@@ -15,20 +15,9 @@ export type FilterState = {
   reviewStatusWB: ReviewStatusWB | 'all';
 };
 
-export type PresetFilter = 'attention' | 'approved' | 'rejected' | 'drafts' | 'all';
-
 type Props = {
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
-  activePreset: PresetFilter;
-  onPresetChange: (preset: PresetFilter) => void;
-  stats: {
-    attention: number;
-    approved: number;
-    rejected: number;
-    drafts: number;
-    total: number;
-  };
   ratingCounts: { [key: number]: number };
   onSync?: () => void;
   isSyncing?: boolean;
@@ -37,9 +26,6 @@ type Props = {
 export const FilterCard: React.FC<Props> = ({
   filters,
   onFiltersChange,
-  activePreset,
-  onPresetChange,
-  stats,
   ratingCounts,
   onSync,
   isSyncing = false,
@@ -77,48 +63,10 @@ export const FilterCard: React.FC<Props> = ({
               {isSyncing ? 'Синхронизация...' : 'Синхронизировать'}
             </button>
           )}
-          <button className="save-view-button">
-            <Save style={{ width: '14px', height: '14px' }} />
-            Сохранить вид
-          </button>
         </div>
       </div>
 
-      {/* Preset Quick Filters */}
-      <div className="preset-filters">
-        <button
-          className={`preset-pill ${activePreset === 'attention' ? 'active' : ''}`}
-          onClick={() => onPresetChange('attention')}
-        >
-          🔥 Требуют внимания ({stats.attention.toLocaleString('ru-RU')})
-        </button>
-        <button
-          className={`preset-pill ${activePreset === 'approved' ? 'active' : ''}`}
-          onClick={() => onPresetChange('approved')}
-        >
-          ✅ Жалобы одобрены ({stats.approved.toLocaleString('ru-RU')})
-        </button>
-        <button
-          className={`preset-pill ${activePreset === 'rejected' ? 'active' : ''}`}
-          onClick={() => onPresetChange('rejected')}
-        >
-          ❌ Жалобы отклонены ({stats.rejected.toLocaleString('ru-RU')})
-        </button>
-        <button
-          className={`preset-pill ${activePreset === 'drafts' ? 'active' : ''}`}
-          onClick={() => onPresetChange('drafts')}
-        >
-          📝 Черновики жалоб ({stats.drafts.toLocaleString('ru-RU')})
-        </button>
-        <button
-          className={`preset-pill ${activePreset === 'all' ? 'active' : ''}`}
-          onClick={() => onPresetChange('all')}
-        >
-          👁️ Все отзывы ({stats.total.toLocaleString('ru-RU')})
-        </button>
-      </div>
-
-      {/* Advanced Filters Grid */}
+      {/* Filters Grid */}
       <div className="filters-grid">
         {/* Search */}
         <div className="filter-group search-group">
@@ -143,8 +91,8 @@ export const FilterCard: React.FC<Props> = ({
             value={filters.complaintStatus}
             onChange={(e) => updateFilter('complaintStatus', e.target.value as any)}
           >
-            <option value="not_sent">Не отправлена</option>
             <option value="all">Все статусы</option>
+            <option value="not_sent">Не отправлена</option>
             <option value="draft">Черновик</option>
             <option value="sent">Отправлена</option>
             <option value="approved">Одобрена</option>
@@ -288,54 +236,6 @@ export const FilterCard: React.FC<Props> = ({
           to {
             transform: rotate(360deg);
           }
-        }
-
-        .save-view-button {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-xs);
-          padding: var(--spacing-sm) var(--spacing-md);
-          background: var(--color-border-light);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-md);
-          font-size: var(--font-size-sm);
-          cursor: pointer;
-          transition: all 0.15s;
-          font-weight: 500;
-        }
-
-        .save-view-button:hover {
-          background: var(--color-border);
-        }
-
-        .preset-filters {
-          display: flex;
-          gap: var(--spacing-sm);
-          margin-bottom: var(--spacing-xl);
-          flex-wrap: wrap;
-        }
-
-        .preset-pill {
-          padding: var(--spacing-sm) var(--spacing-lg);
-          background: white;
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-lg);
-          font-size: var(--font-size-sm);
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          white-space: nowrap;
-        }
-
-        .preset-pill:hover {
-          border-color: var(--color-primary);
-          background: #eff6ff;
-        }
-
-        .preset-pill.active {
-          background: var(--color-primary);
-          color: white;
-          border-color: var(--color-primary);
         }
 
         .filters-grid {
