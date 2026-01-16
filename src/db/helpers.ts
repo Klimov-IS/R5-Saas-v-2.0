@@ -1792,3 +1792,42 @@ export async function updateProductWorkStatus(
   );
   return result.rows[0] || null;
 }
+
+/**
+ * Get review IDs without complaints for a store
+ * Used by CRON job for auto-complaint generation
+ *
+ * @param storeId - Store ID
+ * @param maxRating - Maximum rating to include (default: 3, includes 1-3 stars)
+ * @param limit - Maximum number of reviews to return (default: 50)
+ * @param activeProductsOnly - Filter only reviews for active products (default: true)
+ * @returns Array of review IDs that don't have complaints yet
+ */
+export async function getReviewsWithoutComplaints(
+  storeId: string,
+  maxRating: number = 3,
+  limit: number = 50,
+  activeProductsOnly: boolean = true
+): Promise<string[]> {
+  let sql = `
+    SELECT r.id
+    FROM reviews r
+    LEFT JOIN review_complaints rc ON rc.review_id = r.id
+    INNER JOIN products p ON p.id = r.product_id
+    WHERE r.store_id = $1
+      AND r.rating <= $2
+      AND rc.id IS NULL`;
+
+  // Filter only active products (for CRON auto-generation)
+  if (activeProductsOnly) {
+    sql += `
+      AND p.is_active = true`;
+  }
+
+  sql += `
+    ORDER BY r.created_at DESC
+    LIMIT $3`;
+
+  const result = await query<{ id: string }>(sql, [storeId, maxRating, limit]);
+  return result.rows.map(row => row.id);
+}

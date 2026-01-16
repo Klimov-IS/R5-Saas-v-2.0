@@ -1,0 +1,674 @@
+# CRON Jobs Documentation - WB Reputation Manager
+
+**Last Updated:** 2026-01-16
+
+---
+
+## Overview
+
+WB Reputation Manager uses **automated background jobs** (CRON) to sync data from Wildberries API and generate complaints daily with **100% automation**.
+
+**Key Features:**
+- Daily review synchronization at 8:00 AM MSK
+- **Automatic complaint generation** immediately after sync (zero delay)
+- **Template-based optimization** for empty reviews (zero AI cost)
+- **AI-powered complaints** for reviews with content
+- **Active products filter** - only generates complaints for active products
+
+Jobs are managed using the `node-cron` library and initialize automatically when the Next.js server starts.
+
+---
+
+## Architecture
+
+### Auto-Initialization Flow
+
+```mermaid
+graph TD
+    A[Next.js Server Starts] --> B[instrumentation.ts executes]
+    B --> C[Calls initializeServer]
+    C --> D[src/lib/init-server.ts]
+    D --> E[startDailyReviewSync]
+    E --> F[CRON Job Registered]
+    F --> G[Waits for Schedule]
+    G --> H{Time Match?}
+    H -->|Yes| I[Execute Job]
+    H -->|No| G
+    I --> J[Sync All Active Stores]
+    J --> G
+```
+
+**Key Files:**
+- [instrumentation.ts](../instrumentation.ts) - Next.js hook (entry point)
+- [src/lib/init-server.ts](../src/lib/init-server.ts#L10) - Server initialization
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts#L51) - CRON job definitions
+
+---
+
+## CRON Jobs
+
+### 1. Daily Review Sync + Auto-Complaint Generation (100% Automation)
+
+**Job Name:** `daily-review-sync`
+**Schedule:**
+- **Production:** `0 5 * * *` (8:00 AM MSK / 5:00 AM UTC)
+- **Development:** `*/5 * * * *` (every 5 minutes)
+
+**What It Does:**
+1. Fetches all **active** stores from database
+2. For each store:
+   - Calls incremental review sync API
+   - **Immediately generates complaints for new reviews** (only for active products)
+   - Uses template-based complaints for empty reviews (zero AI cost)
+   - Uses AI for reviews with text content
+3. Waits 2 seconds between stores (rate limiting)
+4. Logs success/error counts + complaint generation stats
+
+**Source:** [src/lib/cron-jobs.ts:51-121](../src/lib/cron-jobs.ts#L51-L121)
+
+**Example Output:**
+```
+========================================
+[CRON] 🚀 Starting daily review sync at 2026-01-16T05:00:00.000Z
+========================================
+
+[CRON] Found 43 stores to sync
+[CRON] Starting review sync for store: Тайди Центр (UiLCn5HyzRPphSRvR11G)
+[CRON] ✅ Successfully synced reviews for Тайди Центр: Synced 150 new reviews
+[CRON] Starting auto-complaint generation for Тайди Центр...
+[CRON] Found 42 reviews needing complaints for Тайди Центр
+[CRON] ✅ Generated complaints for Тайди Центр: 42 total (18 templates, 24 AI), 0 failed
+...
+========================================
+[CRON] ✅ Daily review sync + complaint generation completed
+[CRON] Duration: 284s
+[CRON] Stores synced: 43/43
+[CRON] Errors: 0
+[CRON] Complaints generated: 512 total
+[CRON]   - Templates: 201 (zero cost)
+[CRON]   - AI generated: 311
+[CRON]   - Failed: 3
+========================================
+```
+
+---
+
+## Automated Complaint Generation
+
+### How It Works
+
+The CRON job now includes **automatic complaint generation** immediately after each store's review sync:
+
+1. **Review Sync** - Fetch new reviews from Wildberries API
+2. **Find Reviews Without Complaints** - Query database for reviews without complaints (rating ≤3, active products only)
+3. **Smart Generation:**
+   - **Empty reviews** (no text, pros, cons) → Use template complaint (0 tokens, instant)
+   - **Reviews with content** → Generate AI complaint via Deepseek API
+4. **Save to Database** - Store complaint with status `draft`
+
+### Template-Based Optimization
+
+**Purpose:** Save AI tokens and cost for empty reviews
+
+**Criteria for Template Usage:**
+- Review has NO text
+- Review has NO pros
+- Review has NO cons
+- Review rating is 1-2 stars
+
+**Template Complaint:**
+```
+Отзыв содержит только числовую оценку без какого-либо текстового описания...
+[Full template text]
+```
+
+**Reason:** `11 - Отзыв не относится к товару`
+
+**Cost Savings:**
+- AI cost: ~$0.0005-0.001 per complaint
+- Template cost: **$0** (zero tokens)
+- Estimated 30-40% of reviews use templates
+
+**Source:** [src/ai/utils/complaint-templates.ts](../src/ai/utils/complaint-templates.ts)
+
+### Active Products Filter
+
+Only generates complaints for reviews on **active products** (`is_active = true`).
+
+**Why?** Inactive products cannot receive complaints on Wildberries, so we avoid wasting tokens.
+
+**Implementation:** [src/db/helpers.ts:1796-1842](../src/db/helpers.ts#L1796-L1842)
+
+```typescript
+export async function getReviewsWithoutComplaints(
+  storeId: string,
+  maxRating: number = 3,
+  limit: number = 50,
+  activeProductsOnly: boolean = true
+): Promise<string[]>
+```
+
+### Enhanced Logging
+
+**AI Input Logging:**
+```
+[AI INPUT] Generating complaint for review: {
+  reviewId: 'abc123',
+  rating: 1,
+  hasText: false,
+  hasPros: false,
+  hasCons: false,
+  textLength: 0
+}
+```
+
+**Template Usage Logging:**
+```
+[TEMPLATE] Using template for empty review (zero AI cost)
+[TEMPLATE] Review abc123: rating=1, text=empty, pros=empty, cons=empty
+```
+
+**AI Response Logging:**
+```
+[AI RAW RESPONSE] Review abc123: Отзыв содержит несоответствие...
+```
+
+---
+
+## Configuration
+
+### Schedules
+
+Configured in [src/lib/cron-jobs.ts:54-56](../src/lib/cron-jobs.ts#L54-L56):
+
+```typescript
+const cronSchedule = process.env.NODE_ENV === 'production'
+  ? '0 5 * * *'      // 8:00 AM MSK daily
+  : '*/5 * * * *';   // Every 5 minutes for testing
+```
+
+**Why 5 minutes in dev?**
+Full sync cycle takes ~4 minutes for 43 stores. This prevents job overlap (concurrent execution protection is built-in).
+
+### Store Filtering
+
+Only **active** stores are synced. This filter was added to reduce load:
+
+**Source:** [src/db/helpers.ts:370-376](../src/db/helpers.ts#L370-L376)
+
+```typescript
+export async function getAllStores(): Promise<Store[]> {
+  // Only return active stores for CRON jobs
+  const result = await query<Store>(
+    "SELECT * FROM stores WHERE status = 'active' ORDER BY name"
+  );
+  return result.rows;
+}
+```
+
+**Impact:** Reduced from 49 → 43 stores (-12% load reduction)
+
+---
+
+## How CRON Auto-Start Works
+
+### 1. Next.js Instrumentation Hook
+
+When the Next.js server starts, it automatically runs [instrumentation.ts](../instrumentation.ts):
+
+```typescript
+export async function register() {
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    console.log('[INSTRUMENTATION] 🚀 Server starting, initializing cron jobs...');
+
+    const { initializeServer } = await import('./src/lib/init-server');
+    initializeServer();
+
+    console.log('[INSTRUMENTATION] ✅ Cron jobs initialized successfully');
+  }
+}
+```
+
+### 2. Server Initialization
+
+[src/lib/init-server.ts](../src/lib/init-server.ts) runs once per server start:
+
+```typescript
+export function initializeServer() {
+  if (initialized) {
+    console.log('[INIT] ⏭️  Server already initialized, skipping...');
+    return;
+  }
+
+  console.log('[INIT] 🚀 Initializing server...');
+
+  // Start cron jobs
+  startDailyReviewSync();
+
+  initialized = true;
+  console.log('[INIT] ✅ Server initialized successfully');
+}
+```
+
+### 3. CRON Job Registration
+
+[src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) registers the job with `node-cron`:
+
+```typescript
+export function startDailyReviewSync() {
+  const job = cron.schedule('0 5 * * *', async () => {
+    // Job logic here
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Daily review sync job started successfully');
+
+  return job;
+}
+```
+
+---
+
+## Deployment Impact
+
+### Does CRON Auto-Start After Deployment?
+
+**YES.** When you deploy:
+
+```bash
+# Deploy with update-app.sh
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+  "cd /var/www/wb-reputation && bash deploy/update-app.sh"
+```
+
+**What Happens:**
+1. `pm2 reload wb-reputation` → restarts Node.js processes
+2. Next.js server restarts
+3. `instrumentation.ts` runs automatically
+4. CRON jobs initialize
+5. Jobs wait for scheduled time (8:00 AM MSK)
+
+**No manual intervention required!**
+
+---
+
+## Concurrent Execution Protection
+
+CRON jobs have built-in protection against overlapping runs:
+
+```typescript
+const runningJobs: { [jobName: string]: boolean } = {};
+
+cron.schedule('...', async () => {
+  const jobName = 'daily-review-sync';
+
+  // Prevent concurrent runs
+  if (runningJobs[jobName]) {
+    console.log('[CRON] ⚠️  Job already running, skipping this trigger');
+    return;
+  }
+
+  runningJobs[jobName] = true;
+  try {
+    // ... job logic ...
+  } finally {
+    runningJobs[jobName] = false;
+  }
+});
+```
+
+**Why This Matters:**
+- Dev mode runs every 5 minutes
+- Full sync takes ~4 minutes
+- Protection prevents 2 jobs running simultaneously
+
+---
+
+## Monitoring CRON Jobs
+
+### Check CRON Initialization (Production)
+
+```bash
+# SSH into server
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+
+# View PM2 logs (look for [INSTRUMENTATION] and [INIT] logs)
+pm2 logs wb-reputation | grep -E "\[INSTRUMENTATION\]|\[INIT\]|\[CRON\]"
+```
+
+**Expected Output:**
+```
+[INSTRUMENTATION] 🚀 Server starting, initializing cron jobs...
+[INIT] 🚀 Initializing server at 2026-01-15T10:30:00.000Z
+[INIT] Environment: production
+[INIT] Starting cron jobs...
+[CRON] Scheduling daily review sync: 0 5 * * *
+[CRON] Mode: PRODUCTION (8:00 AM MSK)
+[CRON] ✅ Daily review sync job started successfully
+[INIT] ✅ Server initialized successfully (45ms)
+[INSTRUMENTATION] ✅ Cron jobs initialized successfully
+```
+
+### Monitor CRON Execution
+
+```bash
+# Watch logs in real-time
+pm2 logs wb-reputation
+
+# Filter only CRON logs
+pm2 logs wb-reputation | grep "\[CRON\]"
+
+# Check specific date/time
+pm2 logs wb-reputation --lines 1000 | grep "2026-01-15T05:00"
+```
+
+### Check Job Status (API Endpoint)
+
+**Endpoint:** `GET /api/cron/status`
+
+```bash
+curl -X GET "http://158.160.217.236/api/cron/status" \
+  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+```
+
+**Response:**
+```json
+{
+  "totalJobs": 1,
+  "runningJobs": [],
+  "allJobs": [
+    {
+      "name": "daily-review-sync",
+      "running": true
+    }
+  ]
+}
+```
+
+---
+
+## Manual CRON Trigger (Development)
+
+For testing, you can trigger sync manually:
+
+```bash
+# Incremental sync for one store
+curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=incremental" \
+  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+
+# Full sync for one store (use cautiously)
+curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=full" \
+  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+```
+
+**Note:** There's no dedicated "trigger all stores now" endpoint. CRON job handles this automatically.
+
+---
+
+## Troubleshooting
+
+### CRON Jobs Not Starting
+
+**Symptom:** No `[CRON]` logs after server restart
+
+**Check:**
+```bash
+# 1. Verify instrumentation.ts is being executed
+pm2 logs wb-reputation | grep "INSTRUMENTATION"
+
+# 2. Check for errors in initialization
+pm2 logs wb-reputation --err | grep -E "INIT|CRON"
+
+# 3. Verify Next.js config allows instrumentation
+cat next.config.mjs | grep experimental
+```
+
+**Expected in `next.config.mjs`:**
+```javascript
+const nextConfig = {
+  experimental: {
+    instrumentationHook: true,  // Must be true
+  },
+};
+```
+
+### CRON Job Running But Failing
+
+**Symptom:** `[CRON] ❌ Failed to sync reviews`
+
+**Common Causes:**
+1. **Database connection issues**
+   ```bash
+   # Test DB connection
+   PGPASSWORD="$POSTGRES_PASSWORD" psql \
+     -h rc1a-xxx.mdb.yandexcloud.net \
+     -p 6432 \
+     -U admin_R5 \
+     -d wb_reputation \
+     -c "SELECT COUNT(*) FROM stores WHERE status='active';"
+   ```
+
+2. **API authentication issues**
+   ```bash
+   # Verify API key in environment
+   pm2 env 0 | grep API_KEY
+
+   # Test API endpoint
+   curl -X GET "http://localhost:3000/api/stores" \
+     -H "Authorization: Bearer $API_KEY"
+   ```
+
+3. **WB API rate limiting**
+   - Check logs for HTTP 429 errors
+   - Increase delay between stores (currently 2 seconds)
+   - Modify in [src/lib/cron-jobs.ts:92](../src/lib/cron-jobs.ts#L92)
+
+### Job Runs But No Reviews Synced
+
+**Check:**
+1. Store has `status = 'active'` in database
+2. Store has valid WB API tokens
+3. Store actually has new reviews on Wildberries
+
+```sql
+-- Check store configuration
+SELECT id, name, status, total_reviews, last_review_sync_at
+FROM stores
+WHERE status = 'active';
+```
+
+---
+
+## Adding New CRON Jobs
+
+### Example: Daily Chat Sync
+
+**1. Add job function in `src/lib/cron-jobs.ts`:**
+
+```typescript
+export function startDailyChatSync() {
+  const cronSchedule = process.env.NODE_ENV === 'production'
+    ? '0 6 * * *'      // 9:00 AM MSK daily (1 hour after reviews)
+    : '*/10 * * * *';  // Every 10 minutes for testing
+
+  console.log(`[CRON] Scheduling daily chat sync: ${cronSchedule}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'daily-chat-sync';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  Job ${jobName} already running, skipping`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+    try {
+      console.log('[CRON] 🚀 Starting daily chat sync');
+
+      const stores = await dbHelpers.getAllStores();
+
+      for (const store of stores) {
+        // Call chat sync API
+        await fetch(`${baseUrl}/api/stores/${store.id}/dialogues/update`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          },
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      console.log('[CRON] ✅ Daily chat sync completed');
+    } catch (error) {
+      console.error('[CRON] ❌ Chat sync failed:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Daily chat sync job started');
+
+  return job;
+}
+```
+
+**2. Register in `src/lib/init-server.ts`:**
+
+```typescript
+import { startDailyReviewSync, startDailyChatSync } from './cron-jobs';
+
+export function initializeServer() {
+  // ... existing code ...
+
+  console.log('[INIT] Starting cron jobs...');
+  startDailyReviewSync();
+  startDailyChatSync();  // Add new job
+
+  // ... rest of code ...
+}
+```
+
+**3. Deploy and verify:**
+
+```bash
+# Deploy to production
+bash deploy/update-app.sh
+
+# Check logs for new job initialization
+pm2 logs wb-reputation | grep "chat sync"
+```
+
+---
+
+## CRON Schedule Reference
+
+### Syntax
+
+```
+* * * * *
+┬ ┬ ┬ ┬ ┬
+│ │ │ │ │
+│ │ │ │ └─── day of week (0 - 7) (Sunday=0 or 7)
+│ │ │ └───── month (1 - 12)
+│ │ └─────── day of month (1 - 31)
+│ └───────── hour (0 - 23)
+└─────────── minute (0 - 59)
+```
+
+### Common Patterns
+
+| Schedule | Description |
+|----------|-------------|
+| `0 5 * * *` | Daily at 8:00 AM MSK (5:00 UTC) |
+| `0 6 * * *` | Daily at 9:00 AM MSK (6:00 UTC) |
+| `*/5 * * * *` | Every 5 minutes |
+| `*/30 * * * *` | Every 30 minutes |
+| `0 */2 * * *` | Every 2 hours |
+| `0 0 * * 0` | Every Sunday at midnight |
+| `0 0 1 * *` | First day of every month |
+
+### Timezone Handling
+
+All schedules use **UTC timezone** (configured in `node-cron`).
+
+**MSK (Moscow Time) = UTC+3**
+
+| MSK Time | UTC Time | CRON Schedule |
+|----------|----------|---------------|
+| 8:00 AM | 5:00 AM | `0 5 * * *` |
+| 9:00 AM | 6:00 AM | `0 6 * * *` |
+| 12:00 PM | 9:00 AM | `0 9 * * *` |
+
+---
+
+## Performance Considerations
+
+### Current Load (Production)
+
+- **43 active stores**
+- **~2 seconds per store** (API call + delay)
+- **Total duration:** ~86 seconds (~1.5 minutes)
+- **Runs once daily at 8:00 AM MSK**
+
+### Scaling Considerations
+
+If you add more stores or jobs:
+
+1. **Increase delay between stores** (avoid WB API rate limits)
+2. **Stagger job schedules** (don't run all at same time)
+3. **Monitor PM2 memory usage** (`pm2 monit`)
+4. **Consider queue system** (for 100+ stores, use Bull/BullMQ)
+
+### Resource Usage
+
+```bash
+# Check memory/CPU during CRON execution
+pm2 monit
+
+# Check process stats
+pm2 show wb-reputation
+```
+
+---
+
+## Quick Reference
+
+| Task | Command |
+|------|---------|
+| Check CRON initialization | `pm2 logs wb-reputation \| grep CRON` |
+| View CRON execution logs | `pm2 logs wb-reputation \| grep "daily review sync"` |
+| Restart server (re-init CRON) | `pm2 reload wb-reputation` |
+| Test job manually | Trigger API endpoint directly |
+| Check job schedule | View `src/lib/cron-jobs.ts:54-56` |
+
+---
+
+## Summary
+
+**Architecture:** Single unified CRON task (8:00 AM MSK) handles both review sync AND complaint generation
+
+**Key Improvements (2026-01-16):**
+1. **100% Automation** - Complaints generated immediately after sync (zero delay)
+2. **Template Optimization** - 30-40% cost savings on empty reviews
+3. **Active Products Filter** - Only generates complaints for active products
+4. **Enhanced Logging** - Full visibility into AI inputs, outputs, template usage
+
+**Files Modified:**
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) - Integrated complaint generation into daily sync
+- [src/lib/init-server.ts](../src/lib/init-server.ts) - Removed separate 9:00 task
+- [src/db/helpers.ts](../src/db/helpers.ts) - Added active products filter
+- [src/ai/utils/complaint-templates.ts](../src/ai/utils/complaint-templates.ts) - Template system
+- [src/ai/flows/generate-review-complaint-flow.ts](../src/ai/flows/generate-review-complaint-flow.ts) - Template integration + logging
+
+---
+
+**Last Updated:** 2026-01-16
+**Production CRON:** 8:00 AM MSK daily (0 5 * * * UTC) - Review Sync + Complaint Generation
+**Active Stores:** 43
+**Estimated Daily Cost Savings:** 30-40% via template optimization

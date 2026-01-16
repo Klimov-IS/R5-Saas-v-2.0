@@ -15,6 +15,10 @@ import {
   buildOptimizedSystemPrompt,
   calculatePromptSavings,
 } from '../prompts/optimized-review-complaint-prompt';
+import {
+  canUseTemplate,
+  getTemplateComplaint,
+} from '../utils/complaint-templates';
 
 const GenerateReviewComplaintInputSchema = z.object({
     productName: z.string().describe('The name of the product being reviewed.'),
@@ -47,6 +51,43 @@ export type GenerateReviewComplaintOutput = z.infer<typeof GenerateReviewComplai
 
 
 export async function generateReviewComplaint(input: GenerateReviewComplaintInput): Promise<GenerateReviewComplaintOutput> {
+    const startTime = Date.now();
+
+    // Check if we can use template instead of AI (empty review with low rating)
+    if (canUseTemplate(input.reviewText, input.reviewPros, input.reviewCons, input.reviewRating)) {
+        const template = getTemplateComplaint();
+        const durationMs = Date.now() - startTime;
+
+        console.log('[TEMPLATE] Using template for empty review (zero AI cost)');
+        console.log(`[TEMPLATE] Review ${input.reviewId}: rating=${input.reviewRating}, text=empty, pros=empty, cons=empty`);
+
+        return {
+            complaintText: template.complaintText,
+            reasonId: template.reasonId,
+            reasonName: template.reasonName,
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            costUsd: 0,
+            durationMs,
+        };
+    }
+
+    // Continue with AI generation for non-empty reviews
+    // Log input data for analytics and debugging
+    console.log('[AI INPUT] Generating complaint for review:', {
+        reviewId: input.reviewId,
+        storeId: input.storeId,
+        rating: input.reviewRating,
+        hasText: !!input.reviewText?.trim(),
+        hasPros: !!input.reviewPros?.trim(),
+        hasCons: !!input.reviewCons?.trim(),
+        textLength: input.reviewText?.length || 0,
+        prosLength: input.reviewPros?.length || 0,
+        consLength: input.reviewCons?.length || 0,
+        characteristics: input.productCharacteristics?.substring(0, 100) + '...',
+    });
+
     let userContent = `**Контекст:**
 - **Товар:** ${input.productName} (Артикул: ${input.productVendorCode})
 - **Характеристики товара:** ${input.productCharacteristics || 'N/A'}
@@ -79,8 +120,6 @@ export async function generateReviewComplaint(input: GenerateReviewComplaintInpu
         console.log(`[AI OPTIMIZATION] Prompt token savings: ${savings.savedPercent}% (${savings.saved} chars)`);
     }
 
-    const startTime = Date.now();
-
     const complaintText = await runChatCompletion({
         operation: 'generate-review-complaint',
         systemPrompt: optimizedSystemPrompt,
@@ -92,6 +131,9 @@ export async function generateReviewComplaint(input: GenerateReviewComplaintInpu
     });
 
     const durationMs = Date.now() - startTime;
+
+    // Log raw AI response for debugging
+    console.log('[AI RAW RESPONSE] Review', input.reviewId, ':', complaintText.substring(0, 200) + '...');
 
     // Parse JSON response from AI to extract reason_id, reason_name, complaintText
     let parsedResponse: { reasonId: number; reasonName: string; complaintText: string };

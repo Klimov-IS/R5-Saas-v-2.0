@@ -1,6 +1,6 @@
 /**
  * Server initialization
- * This file runs once when the Next.js server starts
+ * This file runs once when the Next.js server starts (via instrumentation.ts)
  */
 
 import { startDailyReviewSync } from './cron-jobs';
@@ -9,20 +9,33 @@ let initialized = false;
 
 export function initializeServer() {
   if (initialized) {
-    console.log('[INIT] Server already initialized, skipping...');
+    console.log('[INIT] ⏭️  Server already initialized, skipping...');
     return;
   }
 
-  console.log('[INIT] 🚀 Initializing server...');
+  const startTime = Date.now();
+  console.log('[INIT] 🚀 Initializing server at', new Date().toISOString());
+  console.log('[INIT] Environment:', process.env.NODE_ENV || 'development');
 
   try {
-    // Start cron jobs
-    startDailyReviewSync();
+    // Start cron jobs (review sync + auto-complaint generation in one task)
+    console.log('[INIT] Starting cron jobs...');
+    startDailyReviewSync(); // Includes auto-complaint generation for 100% automation
 
     initialized = true;
-    console.log('[INIT] ✅ Server initialized successfully');
+    const duration = Date.now() - startTime;
+    console.log(`[INIT] ✅ Server initialized successfully (${duration}ms)`);
   } catch (error) {
     console.error('[INIT] ❌ Failed to initialize server:', error);
-    throw error;
+    console.error('[INIT] Stack:', error instanceof Error ? error.stack : 'No stack trace');
+    // Don't throw - let server start even if cron fails
+    // throw error;
   }
+}
+
+/**
+ * Get initialization status
+ */
+export function isInitialized(): boolean {
+  return initialized;
 }
