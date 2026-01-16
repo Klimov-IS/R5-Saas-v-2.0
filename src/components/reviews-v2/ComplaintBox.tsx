@@ -1,15 +1,15 @@
 /**
- * ComplaintBox Component
- * Display and manage complaints (draft/sent/approved/rejected states)
+ * ComplaintBox Component - Reviews Redesign Prototype
+ * Matches reviews-redesign.html structure (lines 850-868)
+ * Simple, clean complaint display with .complaint-box wrapper
  */
 
 import React, { useState } from 'react';
-import { AlertTriangle, Edit2, RefreshCw, Send, CheckCircle } from 'lucide-react';
+import { Edit2, RefreshCw, Send } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Review } from '@/types/reviews';
-import { StatusBadge } from './StatusBadge';
 
 type Props = {
   review: Review;
@@ -117,6 +117,13 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
         throw new Error(error.error || 'Ошибка сохранения');
       }
 
+      const result = await response.json();
+
+      // Update local state with saved value
+      if (result.data && result.data.complaint_text) {
+        setComplaintText(extractComplaintText(result.data.complaint_text));
+      }
+
       toast.success('Черновик сохранен', {
         id: saveToast,
       });
@@ -170,326 +177,224 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
     }
   };
 
-  // Handle different complaint states
-  const renderComplaintContent = () => {
-    // No complaint generated yet
-    if (review.complaint_status === 'not_sent' && !review.complaint_text) {
-      return (
-        <div className="no-complaint">
-          <p className="no-complaint-text">
-            Жалоба еще не сгенерирована. Система автоматически генерирует жалобы на негативные отзывы (1-3★) каждый день в 6-8 утра МСК для активных товаров.
-          </p>
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={handleGenerate}
-            disabled={isGenerating}
-          >
-            <RefreshCw style={{ width: '14px', height: '14px' }} className={isGenerating ? 'spinning' : ''} />
-            {isGenerating ? 'Генерация...' : 'Сгенерировать сейчас'}
-          </button>
-        </div>
-      );
-    }
-
-    // Draft complaint
-    if (review.complaint_status === 'draft' || (review.complaint_text && !review.complaint_sent_date)) {
-      return (
-        <div className="complaint-draft">
-          <div className="complaint-header">
-            <AlertTriangle className="complaint-icon" style={{ width: '18px', height: '18px', color: 'var(--color-warning)' }} />
-            <span className="complaint-title">Черновик жалобы (AI)</span>
-            <StatusBadge type="complaint_status" status="draft" />
-          </div>
-
-          {isEditing ? (
-            <>
-              <textarea
-                className="complaint-textarea"
-                value={complaintText}
-                onChange={(e) => setComplaintText(e.target.value)}
-                rows={6}
-              />
-              <div className="complaint-actions">
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setComplaintText(extractComplaintText(review.complaint_text));
-                  }}
-                  disabled={isSaving}
-                >
-                  Отмена
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                >
-                  <CheckCircle style={{ width: '14px', height: '14px' }} />
-                  {isSaving ? 'Сохранение...' : 'Сохранить'}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
-              {review.complaint_generated_at && (
-                <div className="complaint-meta">
-                  Сгенерирована: {formatDate(review.complaint_generated_at)}
-                </div>
-              )}
-              <div className="complaint-actions">
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setIsEditing(true)}
-                  disabled={isGenerating}
-                >
-                  <Edit2 style={{ width: '14px', height: '14px' }} />
-                  Редактировать
-                </button>
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={handleRegenerate}
-                  disabled={isGenerating}
-                >
-                  <RefreshCw style={{ width: '14px', height: '14px' }} className={isGenerating ? 'spinning' : ''} />
-                  {isGenerating ? 'Генерация...' : 'Перегенерировать'}
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={handleMarkAsSent}
-                  disabled={isMarking}
-                >
-                  <Send style={{ width: '14px', height: '14px' }} />
-                  {isMarking ? 'Отметка...' : 'Отметить отправленной'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      );
-    }
-
-    // Sent complaint
-    if (review.complaint_status === 'sent' || review.complaint_sent_date) {
-      return (
-        <div className="complaint-status-box sent">
-          <div className="complaint-header">
-            <Send className="complaint-icon" style={{ width: '18px', height: '18px' }} />
-            <span className="complaint-title">Жалоба отправлена</span>
-            <StatusBadge type="complaint_status" status="sent" />
-          </div>
-          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
-          <div className="complaint-meta">
-            Отправлена: {formatDate(review.complaint_sent_date)}
-          </div>
-        </div>
-      );
-    }
-
-    // Approved complaint
-    if (review.complaint_status === 'approved') {
-      return (
-        <div className="complaint-status-box approved">
-          <div className="complaint-header">
-            <CheckCircle className="complaint-icon" style={{ width: '18px', height: '18px', color: 'var(--color-success)' }} />
-            <span className="complaint-title">Жалоба одобрена WB</span>
-            <StatusBadge type="complaint_status" status="approved" />
-          </div>
-          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
-          <div className="complaint-success">
-            ✅ Wildberries рассмотрел вашу жалобу и принял меры согласно правилам площадки.
-          </div>
-        </div>
-      );
-    }
-
-    // Rejected complaint
-    if (review.complaint_status === 'rejected') {
-      return (
-        <div className="complaint-status-box rejected">
-          <div className="complaint-header">
-            <AlertTriangle className="complaint-icon" style={{ width: '18px', height: '18px', color: 'var(--color-error)' }} />
-            <span className="complaint-title">Жалоба отклонена WB</span>
-            <StatusBadge type="complaint_status" status="rejected" />
-          </div>
-          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
-          <div className="complaint-error">
-            ❌ Wildberries отклонил жалобу. Отзыв не нарушает правила площадки.
-          </div>
-        </div>
-      );
-    }
-
-    // Pending complaint
-    if (review.complaint_status === 'pending') {
-      return (
-        <div className="complaint-status-box pending">
-          <div className="complaint-header">
-            <RefreshCw className="complaint-icon" style={{ width: '18px', height: '18px', color: 'var(--color-warning)' }} />
-            <span className="complaint-title">Жалоба на рассмотрении</span>
-            <StatusBadge type="complaint_status" status="pending" />
-          </div>
-          <div className="complaint-text">{extractComplaintText(review.complaint_text)}</div>
-          <div className="complaint-pending">
-            ⏳ Wildberries рассматривает вашу жалобу. Обычно это занимает 1-3 дня.
-          </div>
-        </div>
-      );
-    }
-
-    return null;
-  };
+  // Determine if complaint exists
+  const hasComplaint = review.complaint_text && review.complaint_text.trim().length > 0;
 
   return (
     <>
-      {renderComplaintContent()}
+      <div className="complaint-box">
+        <div className="complaint-header">⚠️ Жалоба на отзыв</div>
+
+        {!hasComplaint ? (
+          /* NO COMPLAINT YET */
+          <>
+            <div className="no-complaint-text">
+              Жалоба еще не сгенерирована. Система автоматически генерирует жалобы на негативные отзывы (1-3★) каждый день в 6-8 утра МСК для активных товаров.
+            </div>
+            <button
+              className="btn btn-primary"
+              onClick={handleGenerate}
+              disabled={isGenerating}
+            >
+              <RefreshCw style={{ width: '14px', height: '14px' }} className={isGenerating ? 'spinning' : ''} />
+              {isGenerating ? 'Генерация...' : 'Сгенерировать сейчас'}
+            </button>
+          </>
+        ) : (
+          /* COMPLAINT EXISTS */
+          <>
+            {/* Category */}
+            {review.complaint_category && (
+              <div className="complaint-field">
+                <div className="field-label">Категория жалобы</div>
+                <div className="meta-value">{review.complaint_category}</div>
+              </div>
+            )}
+
+            {/* Complaint Text */}
+            <div className="complaint-field">
+              <div className="field-label">Текст жалобы</div>
+              {isEditing ? (
+                <textarea
+                  className="complaint-textarea"
+                  value={complaintText}
+                  onChange={(e) => setComplaintText(e.target.value)}
+                  rows={8}
+                />
+              ) : (
+                <div className="complaint-text-box">
+                  {complaintText}
+                </div>
+              )}
+              {review.complaint_generated_at && !isEditing && (
+                <div className="complaint-timestamp">
+                  Сгенерировано: {formatDate(review.complaint_generated_at)}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="complaint-actions">
+              {isEditing ? (
+                <>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setComplaintText(extractComplaintText(review.complaint_text));
+                    }}
+                    disabled={isSaving}
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className="btn btn-outline"
+                    onClick={() => setIsEditing(true)}
+                    disabled={isGenerating}
+                  >
+                    <Edit2 style={{ width: '14px', height: '14px' }} />
+                    Редактировать
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    onClick={handleGenerate}
+                    disabled={isGenerating}
+                  >
+                    <RefreshCw style={{ width: '14px', height: '14px' }} className={isGenerating ? 'spinning' : ''} />
+                    {isGenerating ? 'Генерация...' : 'Перегенерировать'}
+                  </button>
+                  {!review.complaint_sent_date && (
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleMarkAsSent}
+                      disabled={isMarking}
+                    >
+                      <Send style={{ width: '14px', height: '14px' }} />
+                      {isMarking ? 'Отметка...' : 'Отметить отправленной'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
       <style jsx>{`
-        .no-complaint {
-          background: var(--color-border-light);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-md);
-          padding: var(--spacing-lg);
-          text-align: center;
-        }
-
-        .no-complaint-text {
-          font-size: var(--font-size-sm);
-          color: var(--color-muted);
-          margin-bottom: var(--spacing-md);
-          line-height: 1.5;
-        }
-
-        .complaint-draft {
-          background: #fffbeb;
-          border: 1px solid #fbbf24;
-          border-left: 4px solid var(--color-warning);
-          border-radius: var(--radius-md);
-          padding: var(--spacing-lg);
-        }
-
-        .complaint-status-box {
+        /* Complaint Box - matches reviews-redesign.html prototype */
+        .complaint-box {
           background: white;
-          border-radius: var(--radius-md);
-          padding: var(--spacing-lg);
-          border-left: 4px solid;
-        }
-
-        .complaint-status-box.sent {
-          border-color: #3b82f6;
-          background: #f0f9ff;
-        }
-
-        .complaint-status-box.approved {
-          border-color: var(--color-success);
-          background: #f0fdf4;
-        }
-
-        .complaint-status-box.rejected {
-          border-color: var(--color-error);
-          background: #fef2f2;
-        }
-
-        .complaint-status-box.pending {
-          border-color: var(--color-warning);
-          background: #fffbeb;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 24px;
         }
 
         .complaint-header {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-sm);
-          margin-bottom: var(--spacing-md);
-        }
-
-        .complaint-icon {
-          color: var(--color-warning);
-        }
-
-        .complaint-title {
-          font-size: var(--font-size-sm);
+          font-size: 12px;
           font-weight: 600;
-          color: var(--color-foreground);
-          flex: 1;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 16px;
         }
 
-        .complaint-text {
-          background: white;
-          border: 1px solid #fbbf24;
-          border-radius: var(--radius-base);
-          padding: var(--spacing-md);
-          font-size: var(--font-size-sm);
-          line-height: 1.5;
-          color: #78350f;
-          margin-bottom: var(--spacing-md);
+        /* No Complaint State */
+        .no-complaint-text {
+          font-size: 14px;
+          color: #64748b;
+          margin-bottom: 20px;
+          line-height: 1.6;
+          text-align: center;
+          padding: 16px;
         }
 
+        /* Complaint Fields */
+        .complaint-field {
+          margin-bottom: 16px;
+        }
+
+        .field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #64748b;
+          margin-bottom: 6px;
+        }
+
+        .meta-value {
+          font-size: 13px;
+          color: #1e293b;
+          font-weight: 500;
+        }
+
+        /* Complaint Text Box - светло-серый фон с оранжевым левым бордером */
+        .complaint-text-box {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-left: 4px solid #f59e0b;
+          border-radius: 8px;
+          padding: 16px;
+          font-size: 14px;
+          line-height: 1.6;
+          color: #334155;
+          white-space: pre-wrap;
+        }
+
+        /* Textarea for editing */
         .complaint-textarea {
           width: 100%;
-          padding: var(--spacing-md);
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-base);
-          font-size: var(--font-size-sm);
+          padding: 12px;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          font-size: 14px;
           font-family: inherit;
           line-height: 1.5;
           resize: vertical;
-          margin-bottom: var(--spacing-md);
+          min-height: 150px;
         }
 
         .complaint-textarea:focus {
           outline: none;
-          border-color: var(--color-primary);
+          border-color: #3b82f6;
           box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
-        .complaint-meta {
-          font-size: var(--font-size-xs);
-          color: var(--color-muted);
-          margin-bottom: var(--spacing-md);
+        /* Timestamp */
+        .complaint-timestamp {
+          font-size: 11px;
+          color: #94a3b8;
+          margin-top: 8px;
         }
 
+        /* Actions */
         .complaint-actions {
           display: flex;
-          gap: var(--spacing-sm);
+          gap: 8px;
           flex-wrap: wrap;
+          margin-top: 16px;
         }
 
-        .complaint-success,
-        .complaint-error,
-        .complaint-pending {
-          font-size: var(--font-size-sm);
-          padding: var(--spacing-md);
-          border-radius: var(--radius-base);
-          margin-top: var(--spacing-md);
-        }
-
-        .complaint-success {
-          background: #d1fae5;
-          color: #065f46;
-        }
-
-        .complaint-error {
-          background: #fee2e2;
-          color: #991b1b;
-        }
-
-        .complaint-pending {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
+        /* Buttons */
         .btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: var(--spacing-xs);
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: var(--radius-md);
-          font-size: var(--font-size-sm);
-          font-weight: 600;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 500;
           cursor: pointer;
-          transition: all 0.2s ease;
+          transition: all 0.15s ease;
           border: none;
           outline: none;
         }
@@ -499,35 +404,34 @@ export const ComplaintBox: React.FC<Props> = ({ review }) => {
           cursor: not-allowed;
         }
 
-        .btn-sm {
-          padding: var(--spacing-xs) var(--spacing-sm);
-          font-size: var(--font-size-xs);
+        .btn:not(:disabled):hover {
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
         .btn-primary {
-          background-color: var(--color-primary);
+          background: #3b82f6;
           color: white;
-          box-shadow: var(--shadow-sm);
+          border: 1px solid #3b82f6;
         }
 
         .btn-primary:hover:not(:disabled) {
-          background-color: var(--color-primary-hover);
-          box-shadow: var(--shadow-md);
-          transform: translateY(-1px);
+          background: #2563eb;
+          border-color: #2563eb;
         }
 
         .btn-outline {
-          background-color: white;
-          color: var(--color-foreground);
-          border: 1px solid var(--color-border);
-          box-shadow: var(--shadow-sm);
+          background: white;
+          color: #0f172a;
+          border: 1px solid #e2e8f0;
         }
 
         .btn-outline:hover:not(:disabled) {
-          background-color: var(--color-border-light);
-          box-shadow: var(--shadow-md);
+          background: #f8fafc;
+          border-color: #cbd5e1;
         }
 
+        /* Spinning animation for loading icons */
         .spinning {
           animation: spin 1s linear infinite;
         }

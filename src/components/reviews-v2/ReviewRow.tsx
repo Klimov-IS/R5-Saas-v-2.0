@@ -60,7 +60,15 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
         <td className="product-cell">
           <div className="product-info">
             <div className="product-image">
-              {/* Placeholder for product image */}
+              {review.product?.photo_links?.[0] ? (
+                <img
+                  src={review.product.photo_links[0]}
+                  alt={review.product.name}
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              ) : null}
             </div>
             <div className="product-details">
               <div className="product-name">
@@ -82,7 +90,10 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
               ))}
             </div>
             <span className="author-badge">{review.author}</span>
-            <span className="review-date">{formatDate(review.date)}</span>
+            <span className="review-date">
+              Дата покупки: {review.purchase_date ? formatDate(review.purchase_date) : 'Не указана'}
+            </span>
+            <span className="author-badge review-id">ID: {review.id}</span>
           </div>
           <div className="review-text">{review.text}</div>
         </td>
@@ -90,9 +101,18 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
         {/* Status Badges (3 columns) */}
         <td>
           <div className="status-badges">
-            <StatusBadge type="review_status" status={review.review_status_wb} />
-            <StatusBadge type="product_status" status={review.product_status_by_review} />
+            {/* Complaint status always visible (first) */}
             <StatusBadge type="complaint_status" status={review.complaint_status} />
+
+            {/* Product status - hide if unknown */}
+            {review.product_status_by_review !== 'unknown' && (
+              <StatusBadge type="product_status" status={review.product_status_by_review} />
+            )}
+
+            {/* Review status - hide if unknown */}
+            {review.review_status_wb !== 'unknown' && (
+              <StatusBadge type="review_status" status={review.review_status_wb} />
+            )}
           </div>
         </td>
 
@@ -167,6 +187,14 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
           background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
           border-radius: var(--radius-base);
           flex-shrink: 0;
+          overflow: hidden;
+        }
+
+        .product-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
         }
 
         .product-details {
@@ -225,6 +253,11 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
         .review-date {
           font-size: 11px;
           color: var(--color-muted);
+        }
+
+        .review-id {
+          font-family: 'Monaco', 'Courier New', monospace;
+          font-size: 10px;
         }
 
         .review-text {

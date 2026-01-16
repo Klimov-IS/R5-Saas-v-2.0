@@ -30,8 +30,8 @@ function getPoolConfig() {
 
     return {
       connectionString,
-      max: 50, // Increased from 20 for better concurrency
-      min: 10, // Keep minimum connections ready
+      max: 20, // Reduced from 50 to avoid pool exhaustion
+      min: 5,  // Reduced from 10
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
       ssl: {
@@ -49,8 +49,8 @@ function getPoolConfig() {
     database: process.env.POSTGRES_DB!,
     user: process.env.POSTGRES_USER!,
     password: process.env.POSTGRES_PASSWORD!,
-    max: 50, // Increased from 20 for better concurrency
-    min: 10, // Keep minimum connections ready
+    max: 20, // Reduced from 50 to avoid pool exhaustion
+    min: 5,  // Reduced from 10
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     ssl: {
@@ -62,27 +62,36 @@ function getPoolConfig() {
 }
 
 // Singleton pool instance
-let pool: Pool | null = null;
+// IMPORTANT: Use globalThis in development to survive HMR (Hot Module Replacement)
+// In Next.js dev mode, modules are reloaded frequently, which would create new pools
+// By storing in globalThis, we ensure only ONE pool exists across HMR cycles
+const globalForPool = globalThis as unknown as {
+  pgPool: Pool | undefined;
+};
 
 /**
  * Get or create the PostgreSQL connection pool
  * @returns Pool instance
  */
 export function getPool(): Pool {
-  if (!pool) {
+  // Check if pool already exists in globalThis (survives HMR)
+  if (!globalForPool.pgPool) {
     validateEnv();
     const config = getPoolConfig();
-    pool = new Pool(config);
+    const newPool = new Pool(config);
+
+    // Store in globalThis for HMR persistence
+    globalForPool.pgPool = newPool;
 
     // Error handler for pool
-    pool.on('error', (err, client) => {
+    newPool.on('error', (err, client) => {
       console.error('Unexpected error on idle PostgreSQL client:', err);
     });
 
-    // Log pool creation
+    // Log pool creation ONLY when actually creating a new pool
     if ('connectionString' in config && config.connectionString) {
       const url = new URL(config.connectionString);
-      console.log('[PostgreSQL] Connection pool created:', {
+      console.log('[PostgreSQL] ✅ NEW Connection pool created (singleton):', {
         host: url.hostname,
         port: url.port,
         database: url.pathname.slice(1),
@@ -90,7 +99,7 @@ export function getPool(): Pool {
         max: config.max,
       });
     } else if ('host' in config) {
-      console.log('[PostgreSQL] Connection pool created:', {
+      console.log('[PostgreSQL] ✅ NEW Connection pool created (singleton):', {
         host: config.host,
         port: config.port,
         database: config.database,
@@ -100,7 +109,7 @@ export function getPool(): Pool {
     }
   }
 
-  return pool;
+  return globalForPool.pgPool;
 }
 
 /**
@@ -193,9 +202,9 @@ export async function testConnection(): Promise<boolean> {
  * Call this when shutting down the application
  */
 export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
+  if (globalForPool.pgPool) {
+    await globalForPool.pgPool.end();
+    globalForPool.pgPool = undefined;
     console.log('[PostgreSQL] Connection pool closed');
   }
 }
