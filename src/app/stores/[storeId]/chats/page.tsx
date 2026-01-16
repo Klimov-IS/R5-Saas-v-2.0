@@ -2,8 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, Bot, MessageCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Bot, MessageCircle, ChevronLeft, ChevronRight, Table, MessageSquare } from 'lucide-react';
 import { useParams } from 'next/navigation';
+import { MessengerView } from '@/components/chats/MessengerView';
+import { FilterPanel } from '@/components/chats/FilterPanel';
+import { useChatsStore } from '@/store/chatsStore';
+import { Toaster } from 'react-hot-toast';
 
 type Product = {
   id: string;
@@ -108,6 +112,9 @@ async function fetchChatsData(
 export default function ChatsPage() {
   const params = useParams();
   const storeId = params.storeId as string;
+
+  // View Mode from Zustand store
+  const { viewMode, setViewMode } = useChatsStore();
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -394,21 +401,47 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="dashboard-section">
-      {/* Section Header with Actions */}
-      <div className="section-header-with-actions">
-        <h2 className="section-header-title">💬 Чаты магазина ({chats.length})</h2>
-        <div className="section-header-actions">
-          <button className="btn btn-outline btn-sm btn-icon" onClick={handleSync}>
-            <RefreshCw style={{ width: '16px', height: '16px' }} />
-            Обновить чаты
-          </button>
-          <button className="btn btn-primary btn-sm btn-icon" onClick={handleClassifyAll}>
-            <Bot style={{ width: '16px', height: '16px' }} />
-            Классифицировать все AI
-          </button>
+    <>
+      <Toaster position="top-right" />
+      <div className="dashboard-section">
+        {/* Section Header with Actions */}
+        <div className="section-header-with-actions">
+          <h2 className="section-header-title">💬 Чаты магазина ({chats.length})</h2>
+          <div className="section-header-actions">
+            {/* View Mode Toggle */}
+            <div className="inline-flex bg-white border border-slate-200 rounded-lg p-1 gap-1">
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === 'table'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+                onClick={() => setViewMode('table')}
+              >
+                <Table className="w-4 h-4 inline mr-1.5" />
+                Таблица
+              </button>
+              <button
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === 'messenger'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-50'
+                }`}
+                onClick={() => setViewMode('messenger')}
+              >
+                <MessageSquare className="w-4 h-4 inline mr-1.5" />
+                Мессенджер
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+
+        {/* Messenger View */}
+        {viewMode === 'messenger' && <MessengerView storeId={storeId} tagStats={tagStats} />}
+
+        {/* Table View */}
+        {viewMode === 'table' && (
+          <>
 
       {/* Tag Statistics */}
       <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -787,6 +820,9 @@ export default function ChatsPage() {
           </button>
         </div>
       )}
-    </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
