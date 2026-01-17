@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ArrowLeft, Package, Star, MessageSquare, Bot } from 'lucide-react';
+import { ArrowLeft, Package, Star, MessageSquare, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { StoreSelector } from '@/components/layout/StoreSelector';
 
 type Store = {
   id: string;
@@ -31,7 +32,7 @@ export default function StoreDetailLayout({
         });
         if (response.ok) {
           const result = await response.json();
-          setStore(result.data); // API возвращает { data: store }
+          setStore(result.data);
         }
       } catch (error) {
         console.error('Error fetching store:', error);
@@ -40,57 +41,52 @@ export default function StoreDetailLayout({
     fetchStore();
   }, [storeId]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
-
   const tabs = [
     { href: `/stores/${storeId}/products`, label: 'Товары', icon: Package },
     { href: `/stores/${storeId}/reviews`, label: 'Отзывы', icon: Star },
     { href: `/stores/${storeId}/chats`, label: 'Чаты', icon: MessageSquare },
-    { href: `/stores/${storeId}/logs`, label: 'Логи AI', icon: Bot },
+    { href: `/stores/${storeId}/logs`, label: 'AI', icon: Sparkles },
   ];
 
   return (
     <div className="dashboard-container">
-      {/* Store Header */}
-      <div className="store-header">
-        <div className="store-header-main">
-          <Link href="/">
-            <button className="btn btn-outline btn-sm btn-icon">
-              <ArrowLeft style={{ width: '16px', height: '16px' }} />
-              Все магазины
-            </button>
+      {/* NEW UNIFIED HEADER */}
+      <div className="header-unified">
+        {/* LEFT: Back Arrow + Tabs */}
+        <div className="header-left">
+          <Link href="/" className="btn-back" title="Все магазины">
+            <ArrowLeft style={{ width: '20px', height: '20px' }} />
           </Link>
-          <div className="store-header-info">
-            <h1 className="store-title">
-              {store ? `Магазин "${store.name}"` : 'Загрузка...'}
-            </h1>
-            <p className="store-meta">
-              {store ? `Добавлен: ${formatDate(store.created_at)}` : ''}
-            </p>
-          </div>
+
+          {/* Navigation Tabs */}
+          <nav className="header-tabs">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = pathname === tab.href;
+
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={`tab-item ${isActive ? 'active' : ''}`}
+                >
+                  <Icon style={{ width: '18px', height: '18px' }} />
+                  {tab.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
-      </div>
 
-      {/* Tabs Navigation */}
-      <div className="tabs-nav">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = pathname === tab.href;
-
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`tab-item ${isActive ? 'active' : ''}`}
-            >
-              <Icon style={{ width: '16px', height: '16px' }} />
-              {tab.label}
-            </Link>
-          );
-        })}
+        {/* RIGHT: Store Selector Dropdown */}
+        <div className="header-right">
+          {store && (
+            <StoreSelector
+              currentStoreId={storeId}
+              currentStoreName={store.name}
+            />
+          )}
+        </div>
       </div>
 
       {/* Main Content */}

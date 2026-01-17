@@ -506,9 +506,9 @@ body {
 
 /* Dashboard Container */
 .dashboard-container {
-  max-width: 1280px;
+  max-width: 1600px; /* OPTIMIZED: 1280px → 1600px для максимального использования экрана */
   margin: 0 auto;
-  padding: 0 var(--spacing-3xl);
+  padding: 0 20px; /* Небольшие отступы по бокам */
 }
 
 .dashboard-section {
@@ -678,4 +678,297 @@ body {
 
 .animate-shimmer {
   animation: shimmer 2s infinite;
+}
+
+/* ============================================================================
+   NEW UNIFIED HEADER DESIGN (2026-01-17)
+   ============================================================================ */
+
+/* Unified Header - все в одну линию */
+.header-unified {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xl) 0;
+  border-bottom: 2px solid var(--color-border);
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-3xl);
+}
+
+/* Левая часть: Стрелка назад (только иконка) + Табы */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md); /* OPTIMIZED: 16px → 12px для более компактной навигации */
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background-color: white;
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  box-shadow: var(--shadow-xs);
+  flex-shrink: 0;
+}
+
+.btn-back:hover {
+  background-color: var(--color-border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Табы - сразу после стрелки, слева */
+.header-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: center;
+  min-width: 0;
+}
+
+/* Updated tab-item for larger size */
+.header-unified .tab-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-xl);
+  font-size: var(--font-size-lg); /* Увеличен с 13px до 16px */
+  font-weight: 600;
+  color: var(--color-muted);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  margin-bottom: 0; /* Override old tab-item */
+}
+
+.header-unified .tab-item:hover {
+  color: var(--color-foreground);
+  background-color: var(--color-border-light);
+}
+
+.header-unified .tab-item.active {
+  color: var(--color-primary);
+  background-color: rgba(59, 130, 246, 0.08);
+  border-color: var(--color-primary);
+}
+
+/* Правая часть: Store Selector */
+.header-right {
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* ============================================================================
+   STORE SELECTOR COMPONENT
+   ============================================================================ */
+
+.store-selector {
+  position: relative;
+}
+
+.store-selector-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background-color: white;
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-xs);
+  min-width: 200px;
+  justify-content: space-between;
+}
+
+.store-selector-trigger:hover {
+  background-color: var(--color-border-light);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.store-selector-trigger.open {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.store-selector-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.store-icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.store-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chevron.rotate {
+  transform: rotate(180deg);
+}
+
+/* Dropdown Menu */
+.store-selector-dropdown {
+  position: absolute;
+  top: calc(100% + var(--spacing-sm));
+  right: 0;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  min-width: 320px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1000;
+  animation: dropdown-fade-in 0.15s ease;
+}
+
+@keyframes dropdown-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-header {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.dropdown-search {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-base);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.dropdown-search:focus {
+  border-color: var(--color-primary);
+}
+
+.dropdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dropdown-item {
+  padding: var(--spacing-md);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.dropdown-item:hover {
+  background-color: var(--color-border-light);
+}
+
+.dropdown-item.active {
+  background-color: rgba(59, 130, 246, 0.08);
+  border-left: 3px solid var(--color-primary);
+}
+
+.dropdown-item-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.dropdown-item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdown-item-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin-bottom: var(--spacing-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-item-meta {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-empty {
+  padding: var(--spacing-4xl);
+  text-align: center;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.dropdown-footer {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-border-light);
+}
+
+.btn-add-store {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-base);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-add-store:hover {
+  background-color: var(--color-primary-hover);
 }
