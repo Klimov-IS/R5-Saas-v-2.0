@@ -3,8 +3,8 @@
 import { useChatsStore } from '@/store/chatsStore';
 import type { Chat } from '@/types/chats';
 import { ChatItem } from './ChatItem';
-import { FilterPanel } from './FilterPanel';
-import { BulkActionsBar } from './BulkActionsBar';
+import { SelectAllCheckbox } from './SelectAllCheckbox';
+import { BulkActionsPanel } from './BulkActionsPanel';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -30,9 +30,25 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
     toggleSidebar,
     searchQuery,
     setSearchQuery,
+    selectedChatIds,
+    selectAllChats,
+    deselectAllChats,
+    isSelected,
   } = useChatsStore();
 
   const allChatIds = chats.map((chat) => chat.id);
+
+  // Select all checkbox state
+  const isAllSelected = allChatIds.length > 0 && allChatIds.every((id) => isSelected(id));
+  const isIndeterminate = allChatIds.some((id) => isSelected(id)) && !isAllSelected;
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      deselectAllChats();
+    } else {
+      selectAllChats(allChatIds);
+    }
+  };
 
   return (
     <div
@@ -61,9 +77,23 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
           )}
         </Button>
 
+        {/* Chat Count Header with Select All */}
+        {!isSidebarCollapsed && (
+          <div className="flex items-center gap-2 mb-3">
+            <SelectAllCheckbox
+              checked={isAllSelected}
+              indeterminate={isIndeterminate}
+              onChange={handleSelectAll}
+            />
+            <span className="text-sm font-semibold text-slate-700">
+              Чаты ({chats.length})
+            </span>
+          </div>
+        )}
+
         {/* Search */}
         {!isSidebarCollapsed && (
-          <div className="relative mb-3">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               type="text"
@@ -74,18 +104,10 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
             />
           </div>
         )}
-
-        {/* Filters Panel */}
-        {!isSidebarCollapsed && (
-          <FilterPanel storeId={storeId} tagStats={tagStats} />
-        )}
       </div>
 
-      {/* Bulk Actions Bar */}
-      {!isSidebarCollapsed && <BulkActionsBar allChatIds={allChatIds} />}
-
       {/* Chat List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto relative">
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <div className="w-8 h-8 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
@@ -104,6 +126,9 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
             />
           ))
         )}
+
+        {/* Bulk Actions Panel */}
+        {!isSidebarCollapsed && <BulkActionsPanel storeId={storeId} />}
       </div>
     </div>
   );

@@ -972,3 +972,85 @@ body {
 .btn-add-store:hover {
   background-color: var(--color-primary-hover);
 }
+
+/* ============================================================================
+   BULK ACTIONS ANIMATIONS (Added 2026-01-17)
+   ============================================================================ */
+
+/* Slide up animation for bulk actions panels */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease;
+}
+
+/* Tailwind animate-in utilities support */
+@layer utilities {
+  .animate-in {
+    animation-duration: 150ms;
+    animation-fill-mode: both;
+  }
+  
+  .fade-in-0 {
+    animation-name: fade-in;
+  }
+  
+  .zoom-in-95 {
+    animation-name: zoom-in;
+  }
+  
+  .slide-in-from-top-2 {
+    animation-name: slide-from-top;
+  }
+  
+  .slide-in-from-bottom-2 {
+    animation-name: slide-from-bottom;
+  }
+  
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes zoom-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  @keyframes slide-from-top {
+    from {
+      transform: translateY(-8px);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes slide-from-bottom {
+    from {
+      transform: translateY(8px);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+}
