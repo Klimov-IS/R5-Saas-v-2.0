@@ -21,7 +21,22 @@ const ClassifyChatTagInputSchema = z.object({
 export type ClassifyChatTagInput = z.infer<typeof ClassifyChatTagInputSchema>;
 
 const ClassifyChatTagOutputSchema = z.object({
-  tag: z.enum(['active', 'successful', 'unsuccessful', 'untagged', 'no_reply', 'completed']).describe('The classified tag for the chat.'),
+  tag: z.enum([
+    // Original 6 tags
+    'active',
+    'successful',
+    'unsuccessful',
+    'untagged',
+    'no_reply',
+    'completed',
+    // Deletion workflow tags (6 new)
+    'deletion_candidate',
+    'deletion_offered',
+    'deletion_agreed',
+    'deletion_confirmed',
+    'refund_requested',
+    'spam'
+  ]).describe('The classified tag for the chat.'),
 });
 export type ClassifyChatTagOutput = z.infer<typeof ClassifyChatTagOutputSchema>;
 
