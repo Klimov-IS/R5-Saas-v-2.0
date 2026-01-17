@@ -3,7 +3,7 @@
  * This file runs once when the Next.js server starts (via instrumentation.ts)
  */
 
-import { startDailyReviewSync } from './cron-jobs';
+import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync } from './cron-jobs';
 
 let initialized = false;
 
@@ -18,9 +18,11 @@ export function initializeServer() {
   console.log('[INIT] Environment:', process.env.NODE_ENV || 'development');
 
   try {
-    // Start cron jobs (review sync + auto-complaint generation in one task)
+    // Start cron jobs
     console.log('[INIT] Starting cron jobs...');
-    startDailyReviewSync(); // Includes auto-complaint generation for 100% automation
+    startDailyReviewSync(); // Hourly review sync + auto-complaint generation
+    startAdaptiveDialogueSync(); // Adaptive dialogue sync (15min day / 60min night)
+    startDailyProductSync(); // Daily product sync (7:00 AM MSK)
 
     initialized = true;
     const duration = Date.now() - startTime;

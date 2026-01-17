@@ -1833,6 +1833,7 @@ export async function getReviewsWithoutComplaints(
     FROM reviews r
     LEFT JOIN review_complaints rc ON rc.review_id = r.id
     INNER JOIN products p ON p.id = r.product_id
+    LEFT JOIN product_rules pr ON pr.product_id = p.id
     WHERE r.store_id = $1
       AND r.rating <= $2
       AND rc.id IS NULL`;
@@ -1842,6 +1843,19 @@ export async function getReviewsWithoutComplaints(
     sql += `
       AND p.is_active = true`;
   }
+
+  // NEW: Check product_rules to ensure complaint generation is allowed
+  // Only include reviews where:
+  // 1. submit_complaints = true for the product
+  // 2. The specific rating is allowed (complaint_rating_1/2/3/4 = true)
+  sql += `
+      AND pr.submit_complaints = true
+      AND (
+        (r.rating = 1 AND pr.complaint_rating_1 = true) OR
+        (r.rating = 2 AND pr.complaint_rating_2 = true) OR
+        (r.rating = 3 AND pr.complaint_rating_3 = true) OR
+        (r.rating = 4 AND pr.complaint_rating_4 = true)
+      )`;
 
   sql += `
     ORDER BY r.created_at DESC
