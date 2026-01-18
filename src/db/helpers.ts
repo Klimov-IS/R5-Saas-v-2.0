@@ -346,20 +346,33 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
       s.last_review_update_status, s.last_review_update_date, s.last_review_update_error,
       s.last_chat_update_status, s.last_chat_update_date, s.last_chat_update_next, s.last_chat_update_error,
       s.last_question_update_status, s.last_question_update_date, s.last_question_update_error,
-      s.total_reviews, s.total_chats, s.chat_tag_counts, s.created_at, s.updated_at,
-      (SELECT COUNT(*) FROM products WHERE store_id = s.id) as product_count
+      s.created_at, s.updated_at,
+      (SELECT COUNT(*)::int FROM products WHERE store_id = s.id) as product_count,
+      (SELECT COUNT(*)::int FROM reviews WHERE store_id = s.id) as total_reviews,
+      (SELECT COUNT(*)::int FROM chats WHERE store_id = s.id) as total_chats,
+      (SELECT jsonb_object_agg(tag, count) FROM (
+        SELECT tag, COUNT(*)::int as count FROM chats WHERE store_id = s.id GROUP BY tag
+      ) t) as chat_tag_counts
     FROM stores s
   `;
 
+  let result;
   if (ownerId) {
-    const result = await query<Store>(
+    result = await query<Store>(
       `${selectQuery} WHERE s.owner_id = $1 ORDER BY s.created_at DESC`,
       [ownerId]
     );
-    return result.rows;
+  } else {
+    result = await query<Store>(`${selectQuery} ORDER BY s.created_at DESC`);
   }
-  const result = await query<Store>(`${selectQuery} ORDER BY s.created_at DESC`);
-  return result.rows;
+
+  // Convert count fields from strings to numbers (PostgreSQL driver returns bigint as string)
+  return result.rows.map(store => ({
+    ...store,
+    product_count: typeof store.product_count === 'string' ? parseInt(store.product_count, 10) : store.product_count,
+    total_reviews: typeof store.total_reviews === 'string' ? parseInt(store.total_reviews, 10) : store.total_reviews,
+    total_chats: typeof store.total_chats === 'string' ? parseInt(store.total_chats, 10) : store.total_chats,
+  }));
 }
 
 export async function getStoreById(id: string): Promise<Store | null> {

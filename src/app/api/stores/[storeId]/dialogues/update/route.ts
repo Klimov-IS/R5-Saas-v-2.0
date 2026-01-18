@@ -246,8 +246,6 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
             last_chat_update_status: 'success',
             last_chat_update_date: new Date().toISOString(),
             last_chat_update_next: finalNext,
-            total_chats: totalChats,
-            chat_tag_counts: chatTagCounts,
         });
 
         const successMessage = `Successfully updated dialogues for store ${storeId}. Found ${activeChats.length} chats, processed ${allEvents.length} new events.`;
