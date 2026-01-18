@@ -121,9 +121,27 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             draftReply: chat.draft_reply || null,
         }));
 
+        // Get tag statistics from store
+        const store = await dbHelpers.getStoreById(storeId);
+        const tagStats = store?.chat_tag_counts || {
+            active: 0,
+            successful: 0,
+            unsuccessful: 0,
+            no_reply: 0,
+            untagged: 0,
+            completed: 0,
+            deletion_candidate: 0,
+            deletion_offered: 0,
+            deletion_agreed: 0,
+            deletion_confirmed: 0,
+            refund_requested: 0,
+            spam: 0,
+        };
+
         return NextResponse.json({
             data: responseData,
-            totalCount
+            totalCount,
+            tagStats
         }, { status: 200 });
 
     } catch (error: any) {

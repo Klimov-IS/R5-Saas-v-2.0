@@ -37,10 +37,11 @@ export default function ChatsPage() {
       const chatsData = await response.json();
       return chatsData;
     },
-    staleTime: 24 * 60 * 60 * 1000,
-    cacheTime: 60 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    // PERFORMANCE FIX: Shorter cache times for fresh data on store switch
+    staleTime: 30 * 1000,         // 30 seconds (data becomes stale quickly)
+    cacheTime: 5 * 60 * 1000,     // 5 minutes (keep in memory)
+    refetchOnWindowFocus: true,   // Refetch when user returns to tab
+    refetchOnMount: true,         // Refetch when component mounts
   });
 
   const chats = data?.data || [];
@@ -109,11 +110,6 @@ export default function ChatsPage() {
     <>
       <Toaster position="top-right" />
       <div className="dashboard-section">
-        {/* Section Header */}
-        <div className="section-header-with-actions">
-          <h2 className="section-header-title">💬 Чаты магазина ({chats.length})</h2>
-        </div>
-
         {/* Horizontal Toolbar */}
         <ChatsToolbar storeId={storeId} tagStats={tagStats} />
 

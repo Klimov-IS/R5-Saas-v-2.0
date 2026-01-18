@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/types/chats';
+import { Loader2, Check, AlertCircle } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -6,6 +7,8 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isClient = message.sender === 'client';
+  const isSeller = message.sender === 'seller';
+  const status = message.status || 'sent';
 
   // Format time
   const formatTime = (dateString: string): string => {
@@ -50,9 +53,24 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {message.text}
         </div>
 
-        {/* Timestamp */}
-        <div className="text-xs text-slate-400 mt-1">
-          {formatTime(message.createdAt)}
+        {/* Timestamp + Status (only for seller messages) */}
+        <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
+          <span>{formatTime(message.createdAt)}</span>
+
+          {/* Status indicator (only for seller messages) */}
+          {isSeller && (
+            <>
+              {status === 'sending' && (
+                <Loader2 className="w-3 h-3 animate-spin text-blue-400" title="Отправляется..." />
+              )}
+              {status === 'sent' && (
+                <Check className="w-3 h-3 text-green-500" title="Отправлено" />
+              )}
+              {status === 'failed' && (
+                <AlertCircle className="w-3 h-3 text-red-500" title="Ошибка отправки" />
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

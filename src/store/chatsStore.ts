@@ -29,6 +29,9 @@ interface ChatsState {
   setTagFilter: (tag: ChatTag | 'all') => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+
+  // Reset all state (for store switching)
+  resetState: () => void;
 }
 
 export const useChatsStore = create<ChatsState>((set, get) => ({
@@ -68,4 +71,14 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
   setTagFilter: (tag) => set({ tagFilter: tag }),
   searchQuery: '',
   setSearchQuery: (query) => set({ searchQuery: query }),
+
+  // Reset to initial state (used when switching stores)
+  resetState: () => set({
+    activeChatId: null,
+    selectedChatIds: new Set(),
+    tagFilter: 'all',
+    searchQuery: '',
+    viewMode: 'table',
+    isSidebarCollapsed: false,
+  }),
 }));

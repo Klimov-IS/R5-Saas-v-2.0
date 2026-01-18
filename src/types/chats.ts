@@ -37,12 +37,15 @@ export interface Chat {
   product?: Product;
 }
 
+export type MessageStatus = 'sent' | 'sending' | 'failed';
+
 export interface ChatMessage {
   id: string;
   chatId: string;
   sender: MessageSender;
   text: string;
   createdAt: string;
+  status?: MessageStatus; // Optional: для оптимистичных обновлений
 }
 
 export interface ChatsResponse {

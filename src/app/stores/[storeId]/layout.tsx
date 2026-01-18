@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ArrowLeft, Package, Star, MessageSquare, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { StoreSelector } from '@/components/layout/StoreSelector';
 
 type Store = {
@@ -21,8 +22,10 @@ export default function StoreDetailLayout({
 }) {
   const { storeId } = params;
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const [store, setStore] = useState<Store | null>(null);
 
+  // Fetch store info
   useEffect(() => {
     async function fetchStore() {
       try {
@@ -40,6 +43,76 @@ export default function StoreDetailLayout({
     }
     fetchStore();
   }, [storeId]);
+
+  // PERFORMANCE BOOST: Prefetch all tab data on store entry
+  // This makes tab switching instant (no spinners)
+  useEffect(() => {
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+    // Prefetch Products tab
+    queryClient.prefetchQuery({
+      queryKey: ['products', storeId],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/products`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch products');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000, // 2 minutes
+    });
+
+    // Prefetch Reviews tab
+    queryClient.prefetchQuery({
+      queryKey: ['reviews', storeId, 0, 50, 'all', false, ''],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/reviews?skip=0&take=50&rating=all&hasAnswer=false&search=`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch reviews');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000,
+    });
+
+    // Prefetch Chats tab (both stats and list)
+    queryClient.prefetchQuery({
+      queryKey: ['chats-stats', storeId],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/chats?skip=0&take=1&tag=all&search=`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch chat stats');
+        return response.json();
+      },
+      staleTime: 30 * 1000,
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ['chats', storeId, 0, 100, 'all', ''],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/chats?skip=0&take=100&tag=all&search=`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch chats');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000,
+    });
+
+    // Prefetch AI Logs tab
+    queryClient.prefetchQuery({
+      queryKey: ['ai-logs', storeId, 0, 50],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/logs?skip=0&take=50`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch AI logs');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000,
+    });
+  }, [storeId, queryClient]);
 
   const tabs = [
     { href: `/stores/${storeId}/products`, label: 'Товары', icon: Package },
@@ -84,6 +157,7 @@ export default function StoreDetailLayout({
             <StoreSelector
               currentStoreId={storeId}
               currentStoreName={store.name}
+              currentPathname={pathname}
             />
           )}
         </div>

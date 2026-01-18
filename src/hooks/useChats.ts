@@ -97,7 +97,7 @@ export function useGenerateAI(storeId: string, chatId: string) {
 }
 
 /**
- * Hook для отправки сообщения
+ * Hook для отправки сообщения с оптимистичными обновлениями
  */
 export function useSendMessage(storeId: string, chatId: string) {
   const queryClient = useQueryClient();
@@ -119,10 +119,67 @@ export function useSendMessage(storeId: string, chatId: string) {
 
       return response.json();
     },
-    onSuccess: () => {
-      // Invalidate both chat list and messages
+
+    // 🚀 OPTIMISTIC UPDATE: Мгновенно показываем сообщение ДО ответа API
+    onMutate: async (message: string) => {
+      // 1. Отменяем текущие запросы, чтобы не перезаписали наше оптимистичное обновление
+      await queryClient.cancelQueries({ queryKey: ['chat-messages', storeId, chatId] });
+
+      // 2. Сохраняем предыдущие данные (для rollback при ошибке)
+      const previousMessages = queryClient.getQueryData(['chat-messages', storeId, chatId]);
+
+      // 3. 🎯 ОПТИМИСТИЧНО обновляем кеш - сообщение появится МГНОВЕННО
+      queryClient.setQueryData(['chat-messages', storeId, chatId], (old: any) => {
+        if (!old) return old;
+
+        const optimisticMessage = {
+          id: `temp-${Date.now()}`, // Временный ID
+          chatId,
+          sender: 'seller' as const,
+          text: message,
+          createdAt: new Date().toISOString(),
+          status: 'sending' as const, // Индикатор "отправляется..."
+        };
+
+        return {
+          ...old,
+          messages: [...(old.messages || []), optimisticMessage],
+        };
+      });
+
+      // Возвращаем контекст для rollback
+      return { previousMessages };
+    },
+
+    // ✅ УСПЕХ: Заменяем временное сообщение на реальное с ID от сервера
+    onSuccess: (response, message, context) => {
+      queryClient.setQueryData(['chat-messages', storeId, chatId], (old: any) => {
+        if (!old) return old;
+
+        return {
+          ...old,
+          messages: old.messages.map((msg: any) =>
+            msg.id.startsWith('temp-')
+              ? {
+                  ...msg,
+                  id: response.messageId || msg.id, // Заменяем на реальный ID
+                  status: 'sent', // Статус "отправлено"
+                }
+              : msg
+          ),
+        };
+      });
+
+      // Обновляем список чатов (lastMessage изменился)
       queryClient.invalidateQueries({ queryKey: ['chats', storeId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', storeId, chatId] });
+    },
+
+    // ❌ ОШИБКА: Откатываем к старым данным
+    onError: (error, message, context) => {
+      // Restore previous state
+      if (context?.previousMessages) {
+        queryClient.setQueryData(['chat-messages', storeId, chatId], context.previousMessages);
+      }
     },
   });
 }

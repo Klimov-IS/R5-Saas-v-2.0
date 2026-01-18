@@ -102,6 +102,12 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 h-9"
             />
+            {/* Debounce hint */}
+            {searchQuery && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                {isLoading ? '⏳' : '✓'}
+              </div>
+            )}
           </div>
         )}
       </div>

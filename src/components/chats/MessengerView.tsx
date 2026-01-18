@@ -1,6 +1,7 @@
 'use client';
 
 import { useChats } from '@/hooks/useChats';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useChatsStore } from '@/store/chatsStore';
 import { ChatListSidebar } from './ChatListSidebar';
 import { ConversationPanel } from './ConversationPanel';
@@ -20,11 +21,14 @@ interface MessengerViewProps {
 export function MessengerView({ storeId, tagStats: propTagStats }: MessengerViewProps) {
   const { tagFilter, searchQuery, activeChatId } = useChatsStore();
 
-  // Fetch chats
+  // 🎯 DEBOUNCE SEARCH: Задержка 300ms перед API запросом
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
+
+  // Fetch chats (используем debounced search)
   const { data, isLoading, error } = useChats({
     storeId,
     tag: tagFilter,
-    search: searchQuery,
+    search: debouncedSearchQuery, // ← Было: searchQuery
     take: 100, // Load more chats for messenger view
   });
 

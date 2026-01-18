@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { useChatsStore } from '@/store/chatsStore';
 import { ChevronDown } from 'lucide-react';
 
 type Store = {
@@ -13,10 +15,12 @@ type Store = {
 interface StoreSelectorProps {
   currentStoreId: string;
   currentStoreName: string;
+  currentPathname: string;
 }
 
-export function StoreSelector({ currentStoreId, currentStoreName }: StoreSelectorProps) {
+export function StoreSelector({ currentStoreId, currentStoreName, currentPathname }: StoreSelectorProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [stores, setStores] = useState<Store[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,10 +83,50 @@ export function StoreSelector({ currentStoreId, currentStoreName }: StoreSelecto
     store.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Helper function to extract current tab from pathname
+  const getCurrentTab = (pathname: string, storeId: string): string => {
+    // pathname format: /stores/{storeId}/{tab}
+    // Examples:
+    //   /stores/abc123/products -> "products"
+    //   /stores/abc123/reviews -> "reviews"
+    //   /stores/abc123/chats -> "chats"
+    //   /stores/abc123/logs -> "logs"
+
+    const match = pathname.match(/\/stores\/[^\/]+\/([^\/]+)/);
+    const tab = match?.[1];
+
+    // Validate tab (must be one of: products, reviews, chats, logs)
+    const validTabs = ['products', 'reviews', 'chats', 'logs'];
+    if (tab && validTabs.includes(tab)) {
+      return tab;
+    }
+
+    // Fallback to 'products' if invalid or not found
+    return 'products';
+  };
+
   // Handle store selection
   const handleSelectStore = (storeId: string) => {
+    // CRITICAL FIX: Invalidate ALL queries for old store before switching
+    // This ensures no stale data is shown when switching stores
+    queryClient.removeQueries({
+      predicate: (query) => {
+        const queryKey = query.queryKey;
+        // Remove queries that contain the old storeId
+        return Array.isArray(queryKey) && queryKey.includes(currentStoreId);
+      }
+    });
+
+    // CRITICAL FIX: Reset Zustand chats store state
+    // This clears active chat, filters, and selections to prevent "sticky" chat issue
+    useChatsStore.getState().resetState();
+
+    // SMART NAVIGATION: Stay on the same tab when switching stores
+    const currentTab = getCurrentTab(currentPathname, currentStoreId);
+    const targetPath = `/stores/${storeId}/${currentTab}`;
+
     setIsOpen(false);
-    router.push(`/stores/${storeId}/products`);
+    router.push(targetPath);
   };
 
   return (
