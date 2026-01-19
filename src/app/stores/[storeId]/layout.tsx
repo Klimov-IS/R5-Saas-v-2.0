@@ -118,7 +118,8 @@ export default function StoreDetailLayout({
     { href: `/stores/${storeId}/products`, label: 'Товары', icon: Package },
     { href: `/stores/${storeId}/reviews`, label: 'Отзывы', icon: Star },
     { href: `/stores/${storeId}/chats`, label: 'Чаты', icon: MessageSquare },
-    { href: `/stores/${storeId}/logs`, label: 'AI', icon: Sparkles },
+    // TODO: Временно скрыт таб AI
+    // { href: `/stores/${storeId}/logs`, label: 'AI', icon: Sparkles },
   ];
 
   return (

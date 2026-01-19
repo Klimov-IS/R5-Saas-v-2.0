@@ -164,6 +164,9 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="text-sm text-slate-600 max-w-md truncate">
+                    <span className="text-slate-500">
+                      {chat.lastMessageSender === 'seller' ? 'Вы: ' : 'Покупатель: '}
+                    </span>
                     {chat.lastMessageText}
                   </div>
                 </td>

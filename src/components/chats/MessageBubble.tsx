@@ -10,13 +10,42 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isSeller = message.sender === 'seller';
   const status = message.status || 'sent';
 
-  // Format time
+  // Format time with date if needed
   const formatTime = (dateString: string): string => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('ru-RU', {
+    const now = new Date();
+
+    // Check if message is from today
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    // Check if message is from yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday =
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear();
+
+    const time = date.toLocaleTimeString('ru-RU', {
       hour: '2-digit',
       minute: '2-digit',
     });
+
+    // Return format based on date
+    if (isToday) {
+      return time; // Just "13:22"
+    } else if (isYesterday) {
+      return `Вчера, ${time}`; // "Вчера, 13:22"
+    } else {
+      const dateStr = date.toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+      });
+      return `${dateStr}, ${time}`; // "15 янв, 13:22"
+    }
   };
 
   return (

@@ -150,10 +150,6 @@ export function MessageComposer({ storeId, chatId }: MessageComposerProps) {
             )}
             Генерировать AI
           </Button>
-
-          <span className="text-xs text-slate-400">
-            или <kbd className="px-1.5 py-0.5 bg-slate-100 rounded text-xs">Ctrl+G</kbd>
-          </span>
         </div>
 
         <Button

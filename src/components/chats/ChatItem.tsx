@@ -1,6 +1,7 @@
 import { useChatsStore } from '@/store/chatsStore';
 import type { Chat } from '@/types/chats';
 import { Checkbox } from '@/components/ui/checkbox';
+import { FileEdit, MessageCircle } from 'lucide-react';
 
 interface ChatItemProps {
   chat: Chat;
@@ -14,6 +15,9 @@ export function ChatItem({ chat, isActive, onClick }: ChatItemProps) {
 
   // Determine if chat is unread (seller hasn't replied yet)
   const isUnread = chat.lastMessageSender === 'client';
+
+  // Check if chat has draft reply
+  const hasDraft = !!chat.draftReply;
 
   // Format time
   const formatRelativeTime = (dateString: string): string => {
@@ -81,13 +85,11 @@ export function ChatItem({ chat, isActive, onClick }: ChatItemProps) {
       <div className="flex-1 min-w-0">
         {/* Header */}
         <div className="flex items-center justify-between mb-1">
-          <span className={`font-semibold text-sm text-slate-900 ${isUnread ? 'relative' : ''}`}>
-            {chat.clientName}
-            {/* Red dot for unread */}
-            {isUnread && (
-              <span className="inline-block w-2 h-2 bg-red-500 rounded-full ml-2" />
-            )}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`font-semibold text-sm text-slate-900`}>
+              {chat.clientName}
+            </span>
+          </div>
           <span className="text-xs text-slate-400">
             {formatRelativeTime(chat.lastMessageDate)}
           </span>
@@ -98,13 +100,31 @@ export function ChatItem({ chat, isActive, onClick }: ChatItemProps) {
           📦 {chat.productName || `Товар ${chat.productNmId}`}
         </div>
 
-        {/* Last Message */}
-        <div
-          className={`text-sm truncate ${
-            isUnread ? 'font-semibold text-slate-900' : 'text-slate-600'
-          }`}
-        >
-          {chat.lastMessageText}
+        {/* Last Message and Indicators Container */}
+        <div className="flex items-end justify-between gap-2">
+          {/* Last Message */}
+          <div
+            className={`text-sm truncate flex-1 ${
+              isUnread ? 'font-semibold text-slate-900' : 'text-slate-600'
+            }`}
+          >
+            <span className="text-slate-500">
+              {chat.lastMessageSender === 'seller' ? 'Вы: ' : 'Покупатель: '}
+            </span>
+            {chat.lastMessageText}
+          </div>
+
+          {/* Indicators (bottom right) */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Unread indicator */}
+            {isUnread && (
+              <MessageCircle className="w-3.5 h-3.5 text-red-500" title="Не отвечен" />
+            )}
+            {/* Draft indicator */}
+            {hasDraft && (
+              <FileEdit className="w-3.5 h-3.5 text-blue-500" title="Есть черновик ответа" />
+            )}
+          </div>
         </div>
       </div>
     </div>
