@@ -507,6 +507,62 @@ refactor: Simplify review sync logic
 
 ---
 
+## Git Authentication Setup
+
+### GitHub Personal Access Token (PAT)
+
+For push/pull operations, configure Git with a Personal Access Token:
+
+**1. Create Token on GitHub:**
+
+- Visit: https://github.com/settings/tokens/new
+- Select: **"Fine-grained token"** (recommended) or "Classic"
+- **Repository access:** All repositories
+- **Permissions required:**
+  - ✅ **Contents:** Read and write
+  - ✅ **Metadata:** Read-only (auto-selected)
+- **Expiration:** 90 days (or "No expiration" for trusted environments)
+- Click **"Generate token"**
+- **Copy token immediately** (shown only once!)
+
+**2. Configure Git Remote with Token:**
+
+```bash
+cd "R5 saas-prod"
+
+# Replace [YOUR_TOKEN] with actual token
+git remote set-url origin https://[YOUR_TOKEN]@github.com/Klimov-IS/R5-Saas-v-2.0.git
+
+# Verify configuration
+git remote -v
+# Should show: https://github_pat_xxx@github.com/Klimov-IS/R5-Saas-v-2.0.git
+```
+
+**3. Test Push:**
+
+```bash
+# Make a test commit
+git add .
+git commit -m "test: verify git authentication"
+git push origin main
+```
+
+**Security Notes:**
+
+- ⚠️ **Never commit tokens to Git!**
+- Token is stored in `.git/config` (automatically excluded from Git)
+- For production server, use SSH keys instead (more secure)
+- If token is accidentally exposed, regenerate immediately on GitHub
+
+**Current Configuration:**
+
+- **Method:** Personal Access Token (Fine-grained)
+- **Repository:** `Klimov-IS/R5-Saas-v-2.0`
+- **Branch:** `main`
+- **Token Permissions:** Contents (Read & Write) + Metadata (Read)
+
+---
+
 ## Common Development Tasks
 
 ### Add New Database Table
