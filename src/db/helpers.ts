@@ -142,6 +142,8 @@ export interface Chat {
   tag: ChatTag;
   draft_reply?: string | null;
   draft_reply_thread_id?: string | null;
+  draft_reply_generated_at?: string | null; // NEW: When AI generated the draft
+  draft_reply_edited?: boolean | null; // NEW: If user manually edited the draft
   created_at: string;
   updated_at: string;
 }
@@ -819,6 +821,8 @@ export async function updateChat(
     ['tag', 'tag'],
     ['draft_reply', 'draft_reply'],
     ['draft_reply_thread_id', 'draft_reply_thread_id'],
+    ['draft_reply_generated_at', 'draft_reply_generated_at'], // NEW
+    ['draft_reply_edited', 'draft_reply_edited'], // NEW
   ];
 
   for (const [key, dbField] of fieldMappings) {

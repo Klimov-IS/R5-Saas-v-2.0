@@ -181,18 +181,19 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
                   <div className="text-sm text-slate-500">{formatTime(chat.lastMessageDate)}</div>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    {/* ✅ Draft indicator */}
+                    {chat.draftReply && (
+                      <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                        <Bot className="w-3 h-3 mr-1" />
+                        Черновик
+                      </span>
+                    )}
                     <button
                       className="p-1.5 hover:bg-slate-100 rounded transition-colors"
                       title="Открыть чат"
                     >
                       <MessageSquare className="w-4 h-4 text-slate-600" />
-                    </button>
-                    <button
-                      className="p-1.5 hover:bg-slate-100 rounded transition-colors"
-                      title="AI ответ"
-                    >
-                      <Bot className="w-4 h-4 text-blue-600" />
                     </button>
                   </div>
                 </td>

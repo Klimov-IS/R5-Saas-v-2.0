@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatsByStoreWithPagination, getChatById, getChatMessages } from '@/db/helpers';
+import { getChatsByStoreWithPagination, getChatById, getChatMessages, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 
 /**
@@ -15,31 +15,23 @@ export async function POST(
     const body = await request.json();
     const { chatIds } = body;
 
-    // If chatIds is empty or ['all'], process all chats
-    const shouldProcessAll = !chatIds || chatIds.length === 0 || chatIds[0] === 'all';
-
-    let targetChatIds: string[];
-
-    if (shouldProcessAll) {
-      // Get all chats for the store
-      const allChats = await getChatsByStoreWithPagination(storeId, {
-        limit: 1000, // Reasonable limit for bulk operations
-        offset: 0,
-      });
-      targetChatIds = allChats.map((chat) => chat.id);
-    } else {
-      targetChatIds = chatIds;
+    // ⚠️ CRITICAL SAFETY: Require explicit chatIds array
+    if (!chatIds || chatIds.length === 0) {
+      return NextResponse.json(
+        { error: 'chatIds array is required. Cannot generate for all chats without explicit selection.' },
+        { status: 400 }
+      );
     }
 
     const results = {
-      total: targetChatIds.length,
+      total: chatIds.length,
       successful: 0,
       failed: 0,
       errors: [] as string[],
     };
 
     // Process each chat
-    for (const chatId of targetChatIds) {
+    for (const chatId of chatIds) {
       try {
         // Get chat data
         const chat = await getChatById(chatId);
@@ -74,11 +66,18 @@ ${chatHistory}
         `.trim();
 
         // Generate AI reply
-        await generateChatReply({
+        const aiResult = await generateChatReply({
           context,
           storeId,
-          ownerId: 'default',
+          ownerId: chat.owner_id,
           chatId,
+        });
+
+        // ✅ Save draft to database
+        await updateChat(chatId, {
+          draft_reply: aiResult.text,
+          draft_reply_generated_at: new Date().toISOString(),
+          draft_reply_edited: false,
         });
 
         results.successful++;

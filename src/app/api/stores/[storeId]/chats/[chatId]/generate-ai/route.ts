@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatById, getChatMessages, getStoreById } from '@/db/helpers';
+import { getChatById, getChatMessages, getStoreById, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 
 /**
@@ -67,9 +67,26 @@ ${chatHistory}
       chatId,
     });
 
+    // ✅ Save draft to database
+    console.log('💾 [GENERATE-AI] Saving draft to DB:', {
+      chatId,
+      clientName: chat.client_name,
+      draftLength: result.text.length,
+      preview: result.text.substring(0, 100) + '...',
+    });
+
+    await updateChat(chatId, {
+      draft_reply: result.text,
+      draft_reply_generated_at: new Date().toISOString(),
+      draft_reply_edited: false,
+    });
+
+    console.log('✅ [GENERATE-AI] Draft saved successfully to DB');
+
     return NextResponse.json({
       success: true,
       text: result.text,
+      saved: true, // Indicator that draft was saved
     }, { status: 200 });
 
   } catch (error: any) {

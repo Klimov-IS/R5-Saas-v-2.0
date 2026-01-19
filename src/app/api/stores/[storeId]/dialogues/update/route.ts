@@ -150,6 +150,10 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                     last_message_text: latestMsg.message?.text || 'Вложение',
                     last_message_date: latestMsg.addTime,
                     last_message_sender: latestMsg.sender,
+                    // ✅ Clear draft when new message arrives (draft is outdated)
+                    draft_reply: null,
+                    draft_reply_generated_at: null,
+                    draft_reply_edited: null,
                 });
             }
 

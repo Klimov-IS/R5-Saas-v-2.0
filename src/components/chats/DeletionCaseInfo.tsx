@@ -49,9 +49,10 @@ export function DeletionCaseInfo({ storeId, chatId, chatTag }: DeletionCaseInfoP
   const { data: deletionCase, isLoading, error } = useQuery<DeletionCase>({
     queryKey: ['deletion-case', chatId],
     queryFn: async () => {
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const response = await fetch(`/api/stores/${storeId}/deletion-cases/${chatId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
       });
 

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatsByStoreWithPagination, getChatById } from '@/db/helpers';
+import { getChatById, updateChat } from '@/db/helpers';
 
 /**
  * POST /api/stores/[storeId]/chats/bulk/send
  * Bulk send messages to WB for multiple chats
+ *
+ * ⚠️ CRITICAL SAFETY: Only sends to explicitly selected chatIds
+ * ❌ Does NOT support "send all" to prevent accidental mass-send
  */
 export async function POST(
   request: NextRequest,
@@ -14,34 +17,37 @@ export async function POST(
     const body = await request.json();
     const { chatIds } = body;
 
-    // If chatIds is empty or ['all'], process all chats
-    const shouldProcessAll = !chatIds || chatIds.length === 0 || chatIds[0] === 'all';
+    // 🔴 CRITICAL SAFETY: Require explicit chatIds array
+    if (!chatIds || chatIds.length === 0) {
+      return NextResponse.json(
+        {
+          error: 'chatIds array is required. Cannot send to all chats without explicit selection.',
+          hint: 'Pass an array of specific chat IDs to send drafts to.'
+        },
+        { status: 400 }
+      );
+    }
 
-    let targetChatIds: string[];
-
-    if (shouldProcessAll) {
-      // Get all chats for the store that have a draft reply
-      const allChats = await getChatsByStoreWithPagination(storeId, {
-        limit: 1000,
-        offset: 0,
-      });
-      // Filter chats that have draft replies
-      targetChatIds = allChats
-        .filter((chat) => chat.draft_reply && chat.draft_reply.trim().length > 0)
-        .map((chat) => chat.id);
-    } else {
-      targetChatIds = chatIds;
+    // Block legacy "all" keyword to prevent accidents
+    if (chatIds.includes('all')) {
+      return NextResponse.json(
+        {
+          error: 'Invalid chatIds. "all" keyword is not supported for safety reasons.',
+          hint: 'Please select specific chats to send drafts to.'
+        },
+        { status: 400 }
+      );
     }
 
     const results = {
-      total: targetChatIds.length,
+      total: chatIds.length,
       successful: 0,
       failed: 0,
       errors: [] as string[],
     };
 
     // Process each chat
-    for (const chatId of targetChatIds) {
+    for (const chatId of chatIds) {
       try {
         // Get chat data
         const chat = await getChatById(chatId);
@@ -61,6 +67,13 @@ export async function POST(
         // TODO: Send message to WB API
         // For now, just simulate success
         console.log(`Sending message to WB for chat ${chatId}:`, chat.draft_reply);
+
+        // ✅ Clear draft after successful send
+        await updateChat(chatId, {
+          draft_reply: null,
+          draft_reply_generated_at: null,
+          draft_reply_edited: null,
+        });
 
         results.successful++;
       } catch (error: any) {

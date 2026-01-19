@@ -41,9 +41,22 @@ export async function GET(
       tag: chat.tag,
       draftReply: chat.draft_reply,
       draftReplyThreadId: chat.draft_reply_thread_id,
+      draftReplyGeneratedAt: chat.draft_reply_generated_at,
+      draftReplyEdited: chat.draft_reply_edited,
       createdAt: chat.created_at,
       updatedAt: chat.updated_at,
     };
+
+    // 🐛 DEBUG: Log draft status from DB
+    console.log('📥 [API GET CHAT] Returning chat data:', {
+      chatId: mappedChat.id,
+      clientName: mappedChat.clientName,
+      hasDraft: !!mappedChat.draftReply,
+      draftReply: mappedChat.draftReply ? mappedChat.draftReply.substring(0, 100) + '...' : 'NULL',
+      draftLength: mappedChat.draftReply?.length || 0,
+      generatedAt: mappedChat.draftReplyGeneratedAt,
+      edited: mappedChat.draftReplyEdited,
+    });
 
     // Map snake_case to camelCase for messages
     const mappedMessages = messages.map(msg => ({

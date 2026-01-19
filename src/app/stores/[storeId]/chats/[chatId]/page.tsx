@@ -14,31 +14,9 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useChatMessages, useGenerateAI, useSendMessage } from '@/hooks/useChats';
 
 type ChatTag = 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'untagged';
-
-type Chat = {
-  id: string;
-  store_id: string;
-  client_name: string;
-  product_nm_id: string | null;
-  product_name: string | null;
-  product_vendor_code: string | null;
-  last_message_date: string | null;
-  last_message_text: string | null;
-  last_message_sender: 'client' | 'seller' | null;
-  reply_sign: string;
-  tag: ChatTag;
-  draft_reply: string | null;
-};
-
-type ChatMessage = {
-  id: string;
-  chat_id: string;
-  text: string | null;
-  sender: 'client' | 'seller';
-  timestamp: string;
-};
 
 const tagConfig: Record<ChatTag, { label: string; variant: any }> = {
   active: { label: 'Активный', variant: 'default' },
@@ -55,50 +33,60 @@ export default function ChatDetailPage() {
   const storeId = params.storeId as string;
   const chatId = params.chatId as string;
 
-  const [chat, setChat] = useState<Chat | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // ✅ React Query for data fetching (no more useState for chat/messages!)
+  const { data, isLoading, refetch } = useChatMessages(storeId, chatId);
+  const chat = data?.chat;
+  const messages = data?.messages || [];
+
   const [newMessage, setNewMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
   const [selectedTag, setSelectedTag] = useState<ChatTag>('untagged');
   const [isUpdatingTag, setIsUpdatingTag] = useState(false);
 
+  const generateAI = useGenerateAI(storeId, chatId);
+  const sendMessage = useSendMessage(storeId, chatId);
+
+  // 🐛 DEBUG: Log when component renders
+  console.log('🔄 [RENDER] Chat Detail Page:', {
+    chatId,
+    hasChatData: !!chat,
+    chatDataId: chat?.id,
+    clientName: chat?.clientName,
+    hasDraftReply: !!chat?.draftReply,
+    draftReplyLength: chat?.draftReply?.length || 0,
+    draftPreview: chat?.draftReply?.substring(0, 50) || 'NULL',
+    currentNewMessage: newMessage.substring(0, 50) || 'EMPTY',
+    newMessageLength: newMessage.length,
+  });
+
+  // ✅ FIXED: Load draft from DB only when switching chats (VARIANT 3)
+  // Key: dependency ONLY on chatId, not on chat.draftReply
+  // This prevents conflicts between local edits and React Query updates
   useEffect(() => {
-    fetchChat();
-  }, [storeId, chatId]);
+    console.log('🎯 [useEffect TRIGGERED] chatId dependency changed:', {
+      chatId,
+      hasChatData: !!chat,
+      chatDataId: chat?.id,
+      idsMatch: chat?.id === chatId,
+      hasDraftReply: !!chat?.draftReply,
+      draftReplyValue: chat?.draftReply?.substring(0, 100) || 'NULL',
+      draftLength: chat?.draftReply?.length || 0,
+      willSetTo: chat?.draftReply || '(empty string)',
+    });
 
-  async function fetchChat() {
-    try {
-      setIsLoading(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+    setNewMessage(chat?.draftReply || '');
 
-      const response = await fetch(`/api/stores/${storeId}/chats/${chatId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-      });
+    console.log('✅ [useEffect COMPLETED] setNewMessage called with:', {
+      value: chat?.draftReply?.substring(0, 100) || '(empty)',
+      length: chat?.draftReply?.length || 0,
+    });
+  }, [chatId]);
 
-      if (response.ok) {
-        const result = await response.json();
-        setChat(result.data.chat);
-        setMessages(result.data.messages || []);
-        setSelectedTag(result.data.chat.tag || 'untagged');
-      } else {
-        toast({
-          title: 'Ошибка',
-          description: 'Не удалось загрузить чат',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching chat:', error);
-      toast({
-        title: 'Ошибка',
-        description: 'Произошла ошибка при загрузке чата',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
+  // Set initial tag when chat loads
+  useEffect(() => {
+    if (chat?.tag) {
+      setSelectedTag(chat.tag);
     }
-  }
+  }, [chat?.tag]);
 
   async function handleSendMessage() {
     if (!newMessage.trim()) {
@@ -111,43 +99,19 @@ export default function ChatDetailPage() {
     }
 
     try {
-      setIsSending(true);
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
-
-      const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/send`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ message: newMessage }),
+      await sendMessage.mutateAsync(newMessage);
+      toast({
+        title: 'Успешно',
+        description: 'Сообщение отправлено в Wildberries',
       });
-
-      if (response.ok) {
-        toast({
-          title: 'Успешно',
-          description: 'Сообщение отправлено в Wildberries',
-        });
-        setNewMessage('');
-        // Refresh chat to get updated messages
-        setTimeout(() => fetchChat(), 1000);
-      } else {
-        const error = await response.json();
-        toast({
-          title: 'Ошибка',
-          description: error.error || 'Не удалось отправить сообщение',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
+      setNewMessage('');
+      // React Query automatically refetches
+    } catch (error: any) {
       toast({
         title: 'Ошибка',
-        description: 'Произошла ошибка при отправке сообщения',
+        description: error.message || 'Не удалось отправить сообщение',
         variant: 'destructive',
       });
-    } finally {
-      setIsSending(false);
     }
   }
 
@@ -171,7 +135,7 @@ export default function ChatDetailPage() {
           title: 'Успешно',
           description: 'Тег обновлён',
         });
-        fetchChat(); // Refresh data
+        refetch(); // Refresh data
       } else {
         toast({
           title: 'Ошибка',
@@ -188,6 +152,23 @@ export default function ChatDetailPage() {
       });
     } finally {
       setIsUpdatingTag(false);
+    }
+  }
+
+  async function handleGenerateAI() {
+    try {
+      await generateAI.mutateAsync();
+      toast({
+        title: 'Успешно',
+        description: 'AI ответ сгенерирован',
+      });
+      // React Query will auto-update the draft
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка',
+        description: error.message || 'Не удалось сгенерировать ответ',
+        variant: 'destructive',
+      });
     }
   }
 
@@ -228,10 +209,10 @@ export default function ChatDetailPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <CardTitle>Чат с {chat.client_name}</CardTitle>
+              <CardTitle>Чат с {chat.clientName}</CardTitle>
               <CardDescription>
-                {chat.product_name && `Товар: ${chat.product_name}`}
-                {chat.product_vendor_code && ` (${chat.product_vendor_code})`}
+                {chat.productName && `Товар: ${chat.productName}`}
+                {chat.productVendorCode && ` (${chat.productVendorCode})`}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -284,7 +265,7 @@ export default function ChatDetailPage() {
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-sm">
-                            {msg.sender === 'client' ? chat.client_name : 'Вы (продавец)'}
+                            {msg.sender === 'client' ? chat.clientName : 'Вы (продавец)'}
                           </span>
                           <span className="text-xs text-muted-foreground">
                             {format(new Date(msg.timestamp), 'dd.MM.yyyy HH:mm', { locale: ru })}
@@ -303,7 +284,27 @@ export default function ChatDetailPage() {
 
           {/* Send Message Section */}
           <div className="space-y-4">
-            <h3 className="font-semibold">Отправить сообщение:</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Отправить сообщение:</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateAI}
+                disabled={generateAI.isPending}
+              >
+                {generateAI.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Генерация...
+                  </>
+                ) : (
+                  <>
+                    <Bot className="mr-2 h-3 w-3" />
+                    Генерировать AI
+                  </>
+                )}
+              </Button>
+            </div>
             <Textarea
               placeholder="Введите ваше сообщение..."
               value={newMessage}
@@ -312,9 +313,9 @@ export default function ChatDetailPage() {
             />
             <Button
               onClick={handleSendMessage}
-              disabled={isSending || !newMessage.trim()}
+              disabled={sendMessage.isPending || !newMessage.trim()}
             >
-              {isSending ? (
+              {sendMessage.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Отправка...

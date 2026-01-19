@@ -63,7 +63,9 @@ export function useChatMessages(storeId: string, chatId: string | null) {
       return data.data as ChatWithMessages;
     },
     enabled: !!chatId,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 0, // ✅ Always refetch - ensures drafts are loaded from DB
+    refetchOnMount: true, // ✅ Force refetch when opening chat
+    refetchOnWindowFocus: false, // Don't spam on window focus
   });
 }
 
@@ -89,9 +91,24 @@ export function useGenerateAI(storeId: string, chatId: string) {
 
       return response.json();
     },
-    onSuccess: () => {
-      // Invalidate chat messages to refetch
+    onSuccess: (response) => {
+      // ✅ OPTIMISTIC UPDATE: Instantly show draft in UI
+      queryClient.setQueryData(['chat-messages', storeId, chatId], (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          chat: {
+            ...old.chat,
+            draftReply: response.text,
+            draftReplyGeneratedAt: new Date().toISOString(),
+            draftReplyEdited: false,
+          },
+        };
+      });
+
+      // ✅ Invalidate both chat detail and list cache
       queryClient.invalidateQueries({ queryKey: ['chat-messages', storeId, chatId] });
+      queryClient.invalidateQueries({ queryKey: ['chats', storeId] });
     },
   });
 }
@@ -207,7 +224,11 @@ export function useBulkGenerateAI(storeId: string) {
 
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, chatIds) => {
+      // ✅ Invalidate all affected chats + list
+      chatIds.forEach(chatId => {
+        queryClient.invalidateQueries({ queryKey: ['chat-messages', storeId, chatId] });
+      });
       queryClient.invalidateQueries({ queryKey: ['chats', storeId] });
     },
   });

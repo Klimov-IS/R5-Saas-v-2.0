@@ -23,16 +23,29 @@ export function TableBulkActionsFooter({ storeId, className }: TableBulkActionsF
   const handleAction = async (action: 'generate' | 'send' | 'mark-unread' | 'change-tag') => {
     const chatIds = Array.from(selectedChatIds);
 
+    // ⚠️ Safety checks
+    if (chatIds.length === 0) {
+      toast.error('Выберите хотя бы один чат');
+      return;
+    }
+
     try {
       switch (action) {
         case 'generate':
           await bulkGenerateAI.mutateAsync(chatIds);
-          toast.success(`AI ответы сгенерированы для ${selectedCount} чатов`);
+          toast.success(`AI ответы сгенерированы и сохранены для ${selectedCount} чатов`);
           break;
 
         case 'send':
+          // ⚠️ Confirmation dialog for mass send
+          const confirmed = window.confirm(
+            `Вы уверены, что хотите отправить черновики в ${selectedCount} чатов?\n\nЭто действие нельзя отменить.`
+          );
+          if (!confirmed) return;
+
           await bulkSend.mutateAsync(chatIds);
-          toast.success(`Ответы отправлены для ${selectedCount} чатов`);
+          toast.success(`Черновики отправлены в ${selectedCount} чатов`);
+          deselectAllChats(); // Clear selection after successful send
           break;
 
         case 'mark-unread':
