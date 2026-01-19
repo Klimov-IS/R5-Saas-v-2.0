@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useGenerateAI, useSendMessage } from '@/hooks/useChats';
+import { useGenerateAI, useSendMessage, useChatMessages } from '@/hooks/useChats';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Bot, Send, Loader2 } from 'lucide-react';
@@ -19,8 +19,32 @@ export function MessageComposer({ storeId, chatId }: MessageComposerProps) {
   const generateAI = useGenerateAI(storeId, chatId);
   const sendMessage = useSendMessage(storeId, chatId);
 
+  // ✅ FETCH CHAT DATA (includes draft)
+  const { data } = useChatMessages(storeId, chatId);
+  const chat = data?.chat;
+
   const isGenerating = generateAI.isPending;
   const isSending = sendMessage.isPending;
+
+  // ✅ LOAD DRAFT: Load draft from DB when chat changes
+  useEffect(() => {
+    console.log('🔄 [MessageComposer] Loading draft for chatId:', chatId, {
+      hasChatData: !!chat,
+      hasDraft: !!chat?.draftReply,
+      draftLength: chat?.draftReply?.length || 0,
+    });
+
+    // Load draft from DB only when chatId changes
+    if (chat?.draftReply) {
+      setMessage(chat.draftReply);
+      setHasAIText(true); // Mark as AI-generated text
+      console.log('✅ [MessageComposer] Draft loaded from DB:', chat.draftReply.substring(0, 50));
+    } else {
+      setMessage('');
+      setHasAIText(false);
+      console.log('⚪ [MessageComposer] No draft found, field cleared');
+    }
+  }, [chatId]); // Only trigger when chatId changes
 
   const handleGenerateAI = async () => {
     try {

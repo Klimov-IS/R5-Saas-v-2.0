@@ -122,7 +122,8 @@ export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
         </div>
 
         {/* Deletion Case Info */}
-        <DeletionCaseInfo storeId={storeId} chatId={chatId} chatTag={chat.tag} />
+        {/* TODO: Вернуть плашку "Кандидат на удаление" с улучшенным дизайном */}
+        {/* <DeletionCaseInfo storeId={storeId} chatId={chatId} chatTag={chat.tag} /> */}
       </div>
 
       {/* Messages Container */}
