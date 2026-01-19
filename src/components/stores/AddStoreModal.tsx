@@ -69,9 +69,9 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
           id: storeId,
           name: formData.name.trim(),
           api_token: formData.api_token.trim(),
-          content_api_token: formData.content_api_token.trim() || formData.api_token.trim(),
-          feedbacks_api_token: formData.feedbacks_api_token.trim() || formData.api_token.trim(),
-          chat_api_token: formData.chat_api_token.trim() || formData.api_token.trim(),
+          content_api_token: formData.content_api_token.trim(),
+          feedbacks_api_token: formData.feedbacks_api_token.trim(),
+          chat_api_token: formData.chat_api_token.trim(),
           status: formData.status,
           owner_id: 'default', // TODO: Replace with actual user ID from auth
           total_reviews: 0,
@@ -334,7 +334,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
                 color: 'hsl(var(--muted-foreground))',
                 marginBottom: '16px'
               }}>
-                Если токены отличаются от основного, укажите их ниже. Иначе будет использован основной токен.
+                У каждого магазина должны быть уникальные токены для корректной работы API.
               </p>
 
               <div style={{
