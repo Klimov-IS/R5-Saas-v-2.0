@@ -104,7 +104,7 @@ export default function Home() {
     const sorted = [...filtered];
     switch (sortBy) {
       case 'date_desc':
-        sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        sorted.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
         break;
       case 'name_asc':
         sorted.sort((a, b) => a.name.localeCompare(b.name));
@@ -492,7 +492,7 @@ export default function Home() {
               className="btn btn-outline"
               style={{ padding: '8px 12px', minWidth: '220px' }}
             >
-              <option value="date_desc">Сортировка: По дате добавления ↓</option>
+              <option value="date_desc">Сортировка: По дате обновления ↓</option>
               <option value="name_asc">По названию A-Z</option>
               <option value="name_desc">По названию Z-A</option>
               <option value="products_desc">По количеству товаров ↓</option>
@@ -539,7 +539,7 @@ export default function Home() {
                           {store.name}
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
-                          Добавлен: {formatRelativeDate(store.created_at)}
+                          Обновлён: {formatRelativeDate(store.updated_at)}
                         </div>
                       </td>
 
