@@ -146,15 +146,15 @@ async function generateComplaintsForStore(storeId: string, storeName: string): P
   console.log(`[CRON] Checking reviews without complaints for: ${storeName} (${storeId})`);
 
   try {
-    // Get reviews without complaints (max 50 per store, rating 1-3)
-    const reviewIds = await dbHelpers.getReviewsWithoutComplaints(storeId, 3, 50);
+    // Get reviews without complaints (max 50 per store, rating 1-4)
+    const reviewIds = await dbHelpers.getReviewsWithoutComplaints(storeId, 4, 50);
 
     if (reviewIds.length === 0) {
-      console.log(`[CRON] No reviews need complaints for ${storeName}`);
+      console.log(`[CRON] ✅ No backlog — event-driven coverage is working for ${storeName}`);
       return { generated: 0, failed: 0, templated: 0 };
     }
 
-    console.log(`[CRON] Found ${reviewIds.length} reviews needing complaints for ${storeName}`);
+    console.log(`[CRON] ⚠️  FALLBACK: Found ${reviewIds.length} reviews without complaints for ${storeName} (missed by event-driven)`);
 
     // Call batch generation API
     const response = await fetch(`${baseUrl}/api/extension/stores/${storeId}/reviews/generate-complaints-batch`, {

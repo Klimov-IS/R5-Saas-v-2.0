@@ -17,7 +17,7 @@ import {
 } from '../prompts/optimized-review-complaint-prompt';
 import {
   canUseTemplate,
-  getTemplateComplaint,
+  selectTemplateByReviewId,
 } from '../utils/complaint-templates';
 
 const GenerateReviewComplaintInputSchema = z.object({
@@ -53,13 +53,14 @@ export type GenerateReviewComplaintOutput = z.infer<typeof GenerateReviewComplai
 export async function generateReviewComplaint(input: GenerateReviewComplaintInput): Promise<GenerateReviewComplaintOutput> {
     const startTime = Date.now();
 
-    // Check if we can use template instead of AI (empty review with low rating)
+    // Check if we can use template instead of AI (empty review with rating 1-3)
     if (canUseTemplate(input.reviewText, input.reviewPros, input.reviewCons, input.reviewRating)) {
-        const template = getTemplateComplaint();
+        // A/B Testing: Select template variant by reviewId (hash-based rotation)
+        const template = selectTemplateByReviewId(input.reviewId);
         const durationMs = Date.now() - startTime;
 
         console.log('[TEMPLATE] Using template for empty review (zero AI cost)');
-        console.log(`[TEMPLATE] Review ${input.reviewId}: rating=${input.reviewRating}, text=empty, pros=empty, cons=empty`);
+        console.log(`[TEMPLATE] Review ${input.reviewId}: rating=${input.reviewRating}, variant=${String.fromCharCode(65 + template.variantId)} (${template.variantId}), reason=${template.reasonId}, text=empty, pros=empty, cons=empty`);
 
         return {
             complaintText: template.complaintText,

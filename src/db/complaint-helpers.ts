@@ -81,6 +81,73 @@ export async function getComplaintsByStore(
 }
 
 /**
+ * Bulk create complaints (optimized for mass generation)
+ * Creates multiple complaints in a single SQL query (100x faster than individual INSERTs)
+ */
+export async function bulkCreateComplaints(inputs: CreateReviewComplaintInput[]): Promise<number> {
+  if (inputs.length === 0) return 0;
+
+  // Build VALUES clause with parameterized queries
+  const valuesPlaceholders = inputs.map((_, i) => {
+    const offset = i * 22; // 22 parameters per complaint
+    return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19}, $${offset + 20}, $${offset + 21}, $${offset + 22}, NOW(), NOW())`;
+  }).join(',\n      ');
+
+  // Flatten all parameters
+  const params = inputs.flatMap(input => [
+    input.review_id,
+    input.store_id,
+    input.owner_id,
+    input.product_id,
+    input.complaint_text,
+    input.reason_id,
+    input.reason_name,
+    'draft', // status
+    new Date().toISOString(), // generated_at
+    0, // regenerated_count
+    input.review_rating,
+    input.review_text,
+    input.review_date,
+    input.product_name || null,
+    input.product_vendor_code || null,
+    input.product_is_active !== false,
+    input.ai_model || 'deepseek-chat',
+    input.ai_prompt_tokens || null,
+    input.ai_completion_tokens || null,
+    input.ai_total_tokens || null,
+    input.ai_cost_usd || null,
+    input.generation_duration_ms || null,
+  ]);
+
+  // Execute bulk insert
+  const result = await query(
+    `INSERT INTO review_complaints (
+      review_id, store_id, owner_id, product_id,
+      complaint_text, reason_id, reason_name,
+      status, generated_at, regenerated_count,
+      review_rating, review_text, review_date,
+      product_name, product_vendor_code, product_is_active,
+      ai_model, ai_prompt_tokens, ai_completion_tokens,
+      ai_total_tokens, ai_cost_usd, generation_duration_ms,
+      created_at, updated_at
+    ) VALUES
+      ${valuesPlaceholders}`,
+    params
+  );
+
+  // Update denormalized fields in reviews table (bulk update)
+  const reviewIds = inputs.map(i => i.review_id);
+  await query(
+    `UPDATE reviews
+     SET has_complaint = TRUE, has_complaint_draft = TRUE
+     WHERE id = ANY($1::text[])`,
+    [reviewIds]
+  );
+
+  return result.rowCount ?? 0;
+}
+
+/**
  * Create a new complaint (first generation)
  */
 export async function createComplaint(input: CreateReviewComplaintInput): Promise<ReviewComplaint> {

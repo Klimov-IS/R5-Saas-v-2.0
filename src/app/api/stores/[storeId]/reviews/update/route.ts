@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
+import {
+    autoGenerateComplaintsInBackground,
+    shouldGenerateComplaint,
+} from '@/services/auto-complaint-generator';
 
 /**
  * Generate initial date chunks for WB API with adaptive sizing
@@ -86,6 +90,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
         let totalFetchedReviews = 0;
         let sessionLatestReviewDate = new Date(0);
+        const newReviewIds: string[] = []; // Track new reviews for auto-complaint generation
 
         // Determine date range strategy
         let dateChunks: Array<{ from: number; to: number; days: number }>;
@@ -181,6 +186,10 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
                                 continue;
                             }
 
+                            // Check if review is new (for auto-complaint generation)
+                            const existingReview = await dbHelpers.getReviewById(review.id);
+                            const isNewReview = !existingReview;
+
                             // Prepare review payload
                             // NOTE: upsertReview preserves complaint_text/complaint_sent_date/draft_reply automatically via ON CONFLICT DO UPDATE
                             const payload: Omit<dbHelpers.Review, 'created_at' | 'updated_at'> = {
@@ -206,6 +215,11 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
                             // Upsert review
                             await dbHelpers.upsertReview(payload);
+
+                            // Track new reviews for auto-complaint generation
+                            if (isNewReview) {
+                                newReviewIds.push(review.id);
+                            }
                         }
                     }
 
@@ -274,6 +288,42 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         });
 
         console.log(`[API REVIEWS] Successfully updated store ${storeId}. Total reviews in DB: ${stats.totalReviews}`);
+
+        // ============================================================================
+        // EVENT-DRIVEN AUTO-COMPLAINT GENERATION
+        // ============================================================================
+
+        if (newReviewIds.length > 0) {
+            console.log(`[AUTO-COMPLAINT] Found ${newReviewIds.length} new reviews — checking for auto-complaint generation`);
+
+            // Filter eligible reviews (check product_rules and business logic)
+            const eligibleReviewIds: string[] = [];
+            for (const reviewId of newReviewIds) {
+                const review = await dbHelpers.getReviewById(reviewId);
+                if (review && (await shouldGenerateComplaint(review))) {
+                    eligibleReviewIds.push(reviewId);
+                }
+            }
+
+            if (eligibleReviewIds.length > 0) {
+                console.log(`[AUTO-COMPLAINT] ${eligibleReviewIds.length}/${newReviewIds.length} reviews eligible for complaints`);
+
+                // Get API key for complaint generation
+                const apiKey = process.env.NEXT_PUBLIC_API_KEY || store.api_token || '';
+
+                // Trigger background generation (non-blocking — don't wait for completion)
+                autoGenerateComplaintsInBackground(storeId, eligibleReviewIds, apiKey).catch((err) => {
+                    console.error('[AUTO-COMPLAINT] Background generation failed (will retry on CRON):', err);
+                });
+
+                console.log(`[AUTO-COMPLAINT] Background generation triggered for ${eligibleReviewIds.length} reviews`);
+            } else {
+                console.log(`[AUTO-COMPLAINT] No eligible reviews for auto-complaint generation`);
+            }
+        } else {
+            console.log(`[AUTO-COMPLAINT] No new reviews — skipping auto-complaint generation`);
+        }
+
         return `Успешно обновлено ${totalFetchedReviews} отзывов (всего в БД: ${stats.totalReviews}).`;
 
     } catch (error: any) {

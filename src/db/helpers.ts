@@ -1881,3 +1881,311 @@ export async function getReviewsWithoutComplaints(
   const result = await query<{ id: string }>(sql, [storeId, maxRating, limit]);
   return result.rows.map(row => row.id);
 }
+
+// ============================================================================
+// Auto-Complaint Generation Helpers
+// ============================================================================
+
+/**
+ * Get reviews for a product with optional filtering
+ * Used by auto-complaint triggers when product/store status changes
+ *
+ * @param productId - Product ID
+ * @param options - Filter options
+ * @returns Promise<Review[]> - Array of reviews
+ */
+export async function getReviewsForProduct(
+  productId: string,
+  options?: {
+    hasComplaint?: boolean;
+    minRating?: number;
+    maxRating?: number;
+  }
+): Promise<Review[]> {
+  let sql = `
+    SELECT r.*
+    FROM reviews r
+    LEFT JOIN review_complaints rc ON rc.review_id = r.id
+    WHERE r.product_id = $1
+  `;
+
+  if (options?.hasComplaint === false) {
+    sql += ` AND rc.id IS NULL`;
+  } else if (options?.hasComplaint === true) {
+    sql += ` AND rc.id IS NOT NULL`;
+  }
+
+  if (options?.minRating) {
+    sql += ` AND r.rating >= ${options.minRating}`;
+  }
+
+  if (options?.maxRating) {
+    sql += ` AND r.rating <= ${options.maxRating}`;
+  }
+
+  sql += ` ORDER BY r.created_at DESC`;
+
+  const result = await query<Review>(sql, [productId]);
+  return result.rows;
+}
+
+// ============================================================================
+// Manager Tasks (Task Management Center)
+// ============================================================================
+
+export type TaskEntityType = 'review' | 'chat' | 'question';
+export type TaskAction = 'generate_complaint' | 'submit_complaint' | 'check_complaint' | 'reply_to_chat' | 'reply_to_question';
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface ManagerTask {
+  id: string;
+  user_id: string;
+  store_id: string;
+  entity_type: TaskEntityType;
+  entity_id: string;
+  action: TaskAction;
+  status: TaskStatus;
+  priority: TaskPriority;
+  due_date?: string | null;
+  completed_at?: string | null;
+  title: string;
+  description?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get tasks for a user with optional filters
+ */
+export async function getManagerTasks(
+  userId: string,
+  options?: {
+    storeId?: string;
+    status?: TaskStatus;
+    entityType?: TaskEntityType;
+    action?: TaskAction;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<ManagerTask[]> {
+  const whereClauses: string[] = ['user_id = $1'];
+  const params: any[] = [userId];
+  let paramIndex = 2;
+
+  if (options?.storeId) {
+    whereClauses.push(`store_id = $${paramIndex++}`);
+    params.push(options.storeId);
+  }
+
+  if (options?.status) {
+    whereClauses.push(`status = $${paramIndex++}`);
+    params.push(options.status);
+  }
+
+  if (options?.entityType) {
+    whereClauses.push(`entity_type = $${paramIndex++}`);
+    params.push(options.entityType);
+  }
+
+  if (options?.action) {
+    whereClauses.push(`action = $${paramIndex++}`);
+    params.push(options.action);
+  }
+
+  let sql = `
+    SELECT * FROM manager_tasks
+    WHERE ${whereClauses.join(' AND ')}
+    ORDER BY
+      CASE priority
+        WHEN 'urgent' THEN 1
+        WHEN 'high' THEN 2
+        WHEN 'normal' THEN 3
+        WHEN 'low' THEN 4
+      END,
+      due_date ASC NULLS LAST,
+      created_at DESC
+  `;
+
+  if (options?.limit !== undefined) {
+    sql += ` LIMIT $${paramIndex++}`;
+    params.push(options.limit);
+  }
+
+  if (options?.offset !== undefined) {
+    sql += ` OFFSET $${paramIndex}`;
+    params.push(options.offset);
+  }
+
+  const result = await query<ManagerTask>(sql, params);
+  return result.rows;
+}
+
+/**
+ * Get task statistics for a user
+ */
+export async function getManagerTaskStats(userId: string) {
+  const result = await query<{
+    total_tasks: string;
+    pending_tasks: string;
+    in_progress_tasks: string;
+    overdue_tasks: string;
+    complaints_tasks: string;
+    chats_tasks: string;
+  }>(
+    `SELECT
+      COUNT(*) as total_tasks,
+      COUNT(*) FILTER (WHERE status = 'pending') as pending_tasks,
+      COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress_tasks,
+      COUNT(*) FILTER (WHERE status != 'completed' AND status != 'cancelled' AND due_date < NOW()) as overdue_tasks,
+      COUNT(*) FILTER (WHERE action IN ('generate_complaint', 'submit_complaint', 'check_complaint')) as complaints_tasks,
+      COUNT(*) FILTER (WHERE action = 'reply_to_chat') as chats_tasks
+    FROM manager_tasks
+    WHERE user_id = $1 AND status != 'completed' AND status != 'cancelled'`,
+    [userId]
+  );
+
+  return {
+    totalTasks: parseInt(result.rows[0]?.total_tasks || '0', 10),
+    pendingTasks: parseInt(result.rows[0]?.pending_tasks || '0', 10),
+    inProgressTasks: parseInt(result.rows[0]?.in_progress_tasks || '0', 10),
+    overdueTasks: parseInt(result.rows[0]?.overdue_tasks || '0', 10),
+    complaintsTasks: parseInt(result.rows[0]?.complaints_tasks || '0', 10),
+    chatsTasks: parseInt(result.rows[0]?.chats_tasks || '0', 10),
+  };
+}
+
+/**
+ * Get task by ID
+ */
+export async function getManagerTaskById(id: string): Promise<ManagerTask | null> {
+  const result = await query<ManagerTask>(
+    'SELECT * FROM manager_tasks WHERE id = $1',
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Create a new task
+ */
+export async function createManagerTask(
+  task: Omit<ManagerTask, 'id' | 'created_at' | 'updated_at'>
+): Promise<ManagerTask> {
+  const result = await query<ManagerTask>(
+    `INSERT INTO manager_tasks (
+      user_id, store_id, entity_type, entity_id, action, status, priority,
+      due_date, title, description, notes, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+    RETURNING *`,
+    [
+      task.user_id,
+      task.store_id,
+      task.entity_type,
+      task.entity_id,
+      task.action,
+      task.status || 'pending',
+      task.priority || 'normal',
+      task.due_date || null,
+      task.title,
+      task.description || null,
+      task.notes || null,
+    ]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Update a task
+ */
+export async function updateManagerTask(
+  id: string,
+  updates: Partial<Omit<ManagerTask, 'id' | 'created_at' | 'updated_at'>>
+): Promise<ManagerTask | null> {
+  const fields: string[] = [];
+  const values: any[] = [];
+  let paramIndex = 1;
+
+  const fieldMappings: [keyof typeof updates, string][] = [
+    ['status', 'status'],
+    ['priority', 'priority'],
+    ['due_date', 'due_date'],
+    ['completed_at', 'completed_at'],
+    ['title', 'title'],
+    ['description', 'description'],
+    ['notes', 'notes'],
+  ];
+
+  for (const [key, dbField] of fieldMappings) {
+    if (updates[key] !== undefined) {
+      fields.push(`${dbField} = $${paramIndex++}`);
+      values.push(updates[key]);
+    }
+  }
+
+  if (fields.length === 0) return getManagerTaskById(id);
+
+  // Auto-set completed_at when status changes to completed
+  if (updates.status === 'completed' && !updates.completed_at) {
+    fields.push(`completed_at = NOW()`);
+  }
+
+  fields.push(`updated_at = NOW()`);
+  values.push(id);
+
+  const result = await query<ManagerTask>(
+    `UPDATE manager_tasks SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    values
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Delete a task
+ */
+export async function deleteManagerTask(id: string): Promise<boolean> {
+  const result = await query('DELETE FROM manager_tasks WHERE id = $1', [id]);
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Get tasks count for filters
+ */
+export async function getManagerTasksCount(
+  userId: string,
+  options?: {
+    storeId?: string;
+    status?: TaskStatus;
+    entityType?: TaskEntityType;
+    action?: TaskAction;
+  }
+): Promise<number> {
+  const whereClauses: string[] = ['user_id = $1'];
+  const params: any[] = [userId];
+  let paramIndex = 2;
+
+  if (options?.storeId) {
+    whereClauses.push(`store_id = $${paramIndex++}`);
+    params.push(options.storeId);
+  }
+
+  if (options?.status) {
+    whereClauses.push(`status = $${paramIndex++}`);
+    params.push(options.status);
+  }
+
+  if (options?.entityType) {
+    whereClauses.push(`entity_type = $${paramIndex++}`);
+    params.push(options.entityType);
+  }
+
+  if (options?.action) {
+    whereClauses.push(`action = $${paramIndex++}`);
+    params.push(options.action);
+  }
+
+  const sql = `SELECT COUNT(*) as count FROM manager_tasks WHERE ${whereClauses.join(' AND ')}`;
+  const result = await query<{ count: string }>(sql, params);
+  return parseInt(result.rows[0].count, 10);
+}
