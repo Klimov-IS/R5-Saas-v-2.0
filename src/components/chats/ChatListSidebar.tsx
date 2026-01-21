@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { useChatsStore } from '@/store/chatsStore';
 import type { Chat } from '@/types/chats';
 import { ChatItem } from './ChatItem';
@@ -7,7 +8,7 @@ import { SelectAllCheckbox } from './SelectAllCheckbox';
 import { BulkActionsPanel } from './BulkActionsPanel';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 
 interface ChatListSidebarProps {
   storeId: string;
@@ -20,9 +21,23 @@ interface ChatListSidebarProps {
     untagged: number;
   };
   isLoading?: boolean;
+  totalCount?: number;
+  // ✅ INFINITE SCROLL PROPS
+  fetchNextPage?: () => void;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
 }
 
-export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatListSidebarProps) {
+export function ChatListSidebar({
+  storeId,
+  chats,
+  tagStats,
+  isLoading,
+  totalCount = 0,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
+}: ChatListSidebarProps) {
   const {
     activeChatId,
     setActiveChatId,
@@ -37,6 +52,25 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
   } = useChatsStore();
 
   const allChatIds = chats.map((chat) => chat.id);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // ✅ INFINITE SCROLL: Auto-load when user scrolls to bottom
+  useEffect(() => {
+    if (!loadMoreRef.current || !hasNextPage || isFetchingNextPage || !fetchNextPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          console.log('[INFINITE SCROLL] Triggering fetchNextPage');
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.5 } // Trigger when 50% visible
+    );
+
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Select all checkbox state
   const isAllSelected = allChatIds.length > 0 && allChatIds.every((id) => isSelected(id));
@@ -123,14 +157,42 @@ export function ChatListSidebar({ storeId, chats, tagStats, isLoading }: ChatLis
             Чаты не найдены
           </div>
         ) : (
-          chats.map((chat) => (
-            <ChatItem
-              key={chat.id}
-              chat={chat}
-              isActive={activeChatId === chat.id}
-              onClick={() => setActiveChatId(chat.id)}
-            />
-          ))
+          <>
+            {chats.map((chat) => (
+              <ChatItem
+                key={chat.id}
+                chat={chat}
+                isActive={activeChatId === chat.id}
+                onClick={() => setActiveChatId(chat.id)}
+              />
+            ))}
+
+            {/* ✅ INFINITE SCROLL TRIGGER */}
+            {hasNextPage && (
+              <div ref={loadMoreRef} className="py-4 px-4">
+                {isFetchingNextPage ? (
+                  <div className="flex items-center justify-center gap-2 text-sm text-slate-500">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Загрузка...</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => fetchNextPage?.()}
+                    className="w-full py-2 px-4 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-md font-medium text-sm transition-colors border border-slate-200"
+                  >
+                    Загрузить ещё ({totalCount - chats.length} осталось)
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* ✅ END OF LIST INDICATOR */}
+            {!hasNextPage && chats.length > 0 && (
+              <div className="py-4 text-center text-xs text-slate-400">
+                Все чаты загружены ({chats.length} из {totalCount})
+              </div>
+            )}
+          </>
         )}
 
         {/* Bulk Actions Panel */}

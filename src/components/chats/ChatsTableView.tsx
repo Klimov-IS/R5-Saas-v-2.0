@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useChats } from '@/hooks/useChats';
 import { useChatsStore } from '@/store/chatsStore';
 import { SelectAllCheckbox } from './SelectAllCheckbox';
@@ -22,15 +23,26 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
     isSelected,
   } = useChatsStore();
 
-  // Fetch chats
+  // ✅ PAGINATION STATE
+  const [skip, setSkip] = useState(0);
+  const [take, setTake] = useState(50);
+
+  // ✅ AUTO-RESET: Return to page 1 when filters change
+  useEffect(() => {
+    setSkip(0);
+  }, [tagFilter, searchQuery]);
+
+  // Fetch chats with pagination
   const { data, isLoading } = useChats({
     storeId,
     tag: tagFilter,
     search: searchQuery,
-    take: 100,
+    skip,
+    take,
   });
 
   const chats = data?.data || [];
+  const totalCount = data?.totalCount || 0;
 
   // Select all checkbox state
   const allChatIds = chats.map((c) => c.id);
@@ -114,9 +126,35 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col h-[calc(100vh-280px)] min-h-[600px] relative shadow-sm">
-      <div className="flex-1 overflow-y-auto">
-        <table className="w-full border-collapse">
+    <div className="flex flex-col gap-4">
+      {/* ✅ RESULTS BAR */}
+      <div className="flex items-center justify-between px-4 py-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+        <div className="text-sm text-slate-600">
+          Всего: <strong className="text-slate-900">{totalCount.toLocaleString('ru-RU')} чатов</strong>
+          {' '} | Показано: <strong className="text-slate-900">{chats.length}</strong>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-slate-600">
+          <label>На странице:</label>
+          <select
+            value={take}
+            onChange={(e) => {
+              setTake(parseInt(e.target.value));
+              setSkip(0); // Reset to first page
+            }}
+            className="px-3 py-1.5 border border-slate-300 rounded-md text-sm cursor-pointer hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+
+      {/* TABLE */}
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden flex flex-col h-[calc(100vh-350px)] min-h-[500px] relative shadow-sm">
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full border-collapse">
           <thead className="bg-slate-50 border-b-2 border-slate-200 sticky top-0 z-10">
             <tr>
               <th className="w-10 p-3 text-center">
@@ -214,6 +252,33 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
 
       {/* Bulk Actions Footer */}
       <TableBulkActionsFooter storeId={storeId} />
+    </div>
+
+      {/* ✅ PAGINATION CONTROLS */}
+      {totalCount > take && (
+        <div className="flex items-center justify-center gap-3 px-4 py-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+          <button
+            onClick={() => setSkip(Math.max(0, skip - take))}
+            disabled={skip === 0}
+            className="px-4 py-2 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
+          >
+            ← Назад
+          </button>
+
+          <span className="text-sm text-slate-600 mx-2">
+            Страница <strong className="text-slate-900">{Math.floor(skip / take) + 1}</strong> из{' '}
+            <strong className="text-slate-900">{Math.ceil(totalCount / take)}</strong>
+          </span>
+
+          <button
+            onClick={() => setSkip(skip + take)}
+            disabled={skip + take >= totalCount}
+            className="px-4 py-2 bg-white border border-slate-300 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-50 hover:border-slate-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
+          >
+            Вперёд →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

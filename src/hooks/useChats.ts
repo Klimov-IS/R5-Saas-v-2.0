@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import type { Chat, ChatsResponse, ChatWithMessages, ChatTag } from '@/types/chats';
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
@@ -6,6 +6,13 @@ const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d
 interface UseChatsOptions {
   storeId: string;
   skip?: number;
+  take?: number;
+  tag?: ChatTag | 'all';
+  search?: string;
+}
+
+interface UseChatsInfiniteOptions {
+  storeId: string;
   take?: number;
   tag?: ChatTag | 'all';
   search?: string;
@@ -36,6 +43,48 @@ export function useChats(options: UseChatsOptions) {
       }
 
       return response.json() as Promise<ChatsResponse>;
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+/**
+ * Hook для получения чатов с бесконечной прокруткой (Infinite Scroll)
+ * Используется в MessengerView для автоматической подгрузки при прокрутке
+ */
+export function useChatsInfinite(options: UseChatsInfiniteOptions) {
+  const { storeId, take = 50, tag = 'all', search = '' } = options;
+
+  return useInfiniteQuery({
+    queryKey: ['chats-infinite', storeId, tag, search],
+    queryFn: async ({ pageParam = 0 }) => {
+      const params = new URLSearchParams({
+        skip: pageParam.toString(),
+        take: take.toString(),
+        tag,
+        search,
+      });
+
+      const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
+        headers: { Authorization: `Bearer ${API_KEY}` },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch chats');
+      }
+
+      return response.json() as Promise<ChatsResponse>;
+    },
+    getNextPageParam: (lastPage, allPages) => {
+      // Считаем сколько чатов уже загружено
+      const loadedCount = allPages.reduce((sum, page) => sum + page.data.length, 0);
+
+      // Если загружено меньше чем totalCount - есть ещё страницы
+      const hasMore = loadedCount < lastPage.totalCount;
+
+      // Возвращаем skip для следующей страницы (или undefined если больше нет)
+      return hasMore ? loadedCount : undefined;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     cacheTime: 10 * 60 * 1000, // 10 minutes

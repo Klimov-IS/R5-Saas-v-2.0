@@ -1,6 +1,6 @@
 'use client';
 
-import { useChats } from '@/hooks/useChats';
+import { useChatsInfinite } from '@/hooks/useChats';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useChatsStore } from '@/store/chatsStore';
 import { ChatListSidebar } from './ChatListSidebar';
@@ -24,16 +24,24 @@ export function MessengerView({ storeId, tagStats: propTagStats }: MessengerView
   // 🎯 DEBOUNCE SEARCH: Задержка 300ms перед API запросом
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
 
-  // Fetch chats (используем debounced search)
-  const { data, isLoading, error } = useChats({
+  // ✅ INFINITE SCROLL: Fetch chats with automatic pagination
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useChatsInfinite({
     storeId,
     tag: tagFilter,
-    search: debouncedSearchQuery, // ← Было: searchQuery
-    take: 100, // Load more chats for messenger view
+    search: debouncedSearchQuery,
+    take: 50, // Load 50 chats per page (optimal for performance)
   });
 
-  const chats = data?.data || [];
-  const totalCount = data?.totalCount || 0;
+  // ✅ FLATTEN PAGES: Combine all pages into single array
+  const chats = data?.pages.flatMap(page => page.data) || [];
+  const totalCount = data?.pages[0]?.totalCount || 0;
 
   // Calculate tag stats (use props if available, otherwise calculate)
   const tagStats = propTagStats || {
@@ -64,6 +72,11 @@ export function MessengerView({ storeId, tagStats: propTagStats }: MessengerView
         chats={chats}
         tagStats={tagStats}
         isLoading={isLoading}
+        totalCount={totalCount}
+        // ✅ INFINITE SCROLL PROPS
+        fetchNextPage={fetchNextPage}
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
       />
 
       {/* Right Panel - Conversation */}
