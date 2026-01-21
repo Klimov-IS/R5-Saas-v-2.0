@@ -286,12 +286,45 @@ npm ci --production=false
 # Rebuild application
 npm run build
 
-# Restart PM2
-pm2 restart wb-reputation
+# ⚠️ ВАЖНО: Restart BOTH PM2 processes (main app + cron jobs)
+pm2 restart all
+
+# Alternative: restart each process separately
+# pm2 restart wb-reputation && pm2 restart wb-reputation-cron
 
 # Check status
-pm2 logs wb-reputation --lines 50
+pm2 status
+
+# Verify CRON jobs started
+sleep 10
+pm2 logs wb-reputation --lines 50 | grep CRON
 ```
+
+**⚠️ Критически важно:**
+- ВСЕГДА используйте `pm2 restart all` после deploy
+- Это перезапускает как main app, так и CRON jobs процесс
+- Если перезапустить только `wb-reputation`, CRON jobs остановятся!
+
+### 🤖 Автоматический deploy (рекомендуется)
+
+Для удобства создан скрипт `scripts/deploy.sh`, который выполняет все шаги автоматически:
+
+```bash
+cd /var/www/wb-reputation
+
+# Make script executable (once)
+chmod +x scripts/deploy.sh
+
+# Run deployment
+bash scripts/deploy.sh
+```
+
+Скрипт автоматически:
+1. ✅ Подтягивает изменения из GitHub
+2. ✅ Устанавливает зависимости
+3. ✅ Собирает приложение
+4. ✅ Перезапускает ОБА PM2 процесса
+5. ✅ Проверяет успешность deploy
 
 ## 📊 Мониторинг и управление
 
