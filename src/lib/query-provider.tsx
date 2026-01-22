@@ -28,7 +28,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             // Stale time: how long before data is considered "old"
-            staleTime: 2 * 60 * 1000, // 2 minutes (default)
+            staleTime: 5 * 60 * 1000, // 5 minutes (reduced frequency of auto-refetches)
 
             // Cache time: how long to keep data in cache when not in use
             cacheTime: 10 * 60 * 1000, // 10 minutes

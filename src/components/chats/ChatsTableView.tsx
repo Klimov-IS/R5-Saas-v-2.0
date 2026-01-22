@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useChats } from '@/hooks/useChats';
 import { useChatsStore } from '@/store/chatsStore';
 import { SelectAllCheckbox } from './SelectAllCheckbox';
-import { TableBulkActionsFooter } from './TableBulkActionsFooter';
 import { MessageSquare, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -14,7 +13,9 @@ interface ChatsTableViewProps {
 
 export function ChatsTableView({ storeId }: ChatsTableViewProps) {
   const {
-    tagFilter,
+    statusFilter,
+    lastSender,
+    hasDraft,
     searchQuery,
     selectedChatIds,
     toggleChatSelection,
@@ -30,12 +31,14 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
   // ✅ AUTO-RESET: Return to page 1 when filters change
   useEffect(() => {
     setSkip(0);
-  }, [tagFilter, searchQuery]);
+  }, [statusFilter, lastSender, hasDraft, searchQuery]);
 
   // Fetch chats with pagination
   const { data, isLoading } = useChats({
     storeId,
-    tag: tagFilter,
+    status: statusFilter,
+    sender: lastSender,
+    hasDraft,
     search: searchQuery,
     skip,
     take,
@@ -249,9 +252,6 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
           </div>
         )}
       </div>
-
-      {/* Bulk Actions Footer */}
-      <TableBulkActionsFooter storeId={storeId} />
     </div>
 
       {/* ✅ PAGINATION CONTROLS */}

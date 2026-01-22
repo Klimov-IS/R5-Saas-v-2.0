@@ -87,22 +87,31 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
 
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const take = parseInt(searchParams.get('take') || '100', 10);
+    const status = searchParams.get('status') as dbHelpers.ChatStatus | 'all' || 'all';
+    const sender = searchParams.get('sender') as 'all' | 'client' | 'seller' || 'all';
     const tag = searchParams.get('tag') || 'all';
     const search = searchParams.get('search') || '';
+    const hasDraft = searchParams.get('hasDraft') === 'true';
 
     try {
         // Get chats with pagination and filters
         const chats = await dbHelpers.getChatsByStoreWithPagination(storeId, {
             limit: take,
             offset: skip,
+            status: status !== 'all' ? status : undefined,
+            sender: sender !== 'all' ? sender : undefined,
             tag,
-            search
+            search,
+            hasDraft
         });
 
         // Get total count with same filters
         const totalCount = await dbHelpers.getChatsCount(storeId, {
+            status: status !== 'all' ? status : undefined,
+            sender: sender !== 'all' ? sender : undefined,
             tag,
-            search
+            search,
+            hasDraft
         });
 
         // Format response
@@ -117,8 +126,10 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             lastMessageText: chat.last_message_text,
             lastMessageSender: chat.last_message_sender,
             replySign: chat.reply_sign,
-            tag: chat.tag,
+            legacyTag: chat.legacy_tag, // DEPRECATED: old tag field
+            status: chat.status, // NEW: Kanban status
             draftReply: chat.draft_reply || null,
+            messageCount: chat.message_count || 0, // NEW: Real message count
         }));
 
         // Get tag statistics from store

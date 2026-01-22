@@ -1,10 +1,15 @@
 import { create } from 'zustand';
+import type { ChatStatus } from '@/db/helpers';
 
-export type ViewMode = 'table' | 'messenger';
+export type ViewMode = 'table' | 'messenger' | 'kanban';
 
-export type ChatTag = 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'untagged' | 'completed';
+export type LastSenderFilter = 'all' | 'client' | 'seller';
 
 interface ChatsState {
+  // Current Store ID
+  currentStoreId: string | null;
+  setCurrentStoreId: (storeId: string) => void;
+
   // View Mode
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
@@ -24,19 +29,29 @@ interface ChatsState {
   isSidebarCollapsed: boolean;
   toggleSidebar: () => void;
 
-  // Filters
-  tagFilter: ChatTag | 'all';
-  setTagFilter: (tag: ChatTag | 'all') => void;
+  // Global Filters (applied to all stores)
+  statusFilter: ChatStatus | 'all';
+  setStatusFilter: (status: ChatStatus | 'all') => void;
+  lastSender: LastSenderFilter;
+  setLastSender: (sender: LastSenderFilter) => void;
+  hasDraft: boolean;
+  setHasDraft: (value: boolean) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
 
-  // Reset all state (for store switching)
-  resetState: () => void;
+  // Reset temporary state only (selection, active chat)
+  resetTemporaryState: () => void;
 }
 
-export const useChatsStore = create<ChatsState>((set, get) => ({
+export const useChatsStore = create<ChatsState>()((set, get) => ({
+  // Current Store ID
+  currentStoreId: null,
+  setCurrentStoreId: (storeId) => {
+    set({ currentStoreId: storeId });
+  },
+
   // View Mode
-  viewMode: 'table',
+  viewMode: 'kanban',
   setViewMode: (mode) => set({ viewMode: mode }),
 
   // Active Chat
@@ -66,19 +81,19 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
   toggleSidebar: () =>
     set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
 
-  // Filters
-  tagFilter: 'all',
-  setTagFilter: (tag) => set({ tagFilter: tag }),
+  // Global Filters (applied to all stores)
+  statusFilter: 'all',
+  setStatusFilter: (status) => set({ statusFilter: status }),
+  lastSender: 'all',
+  setLastSender: (sender) => set({ lastSender: sender }),
+  hasDraft: false,
+  setHasDraft: (value) => set({ hasDraft: value }),
   searchQuery: '',
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  // Reset to initial state (used when switching stores)
-  resetState: () => set({
+  // Reset only temporary state (selection, active chat)
+  resetTemporaryState: () => set({
     activeChatId: null,
     selectedChatIds: new Set(),
-    tagFilter: 'all',
-    searchQuery: '',
-    viewMode: 'table',
-    isSidebarCollapsed: false,
   }),
 }));

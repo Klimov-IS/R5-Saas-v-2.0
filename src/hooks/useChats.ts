@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import type { Chat, ChatsResponse, ChatWithMessages, ChatTag } from '@/types/chats';
+import type { Chat, ChatsResponse, ChatWithMessages, ChatTag, ChatStatus } from '@/types/chats';
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
 
@@ -7,31 +7,40 @@ interface UseChatsOptions {
   storeId: string;
   skip?: number;
   take?: number;
-  tag?: ChatTag | 'all';
+  status?: ChatStatus | 'all'; // NEW: Status filter for Kanban
+  sender?: 'all' | 'client' | 'seller'; // NEW: Sender filter
+  tag?: ChatTag | 'all'; // LEGACY: for backwards compatibility
   search?: string;
+  hasDraft?: boolean; // NEW: Filter for chats with draft replies
 }
 
 interface UseChatsInfiniteOptions {
   storeId: string;
   take?: number;
-  tag?: ChatTag | 'all';
+  status?: ChatStatus | 'all'; // NEW: Status filter for Kanban
+  sender?: 'all' | 'client' | 'seller'; // NEW: Sender filter
+  tag?: ChatTag | 'all'; // LEGACY: for backwards compatibility
   search?: string;
+  hasDraft?: boolean; // NEW: Filter for chats with draft replies
 }
 
 /**
  * Hook для получения списка чатов с фильтрацией и пагинацией
  */
 export function useChats(options: UseChatsOptions) {
-  const { storeId, skip = 0, take = 100, tag = 'all', search = '' } = options;
+  const { storeId, skip = 0, take = 100, status = 'all', sender = 'all', tag = 'all', search = '', hasDraft = false } = options;
 
   return useQuery({
-    queryKey: ['chats', storeId, skip, take, tag, search],
+    queryKey: ['chats', storeId, skip, take, status, sender, tag, search, hasDraft],
     queryFn: async () => {
       const params = new URLSearchParams({
         skip: skip.toString(),
         take: take.toString(),
+        status: status || 'all',
+        sender: sender || 'all',
         tag,
         search,
+        hasDraft: hasDraft.toString(),
       });
 
       const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
@@ -46,6 +55,7 @@ export function useChats(options: UseChatsOptions) {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     cacheTime: 10 * 60 * 1000, // 10 minutes
+    keepPreviousData: true, // ✅ Keep old data while fetching new (smooth transitions)
   });
 }
 
@@ -54,16 +64,19 @@ export function useChats(options: UseChatsOptions) {
  * Используется в MessengerView для автоматической подгрузки при прокрутке
  */
 export function useChatsInfinite(options: UseChatsInfiniteOptions) {
-  const { storeId, take = 50, tag = 'all', search = '' } = options;
+  const { storeId, take = 50, status = 'all', sender = 'all', tag = 'all', search = '', hasDraft = false } = options;
 
   return useInfiniteQuery({
-    queryKey: ['chats-infinite', storeId, tag, search],
+    queryKey: ['chats-infinite', storeId, status, sender, tag, search, hasDraft],
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
         skip: pageParam.toString(),
         take: take.toString(),
+        status: status || 'all',
+        sender: sender || 'all',
         tag,
         search,
+        hasDraft: hasDraft.toString(),
       });
 
       const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
@@ -88,6 +101,8 @@ export function useChatsInfinite(options: UseChatsInfiniteOptions) {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     cacheTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false, // ✅ Don't reset scroll on window focus
+    keepPreviousData: true, // ✅ Keep previous data while refetching for smooth transitions
   });
 }
 

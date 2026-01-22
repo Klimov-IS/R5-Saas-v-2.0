@@ -17,6 +17,7 @@ export * from './complaint-helpers';
 
 export type UpdateStatus = "idle" | "pending" | "success" | "error";
 export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'completed';
+export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'resolved' | 'closed';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
 
 export interface User {
@@ -139,11 +140,14 @@ export interface Chat {
   last_message_text?: string | null;
   last_message_sender?: 'client' | 'seller' | null;
   reply_sign: string;
-  tag: ChatTag;
+  legacy_tag?: ChatTag | null; // DEPRECATED: Old tag field (renamed from 'tag')
+  status: ChatStatus; // NEW: Kanban status (inbox, in_progress, awaiting_reply, resolved, closed)
+  status_updated_at?: string | null; // NEW: When status was last changed
   draft_reply?: string | null;
   draft_reply_thread_id?: string | null;
   draft_reply_generated_at?: string | null; // NEW: When AI generated the draft
   draft_reply_edited?: boolean | null; // NEW: If user manually edited the draft
+  message_count?: number; // NEW: Real message count from chat_messages table
   created_at: string;
   updated_at: string;
 }
@@ -352,8 +356,8 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
       (SELECT COUNT(*)::int FROM products WHERE store_id = s.id) as product_count,
       (SELECT COUNT(*)::int FROM reviews WHERE store_id = s.id) as total_reviews,
       (SELECT COUNT(*)::int FROM chats WHERE store_id = s.id) as total_chats,
-      (SELECT jsonb_object_agg(tag, count) FROM (
-        SELECT tag, COUNT(*)::int as count FROM chats WHERE store_id = s.id GROUP BY tag
+      (SELECT jsonb_object_agg(legacy_tag, count) FROM (
+        SELECT legacy_tag, COUNT(*)::int as count FROM chats WHERE store_id = s.id GROUP BY legacy_tag
       ) t) as chat_tag_counts
     FROM stores s
   `;
@@ -777,7 +781,7 @@ export async function createChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
   const result = await query<Chat>(
     `INSERT INTO chats (
       id, store_id, owner_id, client_name, product_nm_id, product_name, product_vendor_code,
-      last_message_date, last_message_text, last_message_sender, reply_sign, tag,
+      last_message_date, last_message_text, last_message_sender, reply_sign, status,
       draft_reply, draft_reply_thread_id, created_at, updated_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
     RETURNING *`,
@@ -793,7 +797,7 @@ export async function createChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
       chat.last_message_text || null,
       chat.last_message_sender || null,
       chat.reply_sign,
-      chat.tag,
+      chat.status || 'inbox',
       chat.draft_reply || null,
       chat.draft_reply_thread_id || null,
     ]
@@ -818,7 +822,9 @@ export async function updateChat(
     ['last_message_text', 'last_message_text'],
     ['last_message_sender', 'last_message_sender'],
     ['reply_sign', 'reply_sign'],
-    ['tag', 'tag'],
+    ['legacy_tag', 'legacy_tag'], // DEPRECATED
+    ['status', 'status'], // NEW: Kanban status
+    ['status_updated_at', 'status_updated_at'], // NEW
     ['draft_reply', 'draft_reply'],
     ['draft_reply_thread_id', 'draft_reply_thread_id'],
     ['draft_reply_generated_at', 'draft_reply_generated_at'], // NEW
@@ -848,7 +854,7 @@ export async function upsertChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
   const result = await query<Chat>(
     `INSERT INTO chats (
       id, store_id, owner_id, client_name, product_nm_id, product_name, product_vendor_code,
-      last_message_date, last_message_text, last_message_sender, reply_sign, tag,
+      last_message_date, last_message_text, last_message_sender, reply_sign, status,
       draft_reply, draft_reply_thread_id, created_at, updated_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
     ON CONFLICT (id) DO UPDATE SET
@@ -860,7 +866,7 @@ export async function upsertChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
       last_message_text = EXCLUDED.last_message_text,
       last_message_sender = EXCLUDED.last_message_sender,
       reply_sign = EXCLUDED.reply_sign,
-      tag = EXCLUDED.tag,
+      status = EXCLUDED.status,
       draft_reply = EXCLUDED.draft_reply,
       draft_reply_thread_id = EXCLUDED.draft_reply_thread_id,
       updated_at = NOW()
@@ -877,7 +883,7 @@ export async function upsertChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
       chat.last_message_text || null,
       chat.last_message_sender || null,
       chat.reply_sign,
-      chat.tag,
+      chat.status || 'inbox',
       chat.draft_reply || null,
       chat.draft_reply_thread_id || null,
     ]
@@ -1449,16 +1455,33 @@ export async function getReviewsCount(
  */
 export async function getChatsByStoreWithPagination(
   storeId: string,
-  options?: { limit?: number; offset?: number; tag?: string; search?: string }
+  options?: { limit?: number; offset?: number; status?: ChatStatus; sender?: 'client' | 'seller'; tag?: string; search?: string; hasDraft?: boolean }
 ): Promise<Chat[]> {
   const whereClauses: string[] = ['c.store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
 
-  // Filter by tag
+  // Filter by status (NEW - Kanban)
+  if (options?.status) {
+    whereClauses.push(`c.status = $${paramIndex++}`);
+    params.push(options.status);
+  }
+
+  // Filter by last message sender (NEW - for sender filter)
+  if (options?.sender && options.sender !== 'all') {
+    whereClauses.push(`c.last_message_sender = $${paramIndex++}`);
+    params.push(options.sender);
+  }
+
+  // Filter by legacy tag (DEPRECATED - for backwards compatibility)
   if (options?.tag && options.tag !== 'all') {
-    whereClauses.push(`c.tag = $${paramIndex++}`);
+    whereClauses.push(`c.legacy_tag = $${paramIndex++}`);
     params.push(options.tag);
+  }
+
+  // Filter by draft reply (NEW - for draft filter)
+  if (options?.hasDraft) {
+    whereClauses.push(`c.draft_reply IS NOT NULL AND c.draft_reply != ''`);
   }
 
   // Search in last message text or client name
@@ -1472,7 +1495,8 @@ export async function getChatsByStoreWithPagination(
     SELECT
       c.*,
       p.name as product_name,
-      p.vendor_code as product_vendor_code
+      p.vendor_code as product_vendor_code,
+      (SELECT COUNT(*)::int FROM chat_messages WHERE chat_id = c.id) as message_count
     FROM chats c
     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
     WHERE ${whereClauses.join(' AND ')}
@@ -1499,18 +1523,38 @@ export async function getChatsByStoreWithPagination(
 export async function getChatsCount(
   storeId: string,
   options?: {
+    status?: ChatStatus;
+    sender?: 'client' | 'seller';
     tag?: string;
     search?: string;
+    hasDraft?: boolean;
   }
 ): Promise<number> {
   const whereClauses: string[] = ['store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
 
-  // Filter by tag
+  // Filter by status (NEW - Kanban)
+  if (options?.status) {
+    whereClauses.push(`status = $${paramIndex++}`);
+    params.push(options.status);
+  }
+
+  // Filter by last message sender (NEW - for sender filter)
+  if (options?.sender && options.sender !== 'all') {
+    whereClauses.push(`last_message_sender = $${paramIndex++}`);
+    params.push(options.sender);
+  }
+
+  // Filter by legacy tag (DEPRECATED - for backwards compatibility)
   if (options?.tag && options.tag !== 'all') {
-    whereClauses.push(`tag = $${paramIndex++}`);
+    whereClauses.push(`legacy_tag = $${paramIndex++}`);
     params.push(options.tag);
+  }
+
+  // Filter by draft reply (NEW - for draft filter)
+  if (options?.hasDraft) {
+    whereClauses.push(`draft_reply IS NOT NULL AND draft_reply != ''`);
   }
 
   // Search in last message text
@@ -1655,13 +1699,26 @@ export async function markReviewComplaintSent(
 // ============================================================================
 
 /**
- * Update chat tag
+ * Update chat tag (DEPRECATED - use updateChatStatus instead)
  */
 export async function updateChatTag(
   chatId: string,
   tag: ChatTag
 ): Promise<Chat | null> {
-  return updateChat(chatId, { tag });
+  return updateChat(chatId, { legacy_tag: tag });
+}
+
+/**
+ * Update chat status (NEW - for Kanban Board)
+ */
+export async function updateChatStatus(
+  chatId: string,
+  status: ChatStatus
+): Promise<Chat | null> {
+  return updateChat(chatId, {
+    status,
+    status_updated_at: new Date().toISOString()
+  });
 }
 
 // ============================================================================

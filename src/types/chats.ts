@@ -13,6 +13,14 @@ export type ChatTag =
   | 'refund_requested'    // Client wants refund
   | 'spam';               // Spam or competitor messages
 
+// NEW: Kanban Board Status (2026-01-22)
+export type ChatStatus =
+  | 'inbox'           // Входящие
+  | 'in_progress'     // В работе
+  | 'awaiting_reply'  // Ожидание ответа
+  | 'resolved'        // Решено
+  | 'closed';         // Закрыто
+
 export type MessageSender = 'client' | 'seller';
 
 export interface Product {

@@ -19,7 +19,7 @@ interface MessengerViewProps {
 }
 
 export function MessengerView({ storeId, tagStats: propTagStats }: MessengerViewProps) {
-  const { tagFilter, searchQuery, activeChatId } = useChatsStore();
+  const { statusFilter, lastSender, hasDraft, searchQuery, activeChatId } = useChatsStore();
 
   // 🎯 DEBOUNCE SEARCH: Задержка 300ms перед API запросом
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
@@ -34,7 +34,9 @@ export function MessengerView({ storeId, tagStats: propTagStats }: MessengerView
     isFetchingNextPage,
   } = useChatsInfinite({
     storeId,
-    tag: tagFilter,
+    status: statusFilter,
+    sender: lastSender,
+    hasDraft,
     search: debouncedSearchQuery,
     take: 50, // Load 50 chats per page (optimal for performance)
   });

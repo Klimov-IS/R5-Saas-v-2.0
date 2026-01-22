@@ -117,9 +117,9 @@ export function StoreSelector({ currentStoreId, currentStoreName, currentPathnam
       }
     });
 
-    // CRITICAL FIX: Reset Zustand chats store state
-    // This clears active chat, filters, and selections to prevent "sticky" chat issue
-    useChatsStore.getState().resetState();
+    // Reset temporary state (selection, active chat) when switching stores
+    // Filters remain global across all stores
+    useChatsStore.getState().resetTemporaryState();
 
     // SMART NAVIGATION: Stay on the same tab when switching stores
     const currentTab = getCurrentTab(currentPathname, currentStoreId);

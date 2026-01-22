@@ -368,6 +368,40 @@ export default function Home() {
 
   return (
     <div className="container" style={{ maxWidth: '1280px', margin: '0 auto', padding: 'var(--spacing-2xl) var(--spacing-3xl)' }}>
+      {/* Navigation */}
+      <div style={{ marginBottom: '24px', display: 'flex', gap: '12px' }}>
+        <a
+          href="/"
+          style={{
+            padding: '8px 16px',
+            borderRadius: '8px',
+            backgroundColor: 'var(--color-primary)',
+            border: '1px solid var(--color-primary)',
+            textDecoration: 'none',
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: 500,
+          }}
+        >
+          🏪 Кабинеты
+        </a>
+        <a
+          href="/tasks"
+          style={{
+            padding: '8px 16px',
+            borderRadius: '8px',
+            backgroundColor: 'var(--color-background)',
+            border: '1px solid var(--color-border)',
+            textDecoration: 'none',
+            color: 'var(--color-foreground)',
+            fontSize: '14px',
+            fontWeight: 500,
+          }}
+        >
+          🎯 Задачи
+        </a>
+      </div>
+
       {/* Page Header */}
       <header style={{ marginBottom: 'var(--spacing-3xl)' }}>
         <h1 style={{ fontSize: 'var(--font-size-3xl)', fontWeight: 700, marginBottom: 'var(--spacing-sm)' }}>

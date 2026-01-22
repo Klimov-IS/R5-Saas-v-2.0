@@ -5,7 +5,6 @@ import { useChatsStore } from '@/store/chatsStore';
 import type { Chat } from '@/types/chats';
 import { ChatItem } from './ChatItem';
 import { SelectAllCheckbox } from './SelectAllCheckbox';
-import { BulkActionsPanel } from './BulkActionsPanel';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
@@ -194,9 +193,6 @@ export function ChatListSidebar({
             )}
           </>
         )}
-
-        {/* Bulk Actions Panel */}
-        {!isSidebarCollapsed && <BulkActionsPanel storeId={storeId} />}
       </div>
     </div>
   );

@@ -65,7 +65,8 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                 last_message_date: existingChat?.last_message_date || null,
                 last_message_text: existingChat?.last_message_text || null,
                 last_message_sender: existingChat?.last_message_sender || null,
-                tag: existingChat?.tag || 'untagged', // Preserve existing tag or set default
+                legacy_tag: existingChat?.legacy_tag || null, // DEPRECATED: Preserve old tag for history
+                status: existingChat?.status || 'inbox', // NEW: Preserve Kanban status
                 draft_reply: existingChat?.draft_reply || null,
                 draft_reply_thread_id: existingChat?.draft_reply_thread_id || null,
             };
@@ -193,9 +194,11 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
 
                     const tag = result.tag;
 
-                    // Update chat with new tag
+                    // Update chat with new tag (DEPRECATED: legacy_tag only for history)
+                    // NOTE: We only update legacy_tag here, status remains unchanged
+                    // In the future, consider adding logic to update status based on tag changes
                     await dbHelpers.updateChat(chatId, {
-                        tag,
+                        legacy_tag: tag,
                     });
 
                     classifiedCount++;
@@ -234,7 +237,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         };
 
         allStoreChats.forEach(chat => {
-            const tag = chat.tag || 'untagged';
+            const tag = chat.legacy_tag || 'untagged'; // Use legacy_tag (old field)
             if (chatTagCounts.hasOwnProperty(tag)) {
                 chatTagCounts[tag]++;
             } else {
