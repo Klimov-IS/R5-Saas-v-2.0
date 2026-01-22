@@ -33,14 +33,15 @@ echo -e "${BLUE}[3/5] Rebuilding application...${NC}"
 npm run build
 echo -e "${GREEN}✓ Build complete${NC}\n"
 
-# Step 4: Reload PM2
-echo -e "${BLUE}[4/5] Reloading application (zero-downtime)...${NC}"
-pm2 reload wb-reputation
-echo -e "${GREEN}✓ Application reloaded${NC}\n"
+# Step 4: Restart ALL PM2 processes (main app + CRON jobs)
+echo -e "${BLUE}[4/5] Restarting ALL PM2 processes...${NC}"
+echo -e "${YELLOW}⚠️  This will restart both wb-reputation AND wb-reputation-cron${NC}"
+pm2 restart all
+echo -e "${GREEN}✓ All processes restarted${NC}\n"
 
 # Step 5: Check status
 echo -e "${BLUE}[5/5] Checking application status...${NC}"
-pm2 status wb-reputation
+pm2 status
 echo -e "${GREEN}✓ Status checked${NC}\n"
 
 echo ""
