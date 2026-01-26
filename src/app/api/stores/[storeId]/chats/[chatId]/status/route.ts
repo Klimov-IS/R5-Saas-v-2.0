@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateChatStatus } from '@/db/helpers';
-import type { ChatStatus } from '@/db/helpers';
+import { updateChat } from '@/db/helpers';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
 
 /**
  * PATCH /api/stores/[storeId]/chats/[chatId]/status
- * Update chat status for Kanban Board
+ * Update chat status for Kanban Board (with optional completion_reason)
  */
 export async function PATCH(
   request: NextRequest,
@@ -13,7 +13,7 @@ export async function PATCH(
   try {
     const { chatId } = params;
     const body = await request.json();
-    const { status } = body;
+    const { status, completion_reason } = body;
 
     if (!status || typeof status !== 'string') {
       return NextResponse.json(
@@ -30,7 +30,34 @@ export async function PATCH(
       );
     }
 
-    const updatedChat = await updateChatStatus(chatId, status as ChatStatus);
+    // Validate completion_reason if provided
+    if (completion_reason) {
+      const validReasons: CompletionReason[] = [
+        'review_deleted', 'review_upgraded', 'no_reply', 'old_dialog',
+        'not_our_issue', 'spam', 'negative', 'other'
+      ];
+      if (!validReasons.includes(completion_reason as CompletionReason)) {
+        return NextResponse.json(
+          { error: `Invalid completion_reason. Must be one of: ${validReasons.join(', ')}` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // If closing chat, require completion_reason
+    if (status === 'closed' && !completion_reason) {
+      return NextResponse.json(
+        { error: 'completion_reason is required when closing chat' },
+        { status: 400 }
+      );
+    }
+
+    // Update chat with status and optionally completion_reason
+    const updatedChat = await updateChat(chatId, {
+      status: status as ChatStatus,
+      status_updated_at: new Date().toISOString(),
+      completion_reason: status === 'closed' ? (completion_reason as CompletionReason) : null,
+    });
 
     if (!updatedChat) {
       return NextResponse.json(
@@ -39,13 +66,14 @@ export async function PATCH(
       );
     }
 
-    console.log(`✅ [API] Chat ${chatId} status updated: ${status}`);
+    console.log(`✅ [API] Chat ${chatId} status updated: ${status}${completion_reason ? ` (reason: ${completion_reason})` : ''}`);
 
     return NextResponse.json({
       data: {
         id: updatedChat.id,
         status: updatedChat.status,
         statusUpdatedAt: updatedChat.status_updated_at,
+        completionReason: updatedChat.completion_reason,
       }
     }, { status: 200 });
   } catch (error: any) {

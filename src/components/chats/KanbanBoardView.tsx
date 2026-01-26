@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useMemo, useImperativeHandle, forwardRef } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, PointerSensor, useSensor, useSensors, pointerWithin, rectIntersection } from '@dnd-kit/core';
 import KanbanColumn from './KanbanColumn';
 import ChatKanbanCard from './ChatKanbanCard';
+import CompletionReasonModal from './CompletionReasonModal';
 import { useRouter } from 'next/navigation';
-import type { ChatStatus } from '@/db/helpers';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
 import { useChatsStore } from '@/store/chatsStore';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -21,6 +22,7 @@ interface Chat {
   draftReply?: string | null;
   status: ChatStatus;
   messageCount?: number;
+  completionReason?: CompletionReason | null;
 }
 
 interface KanbanBoardViewProps {
@@ -50,6 +52,9 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
     const queryClient = useQueryClient();
     const { selectedChatIds, toggleChatSelection, selectAllChats, deselectAllChats, isSelected } = useChatsStore();
     const [activeId, setActiveId] = useState<string | null>(null);
+    const [showCompletionModal, setShowCompletionModal] = useState(false);
+    const [pendingCloseChatId, setPendingCloseChatId] = useState<string | null>(null);
+    const [isBulkClose, setIsBulkClose] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -83,10 +88,20 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
 
     if (!over || active.id === over.id) return;
 
-    const chatId = active.id as string;
+    const chatId = String(active.id);
     const newStatus = over.id as ChatStatus;
 
-    // Update status via API
+    console.log('[DRAG] Chat', chatId, 'dragged to', newStatus);
+
+    // If closing chat, show modal to select completion reason
+    if (newStatus === 'closed') {
+      console.log('[DRAG] Showing completion modal for chat', chatId);
+      setPendingCloseChatId(chatId);
+      setShowCompletionModal(true);
+      return;
+    }
+
+    // Update status via API (for non-closed statuses)
     const loadingToast = toast.loading('Обновление статуса...');
     try {
       const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/status`, {
@@ -106,6 +121,104 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
     } catch (error) {
       console.error('Failed to update chat status:', error);
       toast.error('Не удалось обновить статус чата', { id: loadingToast });
+    }
+  };
+
+  // Handle completion reason confirmation (single chat)
+  const handleCompletionReasonConfirm = async (reason: CompletionReason) => {
+    setShowCompletionModal(false);
+
+    // If bulk close operation
+    if (isBulkClose) {
+      setIsBulkClose(false);
+      await handleBulkCloseWithReason(reason);
+      return;
+    }
+
+    // Single chat close
+    if (!pendingCloseChatId) return;
+    const chatId = pendingCloseChatId;
+    setPendingCloseChatId(null);
+
+    const loadingToast = toast.loading('Закрытие чата...');
+    try {
+      const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'closed',
+          completion_reason: reason,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to close chat');
+
+      // ✅ Invalidate React Query cache
+      queryClient.invalidateQueries({ queryKey: ['all-chats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-stats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-infinite', storeId] });
+
+      toast.success('Чат закрыт', { id: loadingToast });
+    } catch (error) {
+      console.error('Failed to close chat:', error);
+      toast.error('Не удалось закрыть чат', { id: loadingToast });
+    }
+  };
+
+  const handleCompletionModalClose = () => {
+    setShowCompletionModal(false);
+    setPendingCloseChatId(null);
+    setIsBulkClose(false);
+  };
+
+  // Handle bulk close with completion reason
+  const handleBulkCloseWithReason = async (reason: CompletionReason) => {
+    if (selectedChatIds.size === 0) {
+      toast.error('Выберите хотя бы один чат');
+      return;
+    }
+
+    const loadingToast = toast.loading(`Закрытие ${selectedChatIds.size} чатов...`);
+    try {
+      // Close each chat individually with the same completion reason
+      const chatIdsArray = Array.from(selectedChatIds);
+      const results = {
+        successful: 0,
+        failed: 0,
+      };
+
+      for (const chatId of chatIdsArray) {
+        try {
+          const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: 'closed',
+              completion_reason: reason,
+            }),
+          });
+
+          if (response.ok) {
+            results.successful++;
+          } else {
+            results.failed++;
+          }
+        } catch (error) {
+          results.failed++;
+        }
+      }
+
+      deselectAllChats();
+
+      // ✅ Invalidate React Query cache
+      queryClient.invalidateQueries({ queryKey: ['all-chats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-stats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-infinite', storeId] });
+
+      toast.success(`Чаты закрыты: ${results.successful}/${chatIdsArray.length}`, { id: loadingToast });
+    } catch (error) {
+      console.error('Bulk close failed:', error);
+      toast.error('Не удалось закрыть чаты', { id: loadingToast });
     }
   };
 
@@ -205,6 +318,14 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
       return;
     }
 
+    // If closing chats, show modal to select completion reason
+    if (newStatus === 'closed') {
+      setIsBulkClose(true);
+      setShowCompletionModal(true);
+      return;
+    }
+
+    // For non-closed statuses, proceed normally
     const loadingToast = toast.loading(`Изменение статуса для ${selectedChatIds.size} чатов...`);
     try {
       const response = await fetch(`/api/stores/${storeId}/chats/bulk-actions`, {
@@ -253,6 +374,7 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
       {/* Kanban Board */}
       <DndContext
         sensors={sensors}
+        collisionDetection={pointerWithin}
         onDragStart={(event) => setActiveId(event.active.id as string)}
         onDragEnd={handleDragEnd}
       >
@@ -283,11 +405,20 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
                 draftReply={activeChat.draftReply}
                 status={activeChat.status}
                 messageCount={activeChat.messageCount}
+                completionReason={activeChat.completionReason}
               />
             </div>
           )}
         </DragOverlay>
       </DndContext>
+
+      {/* Completion Reason Modal */}
+      <CompletionReasonModal
+        isOpen={showCompletionModal}
+        onClose={handleCompletionModalClose}
+        onConfirm={handleCompletionReasonConfirm}
+        chatCount={isBulkClose ? selectedChatIds.size : 1}
+      />
     </div>
   );
 });

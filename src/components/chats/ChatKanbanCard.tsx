@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import type { ChatStatus } from '@/db/helpers';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
 
 interface ChatKanbanCardProps {
   id: string;
@@ -17,6 +17,7 @@ interface ChatKanbanCardProps {
   messageCount?: number;
   selected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
+  completionReason?: CompletionReason | null;
 }
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
@@ -35,6 +36,17 @@ const STATUS_COLORS: Record<ChatStatus, string> = {
   closed: 'bg-gray-100 text-gray-700',
 };
 
+const COMPLETION_REASON_CONFIG: Record<CompletionReason, { label: string; icon: string; color: string }> = {
+  review_deleted: { label: 'Отзыв удален', icon: '🗑️', color: 'bg-green-100 text-green-700 border-green-300' },
+  review_upgraded: { label: 'Отзыв дополнен', icon: '⭐', color: 'bg-green-100 text-green-700 border-green-300' },
+  no_reply: { label: 'Нет ответа', icon: '🔇', color: 'bg-gray-100 text-gray-600 border-gray-300' },
+  old_dialog: { label: 'Старый диалог', icon: '⏰', color: 'bg-gray-100 text-gray-600 border-gray-300' },
+  not_our_issue: { label: 'Не наш вопрос', icon: '❓', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },
+  spam: { label: 'Спам', icon: '🚫', color: 'bg-red-100 text-red-700 border-red-300' },
+  negative: { label: 'Негатив', icon: '😠', color: 'bg-red-100 text-red-700 border-red-300' },
+  other: { label: 'Другое', icon: '📋', color: 'bg-gray-100 text-gray-600 border-gray-300' },
+};
+
 export default function ChatKanbanCard({
   id,
   clientName,
@@ -47,6 +59,7 @@ export default function ChatKanbanCard({
   messageCount = 0,
   selected = false,
   onSelect,
+  completionReason,
 }: ChatKanbanCardProps) {
   const [draftExpanded, setDraftExpanded] = useState(false);
   const [messageExpanded, setMessageExpanded] = useState(false);
@@ -66,7 +79,7 @@ export default function ChatKanbanCard({
       className={`
         bg-white rounded-lg border p-3 cursor-grab transition-all duration-150
         hover:shadow-md hover:border-gray-300 hover:-translate-y-0.5
-        active:cursor-grabbing active:scale-[0.98]
+        active:cursor-grabbing
         ${selected ? 'border-blue-500 bg-blue-50 shadow-sm ring-2 ring-blue-200' : 'border-gray-200'}
       `}
     >
@@ -79,6 +92,8 @@ export default function ChatKanbanCard({
             e.stopPropagation();
             onSelect?.(id, e.target.checked);
           }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           className="w-4 h-4 cursor-pointer shrink-0 mt-0.5"
         />
         <div className="flex-1 font-semibold text-sm text-gray-900">
@@ -144,6 +159,14 @@ export default function ChatKanbanCard({
           <div className={`text-yellow-800 leading-snug transition-all ${draftExpanded ? '' : 'line-clamp-2'}`}>
             {draftReply}
           </div>
+        </div>
+      )}
+
+      {/* Completion Reason Badge (for closed chats) */}
+      {status === 'closed' && completionReason && (
+        <div className={`flex items-center gap-1.5 px-2 py-1.5 rounded border text-xs font-medium ${COMPLETION_REASON_CONFIG[completionReason].color}`}>
+          <span className="text-sm">{COMPLETION_REASON_CONFIG[completionReason].icon}</span>
+          <span>{COMPLETION_REASON_CONFIG[completionReason].label}</span>
         </div>
       )}
 

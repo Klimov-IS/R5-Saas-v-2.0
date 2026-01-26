@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Search, ChevronDown, Table, MessageSquare, LayoutGrid, Zap } from 'lucide-react';
 import { useChatsStore } from '@/store/chatsStore';
 import { cn } from '@/lib/utils';
-import type { ChatStatus } from '@/db/helpers';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
 
 interface ChatsToolbarProps {
   storeId: string;
@@ -41,7 +41,9 @@ export function ChatsToolbar({
     hasDraft,
     setHasDraft,
     searchQuery,
-    setSearchQuery
+    setSearchQuery,
+    completionReasonFilter,
+    setCompletionReasonFilter
   } = useChatsStore();
 
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -88,6 +90,15 @@ export function ChatsToolbar({
     setHasDraft(!hasDraft);
   };
 
+  const handleCompletionReasonToggle = (reason: CompletionReason) => {
+    // Toggle logic: if clicking the same, turn it off; if clicking different, switch
+    if (completionReasonFilter === reason) {
+      setCompletionReasonFilter('all');
+    } else {
+      setCompletionReasonFilter(reason);
+    }
+  };
+
   const STATUS_LABELS: Record<ChatStatus, string> = {
     inbox: 'Входящие',
     in_progress: 'В работе',
@@ -102,6 +113,17 @@ export function ChatsToolbar({
     awaiting_reply: '⏳',
     resolved: '✅',
     closed: '🔒',
+  };
+
+  const COMPLETION_REASON_CONFIG: Record<CompletionReason, { label: string; icon: string }> = {
+    review_deleted: { label: 'Отзыв удален', icon: '🗑️' },
+    review_upgraded: { label: 'Отзыв дополнен', icon: '⭐' },
+    no_reply: { label: 'Нет ответа', icon: '🔇' },
+    old_dialog: { label: 'Старый диалог', icon: '⏰' },
+    not_our_issue: { label: 'Не наш вопрос', icon: '❓' },
+    spam: { label: 'Спам', icon: '🚫' },
+    negative: { label: 'Негатив', icon: '😠' },
+    other: { label: 'Другое', icon: '📋' },
   };
 
   const totalChats = statusStats
@@ -184,7 +206,7 @@ export function ChatsToolbar({
             <button
               className={cn(
                 'flex items-center gap-2 px-3 py-2 border rounded-md text-sm font-medium transition-all whitespace-nowrap',
-                (hasDraft || lastSender !== 'all')
+                (hasDraft || lastSender !== 'all' || completionReasonFilter !== 'all')
                   ? 'bg-blue-500 text-white border-blue-500'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
               )}
@@ -233,6 +255,28 @@ export function ChatsToolbar({
                     />
                     📝 <span>С черновиком</span>
                   </label>
+
+                  {/* Divider */}
+                  <div className="border-t border-slate-200 my-2"></div>
+
+                  {/* Section 3: Completion Reason (only for closed chats) */}
+                  <div className="px-3 py-1 text-xs font-semibold text-slate-500">
+                    Причина закрытия
+                  </div>
+                  {(Object.keys(COMPLETION_REASON_CONFIG) as CompletionReason[]).map((reason) => (
+                    <label
+                      key={reason}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={completionReasonFilter === reason}
+                        onChange={() => handleCompletionReasonToggle(reason)}
+                        className="rounded border-slate-300"
+                      />
+                      {COMPLETION_REASON_CONFIG[reason].icon} <span>{COMPLETION_REASON_CONFIG[reason].label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
             )}

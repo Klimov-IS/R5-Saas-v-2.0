@@ -1,9 +1,11 @@
 import { create } from 'zustand';
-import type { ChatStatus } from '@/db/helpers';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
 
 export type ViewMode = 'table' | 'messenger' | 'kanban';
 
 export type LastSenderFilter = 'all' | 'client' | 'seller';
+
+export type CompletionReasonFilter = CompletionReason | 'all';
 
 interface ChatsState {
   // Current Store ID
@@ -38,6 +40,8 @@ interface ChatsState {
   setHasDraft: (value: boolean) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  completionReasonFilter: CompletionReasonFilter;
+  setCompletionReasonFilter: (reason: CompletionReasonFilter) => void;
 
   // Reset temporary state only (selection, active chat)
   resetTemporaryState: () => void;
@@ -90,6 +94,8 @@ export const useChatsStore = create<ChatsState>()((set, get) => ({
   setHasDraft: (value) => set({ hasDraft: value }),
   searchQuery: '',
   setSearchQuery: (query) => set({ searchQuery: query }),
+  completionReasonFilter: 'all',
+  setCompletionReasonFilter: (reason) => set({ completionReasonFilter: reason }),
 
   // Reset only temporary state (selection, active chat)
   resetTemporaryState: () => set({

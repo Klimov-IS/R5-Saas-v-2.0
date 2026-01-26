@@ -25,6 +25,7 @@ export default function ChatsPage() {
     searchQuery,
     selectedChatIds,
     setCurrentStoreId,
+    completionReasonFilter,
   } = useChatsStore();
 
   // Set current store ID when component mounts or storeId changes
@@ -127,6 +128,14 @@ export default function ChatsPage() {
 
     // Draft filter
     if (hasDraft && !chat.draftReply) return false;
+
+    // Completion Reason filter (only for closed chats)
+    if (completionReasonFilter !== 'all') {
+      // If filtering by completion reason, only show closed chats with that reason
+      if (chat.status !== 'closed' || chat.completionReason !== completionReasonFilter) {
+        return false;
+      }
+    }
 
     // Search filter (client name, product name, last message)
     if (searchQuery) {
@@ -278,6 +287,7 @@ export default function ChatsPage() {
                 draftReply: chat.draftReply,
                 status: chat.status || 'inbox',
                 messageCount: chat.messageCount || 0,
+                completionReason: chat.completionReason || null,
               }))}
               storeId={storeId}
             />

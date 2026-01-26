@@ -1,9 +1,8 @@
 'use client';
 
 import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import ChatKanbanCard from './ChatKanbanCard';
-import type { ChatStatus } from '@/db/helpers';
+import DraggableKanbanCard from './DraggableKanbanCard';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
 
 interface Chat {
   id: string;
@@ -15,6 +14,7 @@ interface Chat {
   draftReply?: string | null;
   status: ChatStatus;
   messageCount?: number;
+  completionReason?: CompletionReason | null;
 }
 
 interface KanbanColumnProps {
@@ -66,6 +66,7 @@ export default function KanbanColumn({
 
   return (
     <div
+      ref={setNodeRef}
       className={`
         flex flex-col rounded-lg border-2 transition-colors
         ${COLUMN_COLORS[status]}
@@ -99,36 +100,31 @@ export default function KanbanColumn({
 
       {/* Cards Container */}
       <div
-        ref={setNodeRef}
         className="flex-1 p-3 space-y-3 overflow-y-auto min-h-[500px] max-h-[calc(100vh-280px)]"
       >
-        <SortableContext
-          items={chats.map(c => c.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {chats.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-              Нет чатов
-            </div>
-          ) : (
-            chats.map(chat => (
-              <ChatKanbanCard
-                key={chat.id}
-                id={chat.id}
-                clientName={chat.clientName}
-                productName={chat.productName}
-                lastMessageText={chat.lastMessageText}
-                lastMessageSender={chat.lastMessageSender}
-                lastMessageDate={chat.lastMessageDate}
-                draftReply={chat.draftReply}
-                status={chat.status}
-                messageCount={chat.messageCount}
-                selected={selectedChatIds.has(chat.id)}
-                onSelect={onSelectChat}
-              />
-            ))
-          )}
-        </SortableContext>
+        {chats.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+            Нет чатов
+          </div>
+        ) : (
+          chats.map(chat => (
+            <DraggableKanbanCard
+              key={chat.id}
+              id={chat.id}
+              clientName={chat.clientName}
+              productName={chat.productName}
+              lastMessageText={chat.lastMessageText}
+              lastMessageSender={chat.lastMessageSender}
+              lastMessageDate={chat.lastMessageDate}
+              draftReply={chat.draftReply}
+              status={chat.status}
+              messageCount={chat.messageCount}
+              selected={selectedChatIds.has(chat.id)}
+              onSelect={onSelectChat}
+              completionReason={chat.completionReason}
+            />
+          ))
+        )}
       </div>
     </div>
   );

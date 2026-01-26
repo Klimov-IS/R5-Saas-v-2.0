@@ -18,6 +18,7 @@ export * from './complaint-helpers';
 export type UpdateStatus = "idle" | "pending" | "success" | "error";
 export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'completed';
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'resolved' | 'closed';
+export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
 
 export interface User {
@@ -143,6 +144,7 @@ export interface Chat {
   legacy_tag?: ChatTag | null; // DEPRECATED: Old tag field (renamed from 'tag')
   status: ChatStatus; // NEW: Kanban status (inbox, in_progress, awaiting_reply, resolved, closed)
   status_updated_at?: string | null; // NEW: When status was last changed
+  completion_reason?: CompletionReason | null; // NEW: Why chat was closed (only for status='closed')
   draft_reply?: string | null;
   draft_reply_thread_id?: string | null;
   draft_reply_generated_at?: string | null; // NEW: When AI generated the draft
@@ -825,6 +827,7 @@ export async function updateChat(
     ['legacy_tag', 'legacy_tag'], // DEPRECATED
     ['status', 'status'], // NEW: Kanban status
     ['status_updated_at', 'status_updated_at'], // NEW
+    ['completion_reason', 'completion_reason'], // NEW: Why chat was closed
     ['draft_reply', 'draft_reply'],
     ['draft_reply_thread_id', 'draft_reply_thread_id'],
     ['draft_reply_generated_at', 'draft_reply_generated_at'], // NEW
