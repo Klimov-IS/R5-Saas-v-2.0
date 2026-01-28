@@ -16,7 +16,8 @@
     "generate-sql": "ts-node scripts/generate-sql-from-json.ts",
     "migrate": "ts-node scripts/migrate-from-firebase.ts",
     "test-db": "ts-node scripts/test-db-connection.ts",
-    "run-migration": "ts-node scripts/run-migration.ts"
+    "run-migration": "ts-node scripts/run-migration.ts",
+    "generate-extension-token": "ts-node scripts/generate-extension-api-token.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
