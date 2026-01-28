@@ -3,6 +3,8 @@ import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { getComplaintsByStore } from '@/db/complaint-helpers';
 import { query } from '@/db/client';
+import { verifyApiToken, hasStoreAccess } from '@/lib/api-auth';
+import { rateLimiter } from '@/lib/rate-limiter';
 
 /**
  * @swagger
@@ -47,8 +49,12 @@ import { query } from '@/db/client';
  *         description: Invalid parameters
  *       '401':
  *         description: Unauthorized
+ *       '403':
+ *         description: Forbidden - token doesn't have access to this store
  *       '404':
  *         description: Store not found
+ *       '429':
+ *         description: Rate limit exceeded
  *       '500':
  *         description: Internal server error
  */
@@ -58,6 +64,58 @@ export async function GET(
 ) {
   const { storeId } = params;
   const { searchParams } = new URL(request.url);
+
+  // Authentication - verify Bearer token
+  const authHeader = request.headers.get('authorization');
+  const apiToken = await verifyApiToken(authHeader);
+
+  if (!apiToken) {
+    return NextResponse.json(
+      {
+        error: 'Unauthorized',
+        message: 'Invalid or missing API token',
+        code: 'INVALID_TOKEN',
+      },
+      { status: 401 }
+    );
+  }
+
+  // Verify store access
+  if (!hasStoreAccess(apiToken, storeId)) {
+    return NextResponse.json(
+      {
+        error: 'Forbidden',
+        message: 'Token does not have access to this store',
+        code: 'STORE_ACCESS_DENIED',
+      },
+      { status: 403 }
+    );
+  }
+
+  // Rate limiting - 100 requests per minute per token
+  const rateLimitKey = `api_token_${apiToken.id}`;
+  const rateLimit = rateLimiter.check(rateLimitKey);
+
+  if (!rateLimit.allowed) {
+    const resetDate = new Date(rateLimit.resetAt).toISOString();
+    return NextResponse.json(
+      {
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Maximum 100 requests per minute.',
+        code: 'RATE_LIMIT_EXCEEDED',
+        resetAt: resetDate,
+      },
+      {
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': resetDate,
+          'Retry-After': Math.ceil((rateLimit.resetAt - Date.now()) / 1000).toString(),
+        },
+      }
+    );
+  }
 
   // Parse pagination parameters
   const skip = parseInt(searchParams.get('skip') || '0', 10);
@@ -172,7 +230,14 @@ export async function GET(
       };
     });
 
-    return NextResponse.json(complaints, { status: 200 });
+    return NextResponse.json(complaints, {
+      status: 200,
+      headers: {
+        'X-RateLimit-Limit': '100',
+        'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+        'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
+      },
+    });
   } catch (error: any) {
     console.error('Failed to fetch complaints via API:', error.message, error.stack);
     return NextResponse.json(
