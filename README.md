@@ -387,6 +387,7 @@ curl -s http://localhost:3000/api/stores \
 - **[database-schema.md](./docs/database-schema.md)** - Complete PostgreSQL schema documentation
 - **[complaint-auto-generation-rules.md](./docs/complaint-auto-generation-rules.md)** - Complaint system rules
 - **[complaints-table-schema.md](./docs/complaints-table-schema.md)** - Review complaints table details
+- **[CHROME_EXTENSION_INTEGRATION.md](./docs/CHROME_EXTENSION_INTEGRATION.md)** - Chrome Extension for WB reviews parsing (⚠️ BLOCKED)
 
 ### 🏗️ Architecture Decision Records (ADR)
 

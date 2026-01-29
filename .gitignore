@@ -61,3 +61,4 @@ prototypes/
 # SSH keys
 .ssh/
 *.pub
+Extension/WB

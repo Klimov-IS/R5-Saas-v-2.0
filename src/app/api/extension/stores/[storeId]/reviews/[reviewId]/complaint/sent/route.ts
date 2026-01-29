@@ -134,9 +134,9 @@ export async function POST(
 
     await query(
       `UPDATE review_complaints
-       SET status = $1, sent_at = $2, wb_complaint_id = $3, updated_at = NOW()
-       WHERE review_id = $4`,
-      ['sent', sentAt, body.wb_complaint_id || null, reviewId]
+       SET status = $1, sent_at = $2, sent_by_user_id = $3, wb_complaint_id = $4, updated_at = NOW()
+       WHERE review_id = $5`,
+      ['sent', sentAt, user.id, body.wb_complaint_id || null, reviewId]
     );
 
     console.log(`[Extension Mark Sent] ✅ Жалоба отмечена как отправленная: ${reviewId}`);
