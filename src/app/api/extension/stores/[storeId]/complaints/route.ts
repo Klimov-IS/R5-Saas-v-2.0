@@ -109,7 +109,7 @@ export async function GET(
       JOIN review_complaints rc ON r.id = rc.review_id
       JOIN products p ON r.product_id = p.id
       WHERE r.store_id = $1
-        AND r.complaint_status = 'draft'
+        AND rc.status = 'draft'
         AND r.rating = ANY($2)
       ORDER BY r.date DESC
       LIMIT $3`,
@@ -125,7 +125,7 @@ export async function GET(
       `SELECT r.rating, COUNT(*) as count
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
-       WHERE r.store_id = $1 AND r.complaint_status = 'draft'
+       WHERE r.store_id = $1 AND rc.status = 'draft'
        GROUP BY r.rating`,
       [storeId]
     );
@@ -141,7 +141,7 @@ export async function GET(
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
        JOIN products p ON r.product_id = p.id
-       WHERE r.store_id = $1 AND r.complaint_status = 'draft'
+       WHERE r.store_id = $1 AND rc.status = 'draft'
        GROUP BY p.vendor_code
        ORDER BY count DESC
        LIMIT 20`,
