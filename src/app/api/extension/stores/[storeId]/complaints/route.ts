@@ -98,7 +98,6 @@ export async function GET(
       `SELECT
         r.id,
         p.wb_product_id as product_id,
-        p.vendor_code as product_name,
         r.rating,
         r.text,
         r.author,
@@ -161,7 +160,6 @@ export async function GET(
       complaints: complaintsData.map((c) => ({
         id: c.id,
         productId: c.product_id,
-        productName: c.product_name,
         rating: c.rating,
         text: c.text,
         authorName: c.author,
