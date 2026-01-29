@@ -97,7 +97,8 @@ export async function GET(
     const complaintsResult = await query(
       `SELECT
         r.id,
-        p.vendor_code as product_id,
+        p.wb_product_id as product_id,
+        p.vendor_code as product_name,
         r.rating,
         r.text,
         r.author,
@@ -136,22 +137,22 @@ export async function GET(
     });
 
     // 5. Статистика по артикулам
-    const byArticleResult = await query<{ vendor_code: string; count: string }>(
-      `SELECT p.vendor_code, COUNT(*) as count
+    const byArticleResult = await query<{ wb_product_id: string; count: string }>(
+      `SELECT p.wb_product_id, COUNT(*) as count
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
        JOIN products p ON r.product_id = p.id
        WHERE r.store_id = $1 AND rc.status = 'draft'
-       GROUP BY p.vendor_code
+       GROUP BY p.wb_product_id
        ORDER BY count DESC
        LIMIT 20`,
       [storeId]
     );
 
     const articleStats: Record<string, number> = {};
-    byArticleResult.rows.forEach(({ vendor_code, count }) => {
-      if (vendor_code) {
-        articleStats[vendor_code] = parseInt(count, 10);
+    byArticleResult.rows.forEach(({ wb_product_id, count }) => {
+      if (wb_product_id) {
+        articleStats[wb_product_id] = parseInt(count, 10);
       }
     });
 
@@ -160,6 +161,7 @@ export async function GET(
       complaints: complaintsData.map((c) => ({
         id: c.id,
         productId: c.product_id,
+        productName: c.product_name,
         rating: c.rating,
         text: c.text,
         authorName: c.author,
