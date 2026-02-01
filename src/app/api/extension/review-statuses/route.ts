@@ -40,8 +40,9 @@ interface PostRequestBody {
 // ============================================
 
 // WB status → complaint_status ENUM
+// ENUM values: not_sent, draft, sent, approved, rejected, pending, reconsidered
 const COMPLAINT_STATUS_MAP: Record<string, string> = {
-  'Жалоба отклонена': 'declined',
+  'Жалоба отклонена': 'rejected',   // not 'declined'!
   'Жалоба одобрена': 'approved',
   'Проверяем жалобу': 'pending',
   'Жалоба пересмотрена': 'reconsidered'
@@ -52,11 +53,11 @@ const COMPLAINT_STATUSES = Object.keys(COMPLAINT_STATUS_MAP);
 
 /**
  * Get complaint_status from array of WB statuses
- * Priority: reconsidered > declined > approved > pending
+ * Priority: reconsidered > rejected > approved > pending
  */
 function getComplaintStatusFromStatuses(statuses: string[]): string | null {
   if (statuses.includes('Жалоба пересмотрена')) return 'reconsidered';
-  if (statuses.includes('Жалоба отклонена')) return 'declined';
+  if (statuses.includes('Жалоба отклонена')) return 'rejected';  // ENUM value is 'rejected'
   if (statuses.includes('Жалоба одобрена')) return 'approved';
   if (statuses.includes('Проверяем жалобу')) return 'pending';
   return null;
