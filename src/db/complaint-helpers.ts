@@ -193,9 +193,12 @@ export async function createComplaint(input: CreateReviewComplaintInput): Promis
   );
 
   // Update denormalized fields in reviews table
+  // complaint_status = 'draft' ensures the UI shows correct status badge
   await query(
     `UPDATE reviews
-     SET has_complaint = TRUE, has_complaint_draft = TRUE
+     SET has_complaint = TRUE,
+         has_complaint_draft = TRUE,
+         complaint_status = 'draft'
      WHERE id = $1`,
     [input.review_id]
   );
@@ -358,11 +361,13 @@ export async function markComplaintAsSent(
   );
 
   // Update denormalized fields in reviews table
+  // complaint_status = 'sent' ensures the UI shows correct status badge
   await query(
     `UPDATE reviews
      SET has_complaint = TRUE,
          has_complaint_draft = FALSE,
-         complaint_sent_date = NOW()
+         complaint_sent_date = NOW(),
+         complaint_status = 'sent'
      WHERE id = $1`,
     [reviewId]
   );
@@ -388,6 +393,17 @@ export async function updateComplaintModeration(
     [input.status, input.moderated_at, input.wb_response || null, reviewId]
   );
 
+  // Sync complaint_status to reviews table for UI consistency
+  if (result.rows[0]) {
+    await query(
+      `UPDATE reviews
+       SET complaint_status = $1::complaint_status,
+           updated_at = NOW()
+       WHERE id = $2`,
+      [input.status, reviewId]
+    );
+  }
+
   return result.rows[0] || null;
 }
 
@@ -405,7 +421,8 @@ export async function deleteComplaint(reviewId: string): Promise<boolean> {
     await query(
       `UPDATE reviews
        SET has_complaint = FALSE,
-           has_complaint_draft = FALSE
+           has_complaint_draft = FALSE,
+           complaint_status = 'not_sent'
        WHERE id = $1`,
       [reviewId]
     );
