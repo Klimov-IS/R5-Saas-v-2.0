@@ -70,10 +70,10 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
         body: JSON.stringify({
           id: storeId,
           name: formData.name.trim(),
-          api_token: formData.api_token.trim(),
-          content_api_token: formData.content_api_token.trim(),
-          feedbacks_api_token: formData.feedbacks_api_token.trim(),
-          chat_api_token: formData.chat_api_token.trim(),
+          apiToken: formData.api_token.trim(),
+          contentApiToken: formData.content_api_token.trim(),
+          feedbacksApiToken: formData.feedbacks_api_token.trim(),
+          chatApiToken: formData.chat_api_token.trim(),
           status: formData.status,
           owner_id: 'default', // TODO: Replace with actual user ID from auth
           total_reviews: 0,
