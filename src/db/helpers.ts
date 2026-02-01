@@ -1308,7 +1308,7 @@ export async function getReviewsByStoreWithPagination(
   }
 
   if (options?.complaintStatus && options.complaintStatus !== 'all') {
-    whereClauses.push(`rc.status = $${paramIndex}`);
+    whereClauses.push(`r.complaint_status = $${paramIndex}`);
     params.push(options.complaintStatus);
     paramIndex++;
   }
@@ -1438,7 +1438,7 @@ export async function getReviewsCount(
   }
 
   if (options?.complaintStatus && options.complaintStatus !== 'all') {
-    whereClauses.push(`rc.status = $${paramIndex}`);
+    whereClauses.push(`r.complaint_status = $${paramIndex}`);
     params.push(options.complaintStatus);
     paramIndex++;
   }
