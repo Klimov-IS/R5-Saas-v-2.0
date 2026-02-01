@@ -64,14 +64,6 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Limit to reasonable batch size
-    if (product_ids.length > 1000) {
-      return NextResponse.json({
-        error: 'Too many products',
-        details: 'Maximum 1000 products per request'
-      }, { status: 400 });
-    }
-
     let processed = 0;
     let failed = 0;
     const errors: Array<{ product_id: string; error: string }> = [];

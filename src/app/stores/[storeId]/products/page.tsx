@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { RulesConfigSidebar } from '@/components/RulesConfigSidebar';
 import { BulkActionsBar, type BulkAction } from '@/components/BulkActionsBar';
 import { CopyRulesModal } from '@/components/CopyRulesModal';
+import { CustomRulesModal, type CustomRules } from '@/components/CustomRulesModal';
 import { ProgressDialog } from '@/components/ProgressDialog';
 
 type WorkStatus = 'not_working' | 'active' | 'paused' | 'completed';
@@ -108,7 +109,8 @@ async function bulkAction(
   storeId: string,
   action: BulkAction,
   productIds: string[],
-  sourceProductId?: string
+  sourceProductId?: string,
+  rules?: CustomRules
 ): Promise<any> {
   const body: any = {
     action: action.type,
@@ -119,6 +121,8 @@ async function bulkAction(
     body.work_status = action.status;
   } else if (action.type === 'copy_rules') {
     body.source_product_id = sourceProductId;
+  } else if (action.type === 'apply_custom_rules' && rules) {
+    body.rules = rules;
   }
 
   const response = await fetch(`/api/stores/${storeId}/products/bulk-actions`, {
@@ -398,6 +402,7 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [isCopyRulesModalOpen, setIsCopyRulesModalOpen] = useState(false);
+  const [isCustomRulesModalOpen, setIsCustomRulesModalOpen] = useState(false);
   const [progressDialog, setProgressDialog] = useState({
     isOpen: false,
     title: '',
@@ -457,8 +462,8 @@ export default function ProductsPage() {
 
   // Bulk action mutation
   const bulkActionMutation = useMutation({
-    mutationFn: ({ action, sourceProductId }: { action: BulkAction; sourceProductId?: string }) =>
-      bulkAction(storeId, action, Array.from(selectedProductIds), sourceProductId),
+    mutationFn: ({ action, sourceProductId, rules }: { action: BulkAction; sourceProductId?: string; rules?: CustomRules }) =>
+      bulkAction(storeId, action, Array.from(selectedProductIds), sourceProductId, rules),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['products', storeId] });
 
@@ -577,11 +582,6 @@ export default function ProductsPage() {
   const handleBulkAction = (action: BulkAction) => {
     if (action.type === 'copy_rules') {
       setIsCopyRulesModalOpen(true);
-    } else if (action.type === 'apply_custom_rules') {
-      toast({
-        title: 'В разработке',
-        description: 'Функция кастомных правил будет доступна в следующей версии',
-      });
     } else {
       // Show progress dialog
       let title = '';
@@ -621,6 +621,23 @@ export default function ProductsPage() {
     });
   };
 
+  const handleApplyCustomRules = (rules: CustomRules) => {
+    setIsCustomRulesModalOpen(false);
+
+    setProgressDialog({
+      isOpen: true,
+      title: 'Применение кастомных правил...',
+      current: 0,
+      total: selectedProductIds.size,
+      result: undefined
+    });
+
+    bulkActionMutation.mutate({
+      action: { type: 'apply_custom_rules' },
+      rules
+    });
+  };
+
   // Calculate select all checkbox state
   const selectAllState = useMemo(() => {
     if (selectedProductIds.size === 0) return 'none';
@@ -653,6 +670,7 @@ export default function ProductsPage() {
         selectedCount={selectedProductIds.size}
         onClearSelection={handleClearSelection}
         onAction={handleBulkAction}
+        onOpenCustomRulesModal={() => setIsCustomRulesModalOpen(true)}
       />
 
       {/* Main Section */}
@@ -856,6 +874,14 @@ export default function ProductsPage() {
         onClose={() => setIsCopyRulesModalOpen(false)}
         products={products}
         onCopy={handleCopyRules}
+      />
+
+      {/* Custom Rules Modal */}
+      <CustomRulesModal
+        isOpen={isCustomRulesModalOpen}
+        onClose={() => setIsCustomRulesModalOpen(false)}
+        onApply={handleApplyCustomRules}
+        selectedCount={selectedProductIds.size}
       />
 
       {/* Progress Dialog */}

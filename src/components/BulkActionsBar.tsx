@@ -13,9 +13,10 @@ type BulkActionsBarProps = {
   selectedCount: number;
   onClearSelection: () => void;
   onAction: (action: BulkAction) => void;
+  onOpenCustomRulesModal?: () => void;
 };
 
-export function BulkActionsBar({ selectedCount, onClearSelection, onAction }: BulkActionsBarProps) {
+export function BulkActionsBar({ selectedCount, onClearSelection, onAction, onOpenCustomRulesModal }: BulkActionsBarProps) {
   const [applyRulesOpen, setApplyRulesOpen] = useState(false);
   const [changeStatusOpen, setChangeStatusOpen] = useState(false);
 
@@ -128,7 +129,9 @@ export function BulkActionsBar({ selectedCount, onClearSelection, onAction }: Bu
 
             <button
               onClick={() => {
-                onAction({ type: 'apply_custom_rules' });
+                if (onOpenCustomRulesModal) {
+                  onOpenCustomRulesModal();
+                }
                 setApplyRulesOpen(false);
               }}
               style={{
