@@ -3,8 +3,8 @@
  * Professional SaaS-style filter system with multi-select dropdowns
  */
 
-import React from 'react';
-import { Search, Filter, RefreshCw } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Filter, RefreshCw, ChevronDown } from 'lucide-react';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 
 // Filter options
@@ -44,7 +44,9 @@ type Props = {
   onFiltersChange: (filters: FilterState) => void;
   ratingCounts: { [key: number]: number };
   onSync?: () => void;
+  onFullSync?: () => void;
   isSyncing?: boolean;
+  syncMode?: 'incremental' | 'full';
 };
 
 export const FilterCard: React.FC<Props> = ({
@@ -52,8 +54,23 @@ export const FilterCard: React.FC<Props> = ({
   onFiltersChange,
   ratingCounts,
   onSync,
+  onFullSync,
   isSyncing = false,
+  syncMode,
 }) => {
+  const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
+  const syncDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (syncDropdownRef.current && !syncDropdownRef.current.contains(event.target as Node)) {
+        setSyncDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
@@ -74,18 +91,56 @@ export const FilterCard: React.FC<Props> = ({
           Фильтры
         </h3>
         <div className="filter-actions">
-          {onSync && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={onSync}
-              disabled={isSyncing}
-            >
-              <RefreshCw
-                style={{ width: '14px', height: '14px' }}
-                className={isSyncing ? 'spinning' : ''}
-              />
-              {isSyncing ? 'Синхронизация...' : 'Синхронизировать'}
-            </button>
+          {(onSync || onFullSync) && (
+            <div style={{ position: 'relative' }} ref={syncDropdownRef}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => !isSyncing && setSyncDropdownOpen(!syncDropdownOpen)}
+                disabled={isSyncing}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                <RefreshCw
+                  style={{ width: '14px', height: '14px' }}
+                  className={isSyncing ? 'spinning' : ''}
+                />
+                {isSyncing
+                  ? (syncMode === 'full' ? 'Полная синхронизация...' : 'Синхронизация...')
+                  : 'Синхронизировать'
+                }
+                <ChevronDown style={{ width: '12px', height: '12px' }} />
+              </button>
+
+              {syncDropdownOpen && !isSyncing && (
+                <div className="sync-dropdown">
+                  {onSync && (
+                    <button
+                      className="sync-dropdown-item"
+                      onClick={() => {
+                        onSync();
+                        setSyncDropdownOpen(false);
+                      }}
+                    >
+                      <RefreshCw style={{ width: '14px', height: '14px' }} />
+                      Инкрементальная
+                      <span className="sync-dropdown-hint">Только новые отзывы</span>
+                    </button>
+                  )}
+                  {onFullSync && (
+                    <button
+                      className="sync-dropdown-item"
+                      onClick={() => {
+                        onFullSync();
+                        setSyncDropdownOpen(false);
+                      }}
+                    >
+                      <RefreshCw style={{ width: '14px', height: '14px' }} />
+                      Полная
+                      <span className="sync-dropdown-hint">Все отзывы с WB API</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -355,6 +410,50 @@ export const FilterCard: React.FC<Props> = ({
           display: flex;
           flex-direction: column;
           min-width: 180px;
+        }
+
+        .sync-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 4px;
+          background: white;
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          box-shadow: var(--shadow-lg);
+          min-width: 220px;
+          z-index: 100;
+          overflow: hidden;
+        }
+
+        .sync-dropdown-item {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          width: 100%;
+          padding: 12px 16px;
+          font-size: var(--font-size-sm);
+          color: var(--color-foreground);
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--color-border-light);
+          cursor: pointer;
+          transition: background 0.15s;
+          text-align: left;
+        }
+
+        .sync-dropdown-item:last-child {
+          border-bottom: none;
+        }
+
+        .sync-dropdown-item:hover {
+          background: #f8fafc;
+        }
+
+        .sync-dropdown-hint {
+          font-size: var(--font-size-xs);
+          color: var(--color-muted);
         }
 
         @media (max-width: 1200px) {

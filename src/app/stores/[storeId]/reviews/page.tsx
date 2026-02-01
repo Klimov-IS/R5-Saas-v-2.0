@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 import type { Review } from '@/types/reviews';
 import { FilterCard, type FilterState } from '@/components/reviews-v2/FilterCard';
 import { ReviewRow } from '@/components/reviews-v2/ReviewRow';
+import { ReviewBulkActionsBar } from '@/components/reviews-v2/ReviewBulkActionsBar';
 
 type Product = {
   id: string;
@@ -150,9 +151,12 @@ export default function ReviewsPageV2() {
 
   // Handle sync
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMode, setSyncMode] = useState<'incremental' | 'full'>('incremental');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleSync = async () => {
     setIsSyncing(true);
+    setSyncMode('incremental');
     const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
     const syncToast = toast.loading('Синхронизация отзывов...');
@@ -187,6 +191,108 @@ export default function ReviewsPageV2() {
     }
   };
 
+  const handleFullSync = async () => {
+    setIsSyncing(true);
+    setSyncMode('full');
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+    const syncToast = toast.loading('Полная синхронизация отзывов...');
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/reviews/update?mode=full`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка полной синхронизации');
+      }
+
+      const result = await response.json();
+      toast.success(`Полная синхронизация завершена. Загружено: ${result.newReviews || 0} отзывов`, {
+        id: syncToast,
+      });
+
+      // Refresh data
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Не удалось выполнить полную синхронизацию', {
+        id: syncToast,
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Get eligible reviews for complaint generation
+  // Rules: no 5-star reviews, no reviews with complaint_status other than null/not_sent/draft
+  const getEligibleReviewIds = (): string[] => {
+    if (!data?.reviews) return [];
+
+    const eligibleStatuses = [null, undefined, 'not_sent', 'draft'];
+
+    return data.reviews
+      .filter(review => {
+        // Skip if not selected
+        if (!selectedReviews.has(review.id)) return false;
+        // Skip 5-star reviews
+        if (review.rating === 5) return false;
+        // Skip reviews with complaint in progress
+        if (!eligibleStatuses.includes(review.complaint_status as any)) return false;
+        return true;
+      })
+      .map(r => r.id);
+  };
+
+  const handleGenerateComplaints = async () => {
+    const eligibleIds = getEligibleReviewIds();
+
+    if (eligibleIds.length === 0) {
+      toast.error('Нет отзывов, подходящих для генерации жалоб');
+      return;
+    }
+
+    setIsGenerating(true);
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+    const generateToast = toast.loading(`Генерация жалоб для ${eligibleIds.length} отзывов...`);
+
+    try {
+      const response = await fetch(`/api/extension/stores/${storeId}/reviews/generate-complaints-batch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ review_ids: eligibleIds }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Ошибка генерации жалоб');
+      }
+
+      const result = await response.json();
+      toast.success(`Сгенерировано жалоб: ${result.stats?.generated || 0}`, {
+        id: generateToast,
+      });
+
+      // Clear selection and refresh data
+      setSelectedReviews(new Set());
+      refetch();
+    } catch (error: any) {
+      toast.error(error.message || 'Не удалось сгенерировать жалобы', {
+        id: generateToast,
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
     <div className="reviews-page">
       {/* Filters */}
@@ -195,7 +301,18 @@ export default function ReviewsPageV2() {
         onFiltersChange={setFilters}
         ratingCounts={ratingCounts}
         onSync={handleSync}
+        onFullSync={handleFullSync}
         isSyncing={isSyncing}
+        syncMode={syncMode}
+      />
+
+      {/* Bulk Actions Bar */}
+      <ReviewBulkActionsBar
+        selectedCount={selectedReviews.size}
+        eligibleCount={getEligibleReviewIds().length}
+        onClearSelection={() => setSelectedReviews(new Set())}
+        onGenerateComplaints={handleGenerateComplaints}
+        isGenerating={isGenerating}
       />
 
       {/* Results Bar */}
