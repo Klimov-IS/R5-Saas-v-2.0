@@ -7,6 +7,8 @@ import { toast } from '@/lib/toast';
 import { generateFirebaseId } from '@/lib/utils';
 import type { StoreStatus } from '@/db/helpers';
 
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
 interface AddStoreModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -63,7 +65,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}`,
+          'Authorization': `Bearer ${API_KEY}`,
         },
         body: JSON.stringify({
           id: storeId,

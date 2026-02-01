@@ -6,6 +6,8 @@ import { X, Loader2 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import type { StoreStatus } from '@/db/helpers';
 
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
 interface Store {
   id: string;
   name: string;
@@ -110,7 +112,7 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}`,
+          'Authorization': `Bearer ${API_KEY}`,
         },
         body: JSON.stringify(updates),
       });
