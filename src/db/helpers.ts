@@ -1320,7 +1320,7 @@ export async function getReviewsByStoreWithPagination(
       rc.complaint_text,
       rc.reason_id as complaint_reason_id,
       rc.reason_name as complaint_category,
-      rc.status as complaint_status,
+      COALESCE(r.complaint_status, rc.status, 'not_sent') as complaint_status,
       rc.generated_at as complaint_generated_at,
       rc.sent_at as complaint_sent_date,
       rc.regenerated_count
