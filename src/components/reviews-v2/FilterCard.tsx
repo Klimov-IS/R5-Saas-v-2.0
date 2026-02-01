@@ -1,10 +1,11 @@
 /**
  * FilterCard Component
- * Professional SaaS-style filter system with multi-select checkboxes
+ * Professional SaaS-style filter system with multi-select dropdowns
  */
 
 import React from 'react';
 import { Search, Filter, RefreshCw } from 'lucide-react';
+import { MultiSelectDropdown } from './MultiSelectDropdown';
 
 // Filter options
 const COMPLAINT_STATUS_OPTIONS = [
@@ -14,6 +15,7 @@ const COMPLAINT_STATUS_OPTIONS = [
   { value: 'approved', label: 'Одобрена' },
   { value: 'rejected', label: 'Отклонена' },
   { value: 'pending', label: 'На рассмотрении' },
+  { value: 'reconsidered', label: 'Пересмотрена' },
 ];
 
 const PRODUCT_STATUS_OPTIONS = [
@@ -63,27 +65,6 @@ export const FilterCard: React.FC<Props> = ({
     updateFilter('ratings', newRatings);
   };
 
-  const toggleComplaintStatus = (status: string) => {
-    const newStatuses = filters.complaintStatuses.includes(status)
-      ? filters.complaintStatuses.filter(s => s !== status)
-      : [...filters.complaintStatuses, status];
-    updateFilter('complaintStatuses', newStatuses);
-  };
-
-  const toggleProductStatus = (status: string) => {
-    const newStatuses = filters.productStatuses.includes(status)
-      ? filters.productStatuses.filter(s => s !== status)
-      : [...filters.productStatuses, status];
-    updateFilter('productStatuses', newStatuses);
-  };
-
-  const toggleReviewStatus = (status: string) => {
-    const newStatuses = filters.reviewStatusesWB.includes(status)
-      ? filters.reviewStatusesWB.filter(s => s !== status)
-      : [...filters.reviewStatusesWB, status];
-    updateFilter('reviewStatusesWB', newStatuses);
-  };
-
   return (
     <div className="filter-card">
       {/* Header */}
@@ -126,7 +107,7 @@ export const FilterCard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Rating Filters */}
+      {/* Rating Filters - inline checkboxes */}
       <div className="filter-section">
         <label className="filter-label">Рейтинг отзыва</label>
         <div className="checkbox-group">
@@ -149,72 +130,39 @@ export const FilterCard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Complaint Status Filters */}
-      <div className="filter-section">
-        <label className="filter-label">
-          Статус жалобы
-          {filters.complaintStatuses.length === 0 && <span className="all-hint">(все)</span>}
-        </label>
-        <div className="checkbox-group">
-          {COMPLAINT_STATUS_OPTIONS.map((opt) => (
-            <label
-              key={opt.value}
-              className={`filter-checkbox ${filters.complaintStatuses.includes(opt.value) ? 'checked' : ''}`}
-            >
-              <input
-                type="checkbox"
-                checked={filters.complaintStatuses.includes(opt.value)}
-                onChange={() => toggleComplaintStatus(opt.value)}
-              />
-              <span>{opt.label}</span>
-            </label>
-          ))}
+      {/* Status Dropdowns Row */}
+      <div className="dropdowns-row">
+        {/* Complaint Status */}
+        <div className="dropdown-group">
+          <label className="filter-label">Статус жалобы</label>
+          <MultiSelectDropdown
+            options={COMPLAINT_STATUS_OPTIONS}
+            selected={filters.complaintStatuses}
+            onChange={(selected) => updateFilter('complaintStatuses', selected)}
+            allLabel="Все статусы"
+          />
         </div>
-      </div>
 
-      {/* Product Status Filters */}
-      <div className="filter-section">
-        <label className="filter-label">
-          Статус товара
-          {filters.productStatuses.length === 0 && <span className="all-hint">(все)</span>}
-        </label>
-        <div className="checkbox-group">
-          {PRODUCT_STATUS_OPTIONS.map((opt) => (
-            <label
-              key={opt.value}
-              className={`filter-checkbox ${filters.productStatuses.includes(opt.value) ? 'checked' : ''}`}
-            >
-              <input
-                type="checkbox"
-                checked={filters.productStatuses.includes(opt.value)}
-                onChange={() => toggleProductStatus(opt.value)}
-              />
-              <span>{opt.label}</span>
-            </label>
-          ))}
+        {/* Product Status */}
+        <div className="dropdown-group">
+          <label className="filter-label">Статус товара</label>
+          <MultiSelectDropdown
+            options={PRODUCT_STATUS_OPTIONS}
+            selected={filters.productStatuses}
+            onChange={(selected) => updateFilter('productStatuses', selected)}
+            allLabel="Все статусы"
+          />
         </div>
-      </div>
 
-      {/* Review Status Filters */}
-      <div className="filter-section">
-        <label className="filter-label">
-          Статус отзыва на WB
-          {filters.reviewStatusesWB.length === 0 && <span className="all-hint">(все)</span>}
-        </label>
-        <div className="checkbox-group">
-          {REVIEW_STATUS_OPTIONS.map((opt) => (
-            <label
-              key={opt.value}
-              className={`filter-checkbox ${filters.reviewStatusesWB.includes(opt.value) ? 'checked' : ''}`}
-            >
-              <input
-                type="checkbox"
-                checked={filters.reviewStatusesWB.includes(opt.value)}
-                onChange={() => toggleReviewStatus(opt.value)}
-              />
-              <span>{opt.label}</span>
-            </label>
-          ))}
+        {/* Review Status WB */}
+        <div className="dropdown-group">
+          <label className="filter-label">Статус на WB</label>
+          <MultiSelectDropdown
+            options={REVIEW_STATUS_OPTIONS}
+            selected={filters.reviewStatusesWB}
+            onChange={(selected) => updateFilter('reviewStatusesWB', selected)}
+            allLabel="Все статусы"
+          />
         </div>
       </div>
 
@@ -304,10 +252,6 @@ export const FilterCard: React.FC<Props> = ({
           margin-bottom: var(--spacing-lg);
         }
 
-        .filter-section:last-child {
-          margin-bottom: 0;
-        }
-
         .filter-group {
           display: flex;
           flex-direction: column;
@@ -328,13 +272,6 @@ export const FilterCard: React.FC<Props> = ({
           display: flex;
           align-items: center;
           gap: var(--spacing-sm);
-        }
-
-        .all-hint {
-          font-weight: 400;
-          text-transform: none;
-          font-size: var(--font-size-xs);
-          color: var(--color-muted);
         }
 
         .search-row {
@@ -408,6 +345,18 @@ export const FilterCard: React.FC<Props> = ({
           margin-left: 2px;
         }
 
+        .dropdowns-row {
+          display: flex;
+          gap: var(--spacing-xl);
+          flex-wrap: wrap;
+        }
+
+        .dropdown-group {
+          display: flex;
+          flex-direction: column;
+          min-width: 180px;
+        }
+
         @media (max-width: 1200px) {
           .checkbox-group {
             flex-direction: column;
@@ -415,6 +364,16 @@ export const FilterCard: React.FC<Props> = ({
 
           .filter-checkbox {
             width: fit-content;
+          }
+
+          .dropdowns-row {
+            flex-direction: column;
+            gap: var(--spacing-lg);
+          }
+
+          .dropdown-group {
+            width: 100%;
+            max-width: 300px;
           }
         }
       `}</style>
