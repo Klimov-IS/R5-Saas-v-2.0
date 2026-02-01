@@ -111,6 +111,7 @@ export async function GET(
       WHERE r.store_id = $1
         AND rc.status = 'draft'
         AND r.rating = ANY($2)
+        AND p.work_status = 'active'
       ORDER BY r.date DESC
       LIMIT $3`,
       [storeId, ratings, limit]
@@ -120,12 +121,13 @@ export async function GET(
 
     console.log(`[Extension Complaints] ✅ Найдено ${complaintsData.length} жалоб`);
 
-    // 4. Статистика по рейтингам
+    // 4. Статистика по рейтингам (только активные продукты)
     const byRatingResult = await query<{ rating: number; count: string }>(
       `SELECT r.rating, COUNT(*) as count
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
-       WHERE r.store_id = $1 AND rc.status = 'draft'
+       JOIN products p ON r.product_id = p.id
+       WHERE r.store_id = $1 AND rc.status = 'draft' AND p.work_status = 'active'
        GROUP BY r.rating`,
       [storeId]
     );
@@ -135,13 +137,13 @@ export async function GET(
       ratingStats[rating.toString()] = parseInt(count, 10);
     });
 
-    // 5. Статистика по артикулам
+    // 5. Статистика по артикулам (только активные продукты)
     const byArticleResult = await query<{ wb_product_id: string; count: string }>(
       `SELECT p.wb_product_id, COUNT(*) as count
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
        JOIN products p ON r.product_id = p.id
-       WHERE r.store_id = $1 AND rc.status = 'draft'
+       WHERE r.store_id = $1 AND rc.status = 'draft' AND p.work_status = 'active'
        GROUP BY p.wb_product_id
        ORDER BY count DESC
        LIMIT 20`,
