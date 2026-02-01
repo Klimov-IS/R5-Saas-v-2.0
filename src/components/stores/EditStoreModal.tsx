@@ -110,7 +110,7 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue`,
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_API_KEY}`,
         },
         body: JSON.stringify(updates),
       });
