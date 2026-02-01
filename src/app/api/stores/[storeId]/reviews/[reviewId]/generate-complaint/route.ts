@@ -98,6 +98,39 @@ export async function POST(
       );
     }
 
+    // Check if rating is 5 (cannot generate complaint for 5-star reviews)
+    if (review.rating === 5) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'INVALID_RATING',
+            message: 'Нельзя подать жалобу на отзыв с 5 звёздами'
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if review already has a complaint status from extension sync
+    // Allowed: NULL, 'not_sent', 'draft' (draft can be regenerated)
+    // Blocked: 'sent', 'pending', 'approved', 'rejected', 'reconsidered'
+    const reviewComplaintStatus = (review as any).complaint_status;
+    if (reviewComplaintStatus &&
+        reviewComplaintStatus !== 'not_sent' &&
+        reviewComplaintStatus !== 'draft') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'COMPLAINT_EXISTS',
+            message: `Жалоба уже подана (статус: ${reviewComplaintStatus}). Повторная генерация невозможна.`
+          }
+        },
+        { status: 400 }
+      );
+    }
+
     // Check if complaint already exists
     const existingComplaint = await getComplaintByReviewId(reviewId);
 

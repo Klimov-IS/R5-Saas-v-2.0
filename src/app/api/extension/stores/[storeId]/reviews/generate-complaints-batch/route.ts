@@ -103,6 +103,30 @@ export async function POST(
           continue;
         }
 
+        // Skip 5-star reviews (cannot generate complaint)
+        if (review.rating === 5) {
+          failed.push({
+            review_id: reviewId,
+            error: 'Cannot generate complaint for 5-star review',
+            skipped: true
+          });
+          continue;
+        }
+
+        // Skip if review already has complaint status from extension sync
+        // Allowed: NULL or 'not_sent'
+        // Blocked: 'draft', 'sent', 'pending', 'approved', 'rejected', 'reconsidered'
+        const reviewComplaintStatus = (review as any).complaint_status;
+        if (reviewComplaintStatus &&
+            reviewComplaintStatus !== 'not_sent') {
+          failed.push({
+            review_id: reviewId,
+            error: `Already has complaint status: ${reviewComplaintStatus}`,
+            skipped: true
+          });
+          continue;
+        }
+
         // Check if complaint already exists
         const existingComplaint = await getComplaintByReviewId(reviewId);
 
@@ -190,12 +214,22 @@ export async function POST(
       }
     }
 
-    console.log(`[Extension API] Batch complete: ${generated.length} generated, ${failed.length} failed`);
+    // Calculate skipped count
+    const skipped = failed.filter((f: any) => f.skipped === true);
+    const errors = failed.filter((f: any) => !f.skipped);
+
+    console.log(`[Extension API] Batch complete: ${generated.length} generated, ${skipped.length} skipped, ${errors.length} errors`);
 
     return NextResponse.json({
       success: true,
       generated,
-      failed
+      failed,
+      stats: {
+        total: body.review_ids.length,
+        generated: generated.length,
+        skipped: skipped.length,
+        errors: errors.length
+      }
     });
 
   } catch (error: any) {

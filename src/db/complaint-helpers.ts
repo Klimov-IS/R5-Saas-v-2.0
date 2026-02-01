@@ -620,6 +620,9 @@ export async function findEligibleReviewsForComplaints(options?: {
         SELECT 1 FROM review_complaints c
         WHERE c.review_id = r.id
       )
+
+      -- 7. No complaint_status from extension sync (skip if already has status)
+      AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
   `;
 
   const params: any[] = [];
@@ -658,6 +661,7 @@ export async function getComplaintBacklogCount(storeId?: string): Promise<number
       AND NOT EXISTS (
         SELECT 1 FROM review_complaints c WHERE c.review_id = r.id
       )
+      AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
   `;
 
   const params: any[] = [];

@@ -1913,7 +1913,8 @@ export async function getReviewsWithoutComplaints(
     LEFT JOIN product_rules pr ON pr.product_id = p.id
     WHERE r.store_id = $1
       AND r.rating <= $2
-      AND rc.id IS NULL`;
+      AND rc.id IS NULL
+      AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')`;
 
   // Filter only active products (for CRON auto-generation)
   if (activeProductsOnly) {

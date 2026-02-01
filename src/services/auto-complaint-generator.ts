@@ -197,6 +197,15 @@ export async function shouldGenerateComplaint(review: Review): Promise<boolean> 
     return false;
   }
 
+  // 1.5. Check complaint_status - skip if already has any complaint status
+  // Allowed: NULL or 'not_sent'
+  // Blocked: 'draft', 'sent', 'pending', 'approved', 'rejected', 'reconsidered'
+  if (review.complaint_status &&
+      review.complaint_status !== 'not_sent') {
+    console.log(`[AutoComplaint] Skip: review ${review.id} already has complaint_status=${review.complaint_status}`);
+    return false;
+  }
+
   // 2. Check store is active
   const store = await dbHelpers.getStoreById(review.store_id);
   if (!store?.is_active) {
@@ -256,6 +265,13 @@ export async function shouldGenerateComplaintWithRules(
 ): Promise<boolean> {
   // 1. Check rating is 1-4
   if (review.rating < 1 || review.rating > 4) {
+    return false;
+  }
+
+  // 1.5. Check complaint_status - skip if already has any complaint status
+  if (review.complaint_status &&
+      review.complaint_status !== 'not_sent') {
+    console.log(`[AutoComplaint] Skip: review ${review.id} already has complaint_status=${review.complaint_status}`);
     return false;
   }
 
