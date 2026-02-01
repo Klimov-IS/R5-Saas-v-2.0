@@ -36,6 +36,40 @@ interface PostRequestBody {
 }
 
 // ============================================
+// Status Mapping
+// ============================================
+
+// WB status → complaint_status ENUM
+const COMPLAINT_STATUS_MAP: Record<string, string> = {
+  'Жалоба отклонена': 'declined',
+  'Жалоба одобрена': 'approved',
+  'Проверяем жалобу': 'pending',
+  'Жалоба пересмотрена': 'reconsidered'
+};
+
+// All complaint statuses that should clear drafts
+const COMPLAINT_STATUSES = Object.keys(COMPLAINT_STATUS_MAP);
+
+/**
+ * Get complaint_status from array of WB statuses
+ * Priority: reconsidered > declined > approved > pending
+ */
+function getComplaintStatusFromStatuses(statuses: string[]): string | null {
+  if (statuses.includes('Жалоба пересмотрена')) return 'reconsidered';
+  if (statuses.includes('Жалоба отклонена')) return 'declined';
+  if (statuses.includes('Жалоба одобрена')) return 'approved';
+  if (statuses.includes('Проверяем жалобу')) return 'pending';
+  return null;
+}
+
+/**
+ * Check if any complaint status is present
+ */
+function hasAnyComplaintStatus(statuses: string[]): boolean {
+  return statuses.some(s => COMPLAINT_STATUSES.includes(s));
+}
+
+// ============================================
 // POST /api/extension/review-statuses
 // ============================================
 
@@ -250,14 +284,79 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Extension ReviewStatuses] ✅ Processed: created=${created}, updated=${updated}, errors=${errors}`);
 
-    // 5. Return response
+    // 5. Sync statuses to reviews table
+    let synced = 0;
+    let syncErrors = 0;
+    const syncErrorDetails: { reviewKey: string; error: string }[] = [];
+
+    for (const review of reviews) {
+      // Skip if no statuses or missing required fields
+      if (!review.statuses || !review.productId || !review.rating || !review.reviewDate) {
+        continue;
+      }
+
+      // Check if review has any complaint status
+      if (!hasAnyComplaintStatus(review.statuses)) {
+        continue; // No complaint status, nothing to sync
+      }
+
+      try {
+        const complaintStatus = getComplaintStatusFromStatuses(review.statuses);
+        if (!complaintStatus) continue;
+
+        // Build product_id in reviews table format: {store_id}_{wb_product_id}
+        const reviewsProductId = `${storeId}_${review.productId}`;
+
+        // Update reviews table:
+        // - Set complaint_status
+        // - Clear draft (complaint_text = NULL)
+        // - Set has_complaint_draft = false
+        // - Set has_complaint = true (complaint was submitted)
+        const syncResult = await query(
+          `UPDATE reviews
+           SET
+             complaint_status = $1::complaint_status,
+             complaint_text = NULL,
+             has_complaint_draft = false,
+             has_complaint = true,
+             updated_at = NOW()
+           WHERE
+             store_id = $2
+             AND product_id = $3
+             AND rating = $4
+             AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
+             AND (complaint_status = 'not_sent' OR complaint_status IS NULL)
+           RETURNING id`,
+          [complaintStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
+        );
+
+        if (syncResult.rowCount && syncResult.rowCount > 0) {
+          synced++;
+          console.log(`[Extension ReviewStatuses] 🔄 Synced review ${review.reviewKey} → ${complaintStatus}`);
+        }
+      } catch (err: any) {
+        syncErrors++;
+        syncErrorDetails.push({
+          reviewKey: review.reviewKey,
+          error: err.message
+        });
+        console.error(`[Extension ReviewStatuses] ❌ Sync error for ${review.reviewKey}:`, err.message);
+      }
+    }
+
+    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, syncErrors=${syncErrors}`);
+
+    // 6. Return response
     const response: any = {
       success: true,
       data: {
         received: reviews.length,
         created,
         updated,
-        errors
+        errors,
+        // Sync to reviews table
+        synced,
+        syncErrors
       },
       message: 'Статусы успешно синхронизированы'
     };
@@ -265,6 +364,9 @@ export async function POST(request: NextRequest) {
     // Include error details if any
     if (errorDetails.length > 0) {
       response.data.errorDetails = errorDetails.slice(0, 10); // Limit to first 10 errors
+    }
+    if (syncErrorDetails.length > 0) {
+      response.data.syncErrorDetails = syncErrorDetails.slice(0, 10);
     }
 
     return NextResponse.json(response);
