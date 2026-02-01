@@ -35,14 +35,14 @@ async function fetchReviewsData(
 ): Promise<{ reviews: Review[]; totalCount: number }> {
   const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
-  // Build query params
+  // Build query params (empty array = 'all')
   const params = new URLSearchParams({
     skip: skip.toString(),
     take: take.toString(),
     rating: filters.ratings.length > 0 ? filters.ratings.join(',') : 'all',
-    complaintStatus: filters.complaintStatus,
-    activeOnly: (filters.productStatus === 'active').toString(),
-    reviewStatusWB: filters.reviewStatusWB,
+    complaintStatus: filters.complaintStatuses.length > 0 ? filters.complaintStatuses.join(',') : 'all',
+    productStatus: filters.productStatuses.length > 0 ? filters.productStatuses.join(',') : 'all',
+    reviewStatusWB: filters.reviewStatusesWB.length > 0 ? filters.reviewStatusesWB.join(',') : 'all',
     search: filters.search
   });
 
@@ -91,13 +91,13 @@ export default function ReviewsPageV2() {
   const [skip, setSkip] = useState(0);
   const [take, setTake] = useState(50);
 
-  // Filter state with DEFAULT values (1-3 stars, active products, all complaint statuses)
+  // Filter state with DEFAULT values (1-3 stars, active products only, all other statuses)
   const [filters, setFilters] = useState<FilterState>({
     search: '',
     ratings: [1, 2, 3], // DEFAULT: 1-3 stars
-    complaintStatus: 'all', // DEFAULT: all statuses
-    productStatus: 'active', // DEFAULT: active only
-    reviewStatusWB: 'all',
+    complaintStatuses: [],  // [] = all statuses
+    productStatuses: ['active'], // DEFAULT: active only
+    reviewStatusesWB: [], // [] = all statuses
   });
 
   const [selectedReviews, setSelectedReviews] = useState<Set<string>>(new Set());

@@ -75,7 +75,7 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
                 {review.product?.name || 'Товар не найден'}
               </div>
               <div className="product-article">
-                Арт: {review.product?.vendor_code || 'N/A'}
+                Арт: {review.product?.nm_id || 'N/A'}
               </div>
             </div>
           </div>
@@ -90,9 +90,6 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
               ))}
             </div>
             <span className="author-badge">{review.author}</span>
-            <span className="review-date">
-              Дата покупки: {review.purchase_date ? formatDate(review.purchase_date) : 'Не указана'}
-            </span>
             <span className="author-badge review-id">ID: {review.id}</span>
           </div>
           <div className="review-text">{review.text}</div>

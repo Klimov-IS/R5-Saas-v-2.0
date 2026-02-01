@@ -1224,7 +1224,8 @@ export async function getReviewsByStoreWithPagination(
     hasAnswer?: string; // 'all' | 'yes' | 'no'
     hasComplaint?: string; // 'all' | 'with' | 'draft' | 'without'
     productId?: string; // product ID to filter by
-    activeOnly?: boolean; // filter by is_product_active
+    activeOnly?: boolean; // legacy: filter by is_product_active
+    productStatus?: string; // 'all' | 'active' | 'not_working' | 'paused' | 'completed' (supports comma-separated)
     search?: string;
     reviewStatusWB?: string; // 'all' | 'visible' | 'unpublished' | 'excluded'
     productStatusByReview?: string; // 'all' | 'purchased' | 'refused' | 'not_specified'
@@ -1282,9 +1283,21 @@ export async function getReviewsByStoreWithPagination(
     paramIndex++;
   }
 
-  // Filter by active products only
-  if (options?.activeOnly) {
-    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.is_active = true)`);
+  // Filter by product work_status
+  if (options?.productStatus && options.productStatus !== 'all') {
+    const statuses = options.productStatus.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.work_status = $${paramIndex})`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.work_status = ANY($${paramIndex}))`);
+      params.push(statuses);
+      paramIndex++;
+    }
+  } else if (options?.activeOnly) {
+    // Legacy support for activeOnly parameter
+    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.work_status = 'active')`);
   }
 
   // Search in text
@@ -1294,11 +1307,18 @@ export async function getReviewsByStoreWithPagination(
     paramIndex++;
   }
 
-  // New status filters
+  // New status filters (support comma-separated values)
   if (options?.reviewStatusWB && options.reviewStatusWB !== 'all') {
-    whereClauses.push(`r.review_status_wb = $${paramIndex}`);
-    params.push(options.reviewStatusWB);
-    paramIndex++;
+    const statuses = options.reviewStatusWB.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`r.review_status_wb = $${paramIndex}`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`r.review_status_wb = ANY($${paramIndex})`);
+      params.push(statuses);
+      paramIndex++;
+    }
   }
 
   if (options?.productStatusByReview && options.productStatusByReview !== 'all') {
@@ -1308,9 +1328,16 @@ export async function getReviewsByStoreWithPagination(
   }
 
   if (options?.complaintStatus && options.complaintStatus !== 'all') {
-    whereClauses.push(`r.complaint_status = $${paramIndex}`);
-    params.push(options.complaintStatus);
-    paramIndex++;
+    const statuses = options.complaintStatus.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`r.complaint_status = $${paramIndex}`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`r.complaint_status = ANY($${paramIndex})`);
+      params.push(statuses);
+      paramIndex++;
+    }
   }
 
   let sql = `
@@ -1355,6 +1382,7 @@ export async function getReviewsCount(
     hasComplaint?: string;
     productId?: string;
     activeOnly?: boolean;
+    productStatus?: string;
     search?: string;
     reviewStatusWB?: string;
     productStatusByReview?: string;
@@ -1412,9 +1440,21 @@ export async function getReviewsCount(
     paramIndex++;
   }
 
-  // Filter by active products only
-  if (options?.activeOnly) {
-    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.is_active = true)`);
+  // Filter by product work_status
+  if (options?.productStatus && options.productStatus !== 'all') {
+    const statuses = options.productStatus.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.work_status = $${paramIndex})`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.work_status = ANY($${paramIndex}))`);
+      params.push(statuses);
+      paramIndex++;
+    }
+  } else if (options?.activeOnly) {
+    // Legacy support for activeOnly parameter
+    whereClauses.push(`EXISTS (SELECT 1 FROM products WHERE products.id = r.product_id AND products.work_status = 'active')`);
   }
 
   // Search in text
@@ -1424,11 +1464,18 @@ export async function getReviewsCount(
     paramIndex++;
   }
 
-  // New status filters
+  // New status filters (support comma-separated values)
   if (options?.reviewStatusWB && options.reviewStatusWB !== 'all') {
-    whereClauses.push(`r.review_status_wb = $${paramIndex}`);
-    params.push(options.reviewStatusWB);
-    paramIndex++;
+    const statuses = options.reviewStatusWB.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`r.review_status_wb = $${paramIndex}`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`r.review_status_wb = ANY($${paramIndex})`);
+      params.push(statuses);
+      paramIndex++;
+    }
   }
 
   if (options?.productStatusByReview && options.productStatusByReview !== 'all') {
@@ -1438,9 +1485,16 @@ export async function getReviewsCount(
   }
 
   if (options?.complaintStatus && options.complaintStatus !== 'all') {
-    whereClauses.push(`r.complaint_status = $${paramIndex}`);
-    params.push(options.complaintStatus);
-    paramIndex++;
+    const statuses = options.complaintStatus.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`r.complaint_status = $${paramIndex}`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`r.complaint_status = ANY($${paramIndex})`);
+      params.push(statuses);
+      paramIndex++;
+    }
   }
 
   const sql = `

@@ -58,6 +58,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
     const hasComplaint = searchParams.get('hasComplaint') || 'all';
     const productId = searchParams.get('productId') || '';
     const activeOnly = searchParams.get('activeOnly') === 'true';
+    const productStatus = searchParams.get('productStatus') || 'all';
     const search = searchParams.get('search') || '';
 
     // New status filters
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             hasComplaint,
             productId,
             activeOnly,
+            productStatus,
             search,
             reviewStatusWB,
             productStatusByReview,
@@ -88,6 +90,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             hasComplaint,
             productId,
             activeOnly,
+            productStatus,
             search,
             reviewStatusWB,
             productStatusByReview,
