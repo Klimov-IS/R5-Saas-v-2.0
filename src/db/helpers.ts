@@ -1968,7 +1968,8 @@ export async function getReviewsWithoutComplaints(
     WHERE r.store_id = $1
       AND r.rating <= $2
       AND rc.id IS NULL
-      AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')`;
+      AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
+      AND r.date >= '2023-10-01'`;
 
   // Filter only active products (for CRON auto-generation)
   if (activeProductsOnly) {

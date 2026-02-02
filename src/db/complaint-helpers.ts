@@ -17,6 +17,16 @@ import type {
 } from '../types/complaints';
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * WB rule: complaints can only be submitted for reviews from October 1, 2023 onwards
+ * Reviews before this date are not eligible for complaint submission
+ */
+export const COMPLAINT_CUTOFF_DATE = '2023-10-01';
+
+// ============================================================================
 // CRUD Operations
 // ============================================================================
 
@@ -622,7 +632,7 @@ export async function findEligibleReviewsForComplaints(options?: {
       r.rating IN (1, 2, 3)
 
       -- 2. Not older than October 1, 2023
-      AND r.date >= '2023-10-01'
+      AND r.date >= '${COMPLAINT_CUTOFF_DATE}'
 
       -- 3. Product is active
       AND r.is_product_active = TRUE
@@ -673,7 +683,7 @@ export async function getComplaintBacklogCount(storeId?: string): Promise<number
     FROM reviews r
     INNER JOIN stores s ON r.store_id = s.id
     WHERE r.rating IN (1, 2, 3)
-      AND r.date >= '2023-10-01'
+      AND r.date >= '${COMPLAINT_CUTOFF_DATE}'
       AND r.is_product_active = TRUE
       AND s.status = 'active'
       AND (r.review_status_wb IS NULL OR r.review_status_wb = 'unknown' OR r.review_status_wb = 'visible')

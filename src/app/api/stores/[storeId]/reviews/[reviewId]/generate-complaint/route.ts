@@ -4,6 +4,7 @@ import {
   getComplaintByReviewId,
   createComplaint,
   regenerateComplaint,
+  COMPLAINT_CUTOFF_DATE,
 } from '@/db/complaint-helpers';
 import { generateReviewComplaint } from '@/ai/flows/generate-review-complaint-flow';
 import { verifyApiKey } from '@/lib/server-utils';
@@ -106,6 +107,22 @@ export async function POST(
           error: {
             code: 'INVALID_RATING',
             message: 'Нельзя подать жалобу на отзыв с 5 звёздами'
+          }
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if review is too old (WB rule: no complaints for reviews before Oct 1, 2023)
+    const reviewDate = new Date(review.date);
+    const cutoffDate = new Date(COMPLAINT_CUTOFF_DATE);
+    if (reviewDate < cutoffDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'REVIEW_TOO_OLD',
+            message: `Нельзя подать жалобу на отзыв старше ${COMPLAINT_CUTOFF_DATE}. Правило WB.`
           }
         },
         { status: 400 }

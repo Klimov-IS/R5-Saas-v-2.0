@@ -17,6 +17,7 @@
  */
 
 import * as dbHelpers from '@/db/helpers';
+import { COMPLAINT_CUTOFF_DATE } from '@/db/complaint-helpers';
 
 // ============================================================================
 // Types
@@ -35,6 +36,8 @@ export interface Review {
   rating: number;
   store_id: string;
   product_id: string;
+  date?: string;
+  complaint_status?: string;
 }
 
 export interface ProductRule {
@@ -197,6 +200,16 @@ export async function shouldGenerateComplaint(review: Review): Promise<boolean> 
     return false;
   }
 
+  // 1.1. Check review date is not older than cutoff (WB rule: Oct 1, 2023)
+  if (review.date) {
+    const reviewDate = new Date(review.date);
+    const cutoffDate = new Date(COMPLAINT_CUTOFF_DATE);
+    if (reviewDate < cutoffDate) {
+      console.log(`[AutoComplaint] Skip: review ${review.id} is older than ${COMPLAINT_CUTOFF_DATE}`);
+      return false;
+    }
+  }
+
   // 1.5. Check complaint_status - skip if already has any complaint status
   // Allowed: NULL or 'not_sent'
   // Blocked: 'draft', 'sent', 'pending', 'approved', 'rejected', 'reconsidered'
@@ -266,6 +279,16 @@ export async function shouldGenerateComplaintWithRules(
   // 1. Check rating is 1-4
   if (review.rating < 1 || review.rating > 4) {
     return false;
+  }
+
+  // 1.1. Check review date is not older than cutoff (WB rule: Oct 1, 2023)
+  if (review.date) {
+    const reviewDate = new Date(review.date);
+    const cutoffDate = new Date(COMPLAINT_CUTOFF_DATE);
+    if (reviewDate < cutoffDate) {
+      console.log(`[AutoComplaint] Skip: review ${review.id} is older than ${COMPLAINT_CUTOFF_DATE}`);
+      return false;
+    }
   }
 
   // 1.5. Check complaint_status - skip if already has any complaint status

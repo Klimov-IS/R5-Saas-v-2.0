@@ -10,6 +10,7 @@ import { getReviewById, getStoreById, getProductById } from '@/db/helpers';
 import {
   getComplaintByReviewId,
   createComplaint,
+  COMPLAINT_CUTOFF_DATE,
 } from '@/db/complaint-helpers';
 import { generateReviewComplaint } from '@/ai/flows/generate-review-complaint-flow';
 import { getUserByApiToken } from '@/db/extension-helpers';
@@ -108,6 +109,18 @@ export async function POST(
           failed.push({
             review_id: reviewId,
             error: 'Cannot generate complaint for 5-star review',
+            skipped: true
+          });
+          continue;
+        }
+
+        // Skip reviews older than cutoff date (WB rule: no complaints before Oct 1, 2023)
+        const reviewDate = new Date(review.date);
+        const cutoffDate = new Date(COMPLAINT_CUTOFF_DATE);
+        if (reviewDate < cutoffDate) {
+          failed.push({
+            review_id: reviewId,
+            error: `Review too old (before ${COMPLAINT_CUTOFF_DATE})`,
             skipped: true
           });
           continue;
