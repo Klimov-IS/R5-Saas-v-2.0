@@ -139,7 +139,9 @@ export async function bulkCreateComplaints(inputs: CreateReviewComplaintInput[])
   const reviewIds = inputs.map(i => i.review_id);
   await query(
     `UPDATE reviews
-     SET has_complaint = TRUE, has_complaint_draft = TRUE
+     SET has_complaint = TRUE,
+         has_complaint_draft = TRUE,
+         complaint_status = 'draft'
      WHERE id = ANY($1::text[])`,
     [reviewIds]
   );
