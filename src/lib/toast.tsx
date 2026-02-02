@@ -181,28 +181,31 @@ export function ToastMessage({ title, description }: ToastMessageProps) {
 
 // Helper functions for easy usage
 export const toast = {
-  success: (title: string, description?: string) => {
+  success: (title: string, description?: string, id?: string) => {
     return hotToast.success(
-      description ? <ToastMessage title={title} description={description} /> : title
+      description ? <ToastMessage title={title} description={description} /> : title,
+      id ? { id } : undefined
     );
   },
 
-  error: (title: string, description?: string) => {
+  error: (title: string, description?: string, id?: string) => {
     return hotToast.error(
-      description ? <ToastMessage title={title} description={description} /> : title
+      description ? <ToastMessage title={title} description={description} /> : title,
+      id ? { id } : undefined
     );
   },
 
-  info: (title: string, description?: string) => {
+  info: (title: string, description?: string, id?: string) => {
     return hotToast(
-      description ? <ToastMessage title={title} description={description} /> : title
+      description ? <ToastMessage title={title} description={description} /> : title,
+      id ? { id } : undefined
     );
   },
 
-  loading: (title: string, description?: string) => {
+  loading: (title: string, description?: string, id?: string) => {
     return hotToast.loading(
       description ? <ToastMessage title={title} description={description} /> : title,
-      { duration: Infinity } // Loading toasts don't auto-dismiss
+      { duration: Infinity, ...(id ? { id } : {}) }
     );
   },
 
