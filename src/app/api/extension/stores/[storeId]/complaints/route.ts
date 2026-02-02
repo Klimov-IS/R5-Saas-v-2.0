@@ -117,7 +117,7 @@ export async function GET(
         AND r.rating = ANY($2)
         AND p.work_status = 'active'
         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-      ORDER BY r.date DESC
+      ORDER BY p.wb_product_id, r.date DESC
       LIMIT $3`,
       [storeId, ratings, limit]
     );
