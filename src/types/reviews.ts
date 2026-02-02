@@ -24,12 +24,13 @@ export type ChatStatusByReview =
 
 // Complaint processing status
 export type ComplaintStatus =
-  | 'not_sent'  // Не отправлена
-  | 'draft'     // Черновик (сгенерирован, но не отправлен)
-  | 'sent'      // Отправлена (вручную отмечено)
-  | 'approved'  // Одобрена (от WB)
-  | 'rejected'  // Отклонена (от WB)
-  | 'pending';  // На рассмотрении
+  | 'not_sent'      // Не отправлена
+  | 'draft'         // Черновик (сгенерирован, но не отправлен)
+  | 'sent'          // Отправлена (вручную отмечено)
+  | 'approved'      // Одобрена (от WB)
+  | 'rejected'      // Отклонена (от WB)
+  | 'pending'       // На рассмотрении
+  | 'reconsidered'; // Пересмотрена (от WB)
 
 /**
  * Product type (enriched from products API)
@@ -112,6 +113,7 @@ export const COMPLAINT_STATUS_LABELS: Record<ComplaintStatus, string> = {
   approved: 'Одобрена',
   rejected: 'Отклонена',
   pending: 'На рассмотрении',
+  reconsidered: 'Пересмотрена',
 };
 
 /**
@@ -138,4 +140,5 @@ export const COMPLAINT_STATUS_COLORS: Record<ComplaintStatus, { bg: string; colo
   approved: { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
   rejected: { bg: '#fef2f2', color: '#991b1b', border: '#fecaca' },
   pending: { bg: '#fefce8', color: '#854d0e', border: '#fef08a' },
+  reconsidered: { bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff' },  // Purple
 };
