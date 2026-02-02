@@ -326,7 +326,7 @@ export async function POST(request: NextRequest) {
              AND product_id = $3
              AND rating = $4
              AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-             AND (complaint_status = 'not_sent' OR complaint_status IS NULL)
+             AND (complaint_status IN ('not_sent', 'draft') OR complaint_status IS NULL)
            RETURNING id`,
           [complaintStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
         );
