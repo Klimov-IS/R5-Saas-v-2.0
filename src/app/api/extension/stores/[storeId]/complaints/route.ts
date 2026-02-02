@@ -94,6 +94,10 @@ export async function GET(
     // 3. Запрос жалоб с JOIN
     console.log(`[Extension Complaints] 🔍 Поиск жалоб в БД...`);
 
+    // IMPORTANT: Filter by BOTH rc.status AND r.complaint_status
+    // rc.status='draft' means AI generated complaint text
+    // r.complaint_status must be 'not_sent' or 'draft' (not already submitted to WB)
+    // Exclude: 'rejected', 'approved', 'pending', 'reconsidered', 'sent'
     const complaintsResult = await query(
       `SELECT
         r.id,
@@ -112,6 +116,7 @@ export async function GET(
         AND rc.status = 'draft'
         AND r.rating = ANY($2)
         AND p.work_status = 'active'
+        AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
       ORDER BY r.date DESC
       LIMIT $3`,
       [storeId, ratings, limit]
@@ -121,13 +126,16 @@ export async function GET(
 
     console.log(`[Extension Complaints] ✅ Найдено ${complaintsData.length} жалоб`);
 
-    // 4. Статистика по рейтингам (только активные продукты)
+    // 4. Статистика по рейтингам (только активные продукты + валидный статус жалобы)
     const byRatingResult = await query<{ rating: number; count: string }>(
       `SELECT r.rating, COUNT(*) as count
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
        JOIN products p ON r.product_id = p.id
-       WHERE r.store_id = $1 AND rc.status = 'draft' AND p.work_status = 'active'
+       WHERE r.store_id = $1
+         AND rc.status = 'draft'
+         AND p.work_status = 'active'
+         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
        GROUP BY r.rating`,
       [storeId]
     );
@@ -137,13 +145,16 @@ export async function GET(
       ratingStats[rating.toString()] = parseInt(count, 10);
     });
 
-    // 5. Статистика по артикулам (только активные продукты)
+    // 5. Статистика по артикулам (только активные продукты + валидный статус жалобы)
     const byArticleResult = await query<{ wb_product_id: string; count: string }>(
       `SELECT p.wb_product_id, COUNT(*) as count
        FROM reviews r
        JOIN review_complaints rc ON r.id = rc.review_id
        JOIN products p ON r.product_id = p.id
-       WHERE r.store_id = $1 AND rc.status = 'draft' AND p.work_status = 'active'
+       WHERE r.store_id = $1
+         AND rc.status = 'draft'
+         AND p.work_status = 'active'
+         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
        GROUP BY p.wb_product_id
        ORDER BY count DESC
        LIMIT 20`,
