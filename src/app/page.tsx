@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Store as StoreIcon, Package, Star, MessageSquare, Plus, RefreshCw, Edit, Search } from 'lucide-react';
+import { Store as StoreIcon, Package, Star, MessageSquare, Plus, RefreshCw, Edit, Search, RotateCcw } from 'lucide-react';
 import { InteractiveKPICard } from '@/components/stores/InteractiveKPICard';
 import { StatusMultiSelect } from '@/components/stores/StatusMultiSelect';
 import { StatusDropdown } from '@/components/stores/StatusDropdown';
@@ -63,6 +63,7 @@ export default function Home() {
   const [syncingProducts, setSyncingProducts] = useState<Record<string, boolean>>({});
   const [syncingReviews, setSyncingReviews] = useState<Record<string, boolean>>({});
   const [syncingChats, setSyncingChats] = useState<Record<string, boolean>>({});
+  const [syncingFull, setSyncingFull] = useState<Record<string, boolean>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
 
@@ -226,6 +227,48 @@ export default function Home() {
       toast.error('Ошибка синхронизации', `Не удалось обновить диалоги для "${storeName}"`);
     } finally {
       setSyncingChats((prev) => ({ ...prev, [storeId]: false }));
+    }
+  };
+
+  // Handle full sync (products + reviews full + chats)
+  const handleFullSync = async (storeId: string) => {
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+    setSyncingFull((prev) => ({ ...prev, [storeId]: true }));
+
+    const storeName = stores.find(s => s.id === storeId)?.name || 'Магазин';
+    const toastId = toast.loading('Полное обновление', `${storeName}: Подготовка...`);
+
+    try {
+      // 1. Products
+      toast.loading('Полное обновление', `${storeName}: Обновление товаров...`, toastId);
+      const productsRes = await fetch(`/api/stores/${storeId}/products/update`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      if (!productsRes.ok) throw new Error('Ошибка обновления товаров');
+
+      // 2. Reviews (full mode)
+      toast.loading('Полное обновление', `${storeName}: Обновление отзывов (полная)...`, toastId);
+      const reviewsRes = await fetch(`/api/stores/${storeId}/reviews/update?mode=full`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      if (!reviewsRes.ok) throw new Error('Ошибка обновления отзывов');
+
+      // 3. Chats
+      toast.loading('Полное обновление', `${storeName}: Обновление диалогов...`, toastId);
+      const chatsRes = await fetch(`/api/stores/${storeId}/dialogues/update`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      });
+      if (!chatsRes.ok) throw new Error('Ошибка обновления диалогов');
+
+      await queryClient.invalidateQueries({ queryKey: ['stores'] });
+      toast.success('Полное обновление завершено', `${storeName}: Все данные обновлены`, toastId);
+    } catch (error) {
+      toast.error('Ошибка полного обновления', error instanceof Error ? error.message : `Не удалось обновить "${storeName}"`, toastId);
+    } finally {
+      setSyncingFull((prev) => ({ ...prev, [storeId]: false }));
     }
   };
 
@@ -627,6 +670,12 @@ export default function Home() {
                       {/* Actions */}
                       <td>
                         <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                          <ActionIcon
+                            icon={RotateCcw}
+                            tooltip="Полное обновление"
+                            onClick={() => handleFullSync(store.id)}
+                            loading={syncingFull[store.id]}
+                          />
                           <ActionIcon
                             icon={Package}
                             tooltip="Обновить товары"
