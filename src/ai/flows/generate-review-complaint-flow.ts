@@ -19,6 +19,7 @@ import {
   canUseTemplate,
   selectTemplateByReviewId,
 } from '../utils/complaint-templates';
+import { truncateComplaintText } from '../utils/complaint-text-validator';
 
 const GenerateReviewComplaintInputSchema = z.object({
     productName: z.string().describe('The name of the product being reviewed.'),
@@ -171,8 +172,14 @@ export async function generateReviewComplaint(input: GenerateReviewComplaintInpu
         (estimatedPromptTokens / 1_000_000) * 0.14 +
         (estimatedCompletionTokens / 1_000_000) * 0.28;
 
+    // Validate and truncate complaint text if exceeds WB hard limit (1000 chars)
+    const { text: validatedComplaintText, wasTruncated, originalLength } = truncateComplaintText(parsedResponse.complaintText);
+    if (wasTruncated) {
+        console.warn(`[AI] Complaint text truncated from ${originalLength} to ${validatedComplaintText.length} chars for review ${input.reviewId}`);
+    }
+
     return {
-        complaintText: parsedResponse.complaintText,
+        complaintText: validatedComplaintText, // Use validated (potentially truncated) text
         reasonId: parsedResponse.reasonId,
         reasonName: parsedResponse.reasonName,
         promptTokens: estimatedPromptTokens,

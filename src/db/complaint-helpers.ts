@@ -15,6 +15,10 @@ import type {
   ComplaintStats,
   ComplaintStatus,
 } from '../types/complaints';
+import {
+  truncateComplaintText,
+  COMPLAINT_HARD_LIMIT,
+} from '../ai/utils/complaint-text-validator';
 
 // ============================================================================
 // Constants
@@ -97,14 +101,23 @@ export async function getComplaintsByStore(
 export async function bulkCreateComplaints(inputs: CreateReviewComplaintInput[]): Promise<number> {
   if (inputs.length === 0) return 0;
 
+  // Validate and truncate complaint texts that exceed WB hard limit (1000 chars)
+  const validatedInputs = inputs.map(input => {
+    const { text: validatedText, wasTruncated, originalLength } = truncateComplaintText(input.complaint_text);
+    if (wasTruncated) {
+      console.warn(`[COMPLAINT] bulkCreate: Text truncated from ${originalLength} to ${validatedText.length} chars for review ${input.review_id}`);
+    }
+    return { ...input, complaint_text: validatedText };
+  });
+
   // Build VALUES clause with parameterized queries
-  const valuesPlaceholders = inputs.map((_, i) => {
+  const valuesPlaceholders = validatedInputs.map((_, i) => {
     const offset = i * 22; // 22 parameters per complaint
     return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11}, $${offset + 12}, $${offset + 13}, $${offset + 14}, $${offset + 15}, $${offset + 16}, $${offset + 17}, $${offset + 18}, $${offset + 19}, $${offset + 20}, $${offset + 21}, $${offset + 22}, NOW(), NOW())`;
   }).join(',\n      ');
 
-  // Flatten all parameters
-  const params = inputs.flatMap(input => [
+  // Flatten all parameters (use validatedInputs with truncated texts)
+  const params = validatedInputs.flatMap(input => [
     input.review_id,
     input.store_id,
     input.owner_id,
@@ -146,7 +159,7 @@ export async function bulkCreateComplaints(inputs: CreateReviewComplaintInput[])
   );
 
   // Update denormalized fields in reviews table (bulk update)
-  const reviewIds = inputs.map(i => i.review_id);
+  const reviewIds = validatedInputs.map(i => i.review_id);
   await query(
     `UPDATE reviews
      SET has_complaint = TRUE,
@@ -163,6 +176,12 @@ export async function bulkCreateComplaints(inputs: CreateReviewComplaintInput[])
  * Create a new complaint (first generation)
  */
 export async function createComplaint(input: CreateReviewComplaintInput): Promise<ReviewComplaint> {
+  // Validate and truncate complaint text if exceeds WB hard limit (1000 chars)
+  const { text: validatedText, wasTruncated, originalLength } = truncateComplaintText(input.complaint_text);
+  if (wasTruncated) {
+    console.warn(`[COMPLAINT] createComplaint: Text truncated from ${originalLength} to ${validatedText.length} chars for review ${input.review_id}`);
+  }
+
   const result = await query<ReviewComplaint>(
     `INSERT INTO review_complaints (
       review_id, store_id, owner_id, product_id,
@@ -183,7 +202,7 @@ export async function createComplaint(input: CreateReviewComplaintInput): Promis
       input.store_id,
       input.owner_id,
       input.product_id,
-      input.complaint_text,
+      validatedText, // Use validated (potentially truncated) text
       input.reason_id,
       input.reason_name,
       'draft', // Always starts as draft
@@ -240,8 +259,13 @@ export async function updateComplaint(
   let paramIndex = 1;
 
   if (updates.complaint_text !== undefined) {
+    // Validate and truncate complaint text if exceeds WB hard limit (1000 chars)
+    const { text: validatedText, wasTruncated, originalLength } = truncateComplaintText(updates.complaint_text);
+    if (wasTruncated) {
+      console.warn(`[COMPLAINT] updateComplaint: Text truncated from ${originalLength} to ${validatedText.length} chars for review ${reviewId}`);
+    }
     fields.push(`complaint_text = $${paramIndex++}`);
-    values.push(updates.complaint_text);
+    values.push(validatedText);
   }
 
   if (updates.reason_id !== undefined) {
@@ -332,8 +356,14 @@ export async function regenerateComplaint(
     throw new Error('Cannot regenerate complaint that is not in draft status');
   }
 
+  // Validate and truncate complaint text if exceeds WB hard limit (1000 chars)
+  const { text: validatedText, wasTruncated, originalLength } = truncateComplaintText(newComplaintText);
+  if (wasTruncated) {
+    console.warn(`[COMPLAINT] regenerateComplaint: Text truncated from ${originalLength} to ${validatedText.length} chars for review ${reviewId}`);
+  }
+
   return updateComplaint(reviewId, {
-    complaint_text: newComplaintText,
+    complaint_text: validatedText, // Use validated (potentially truncated) text
     reason_id: reasonId,
     reason_name: reasonName,
     regenerated_count: existing.regenerated_count + 1,
@@ -457,10 +487,10 @@ export async function getComplaintStats(storeId: string): Promise<ComplaintStats
   const result = await query<{
     total: string;
     draft: string;
-    sent: string;
     pending: string;
     approved: string;
     rejected: string;
+    reconsidered: string;
     total_tokens: string;
     total_cost: string;
     avg_duration: string;
@@ -468,10 +498,10 @@ export async function getComplaintStats(storeId: string): Promise<ComplaintStats
     `SELECT
       COUNT(*) as total,
       COUNT(*) FILTER (WHERE status = 'draft') as draft,
-      COUNT(*) FILTER (WHERE status = 'sent') as sent,
       COUNT(*) FILTER (WHERE status = 'pending') as pending,
       COUNT(*) FILTER (WHERE status = 'approved') as approved,
       COUNT(*) FILTER (WHERE status = 'rejected') as rejected,
+      COUNT(*) FILTER (WHERE status = 'reconsidered') as reconsidered,
       COALESCE(SUM(ai_total_tokens), 0) as total_tokens,
       COALESCE(SUM(ai_cost_usd), 0) as total_cost,
       COALESCE(AVG(generation_duration_ms), 0) as avg_duration
@@ -489,10 +519,10 @@ export async function getComplaintStats(storeId: string): Promise<ComplaintStats
   return {
     total,
     draft: parseInt(row.draft, 10),
-    sent: parseInt(row.sent, 10),
     pending: parseInt(row.pending, 10),
     approved,
     rejected,
+    reconsidered: parseInt(row.reconsidered, 10),
     total_tokens: parseInt(row.total_tokens, 10),
     total_cost_usd: parseFloat(row.total_cost),
     avg_cost_per_complaint: total > 0 ? parseFloat(row.total_cost) / total : 0,
