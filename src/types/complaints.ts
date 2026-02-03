@@ -7,13 +7,18 @@
 
 /**
  * Complaint status lifecycle
+ *
+ * ВАЖНО: Статус 'sent' удалён (2026-02-03)
+ * При отправке жалобы сразу ставится 'pending' (на рассмотрении)
+ * Это соответствует реальному поведению WB: после нажатия "Отправить"
+ * жалоба сразу переходит в статус "Проверяем жалобу"
  */
 export type ComplaintStatus =
   | 'draft'      // Черновик (можно редактировать/регенерировать)
-  | 'sent'       // Отправлена на WB (заморожена, нельзя изменить)
-  | 'pending'    // На рассмотрении WB
+  | 'pending'    // На рассмотрении WB ("Проверяем жалобу")
   | 'approved'   // WB одобрил жалобу
-  | 'rejected';  // WB отклонил жалобу
+  | 'rejected'   // WB отклонил жалобу
+  | 'reconsidered'; // WB пересмотрел жалобу
 
 /**
  * Wildberries complaint reason categories (11-20)
@@ -180,10 +185,10 @@ export interface UpdateComplaintModerationInput {
 export interface ComplaintStats {
   total: number;
   draft: number;
-  sent: number;
   pending: number;
   approved: number;
   rejected: number;
+  reconsidered: number;
 
   // Cost tracking
   total_tokens: number;
@@ -203,10 +208,10 @@ export interface ComplaintStats {
  */
 export const COMPLAINT_STATUS_LABELS: Record<ComplaintStatus, string> = {
   draft: '📝 Черновик',
-  sent: '📤 Отправлена',
   pending: '⏳ На рассмотрении',
   approved: '✅ Одобрена WB',
   rejected: '❌ Отклонена WB',
+  reconsidered: '🔄 Пересмотрена',
 };
 
 /**
@@ -214,10 +219,10 @@ export const COMPLAINT_STATUS_LABELS: Record<ComplaintStatus, string> = {
  */
 export const COMPLAINT_STATUS_COLORS: Record<ComplaintStatus, { bg: string; color: string; border: string }> = {
   draft: { bg: '#fef3c7', color: '#92400e', border: '#f59e0b' },
-  sent: { bg: '#dbeafe', color: '#1e40af', border: '#3b82f6' },
-  pending: { bg: '#fef3c7', color: '#92400e', border: '#f59e0b' },
+  pending: { bg: '#dbeafe', color: '#1e40af', border: '#3b82f6' },
   approved: { bg: '#d1fae5', color: '#065f46', border: '#10b981' },
   rejected: { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' },
+  reconsidered: { bg: '#e0e7ff', color: '#3730a3', border: '#6366f1' },
 };
 
 /**

@@ -124,28 +124,30 @@ export async function POST(
     }
 
     // 6. Обновить статусы в reviews
+    // Сразу ставим 'pending' (на рассмотрении), так как WB показывает "Проверяем жалобу"
     await query(
       'UPDATE reviews SET complaint_status = $1, updated_at = NOW() WHERE id = $2',
-      ['sent', reviewId]
+      ['pending', reviewId]
     );
 
     // 7. Обновить review_complaints
+    // Сразу ставим 'pending' (на рассмотрении)
     const sentAt = body.sent_at ? new Date(body.sent_at) : new Date();
 
     await query(
       `UPDATE review_complaints
        SET status = $1, sent_at = $2, sent_by_user_id = $3, wb_complaint_id = $4, updated_at = NOW()
        WHERE review_id = $5`,
-      ['sent', sentAt, user.id, body.wb_complaint_id || null, reviewId]
+      ['pending', sentAt, user.id, body.wb_complaint_id || null, reviewId]
     );
 
-    console.log(`[Extension Mark Sent] ✅ Жалоба отмечена как отправленная: ${reviewId}`);
+    console.log(`[Extension Mark Sent] ✅ Жалоба отмечена как на рассмотрении: ${reviewId}`);
 
     return NextResponse.json({
       success: true,
-      message: 'Complaint marked as sent',
+      message: 'Complaint marked as pending (under review)',
       review_id: reviewId,
-      new_status: 'sent',
+      new_status: 'pending',
       sent_at: sentAt.toISOString(),
     });
 

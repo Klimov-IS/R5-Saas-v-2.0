@@ -347,7 +347,10 @@ export async function regenerateComplaint(
 }
 
 /**
- * Mark complaint as sent (freeze it - no more edits)
+ * Mark complaint as pending (sent to WB, now under review)
+ *
+ * ВАЖНО: Статус сразу становится 'pending' (на рассмотрении),
+ * так как после отправки WB сразу показывает "Проверяем жалобу"
  */
 export async function markComplaintAsSent(
   reviewId: string,
@@ -363,7 +366,7 @@ export async function markComplaintAsSent(
 
   const result = await query<ReviewComplaint>(
     `UPDATE review_complaints
-     SET status = 'sent',
+     SET status = 'pending',
          sent_at = NOW(),
          sent_by_user_id = $1,
          updated_at = NOW()
@@ -373,13 +376,13 @@ export async function markComplaintAsSent(
   );
 
   // Update denormalized fields in reviews table
-  // complaint_status = 'sent' ensures the UI shows correct status badge
+  // complaint_status = 'pending' (на рассмотрении WB)
   await query(
     `UPDATE reviews
      SET has_complaint = TRUE,
          has_complaint_draft = FALSE,
          complaint_sent_date = NOW(),
-         complaint_status = 'sent'
+         complaint_status = 'pending'
      WHERE id = $1`,
     [reviewId]
   );

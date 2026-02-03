@@ -8,13 +8,13 @@ import { Search, Filter, RefreshCw, ChevronDown } from 'lucide-react';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 
 // Filter options
+// Статус 'sent' удалён - при отправке сразу ставится 'pending'
 const COMPLAINT_STATUS_OPTIONS = [
   { value: 'not_sent', label: 'Не отправлена' },
   { value: 'draft', label: 'Черновик' },
-  { value: 'sent', label: 'Отправлена' },
+  { value: 'pending', label: 'На рассмотрении' },
   { value: 'approved', label: 'Одобрена' },
   { value: 'rejected', label: 'Отклонена' },
-  { value: 'pending', label: 'На рассмотрении' },
   { value: 'reconsidered', label: 'Пересмотрена' },
 ];
 
