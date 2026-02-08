@@ -26,6 +26,31 @@ interface Store {
 // Simple in-memory rate limiter (100 req/min per token)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
+// Cache for stores response (1 hour TTL)
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+interface CacheEntry {
+  data: any[];
+  cachedAt: number;
+}
+const storesCache = new Map<string, CacheEntry>();
+
+function getCachedStores(userId: string): any[] | null {
+  const entry = storesCache.get(userId);
+  if (!entry) return null;
+
+  const now = Date.now();
+  if (now - entry.cachedAt > CACHE_TTL_MS) {
+    storesCache.delete(userId);
+    return null;
+  }
+
+  return entry.data;
+}
+
+function setCachedStores(userId: string, data: any[]): void {
+  storesCache.set(userId, { data, cachedAt: Date.now() });
+}
+
 function checkRateLimit(token: string): { allowed: boolean; remaining: number; resetAt: number } {
   const now = Date.now();
   const limit = 100; // requests per minute
@@ -119,7 +144,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Get all stores for this user with draft complaints count (only for active products)
+    // 4. Check cache first
+    const cachedStores = getCachedStores(user.id);
+    if (cachedStores) {
+      console.log(`[Extension API] Cache HIT for user ${user.id}: ${cachedStores.length} stores`);
+      return NextResponse.json(cachedStores, {
+        headers: {
+          ...corsHeaders,
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+          'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
+          'X-Cache': 'HIT',
+        }
+      });
+    }
+
+    // 5. Get all stores for this user with draft complaints count (only for active products)
     const result = await query<Store>(
       `
       SELECT
@@ -144,9 +184,9 @@ export async function GET(request: NextRequest) {
       [user.id]
     );
 
-    console.log(`[Extension API] Stores for user ${user.id}: ${result.rows.length} total`);
+    console.log(`[Extension API] Cache MISS for user ${user.id}: ${result.rows.length} stores (queried DB)`);
 
-    // 5. Format response with isActive field and draft complaints count
+    // 6. Format response with isActive field and draft complaints count
     const stores = result.rows.map(row => ({
       id: row.id,
       name: row.name,
@@ -154,12 +194,16 @@ export async function GET(request: NextRequest) {
       draftComplaintsCount: parseInt(row.draft_complaints_count) || 0,
     }));
 
+    // 7. Cache the result
+    setCachedStores(user.id, stores);
+
     return NextResponse.json(stores, {
       headers: {
         ...corsHeaders,
         'X-RateLimit-Limit': '100',
         'X-RateLimit-Remaining': rateLimit.remaining.toString(),
         'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
+        'X-Cache': 'MISS',
       }
     });
 
