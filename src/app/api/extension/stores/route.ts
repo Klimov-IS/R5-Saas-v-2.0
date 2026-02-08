@@ -20,6 +20,7 @@ interface Store {
   name: string;
   owner_id: string;
   status: string;
+  draft_complaints_count: string;
 }
 
 // Simple in-memory rate limiter (100 req/min per token)
@@ -118,24 +119,39 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Get all stores for this user
+    // 4. Get all stores for this user with draft complaints count (only for active products)
     const result = await query<Store>(
       `
-      SELECT id, name, owner_id, status
-      FROM stores
-      WHERE owner_id = $1
-      ORDER BY name ASC
+      SELECT
+        s.id,
+        s.name,
+        s.owner_id,
+        s.status,
+        COALESCE(
+          (SELECT COUNT(*)
+           FROM reviews r
+           JOIN review_complaints rc ON r.id = rc.review_id
+           JOIN products p ON r.product_id = p.id
+           WHERE r.store_id = s.id
+             AND rc.status = 'draft'
+             AND p.work_status = 'active'
+          ), 0
+        )::text as draft_complaints_count
+      FROM stores s
+      WHERE s.owner_id = $1
+      ORDER BY s.name ASC
       `,
       [user.id]
     );
 
     console.log(`[Extension API] Stores for user ${user.id}: ${result.rows.length} total`);
 
-    // 5. Format response with isActive field
+    // 5. Format response with isActive field and draft complaints count
     const stores = result.rows.map(row => ({
       id: row.id,
       name: row.name,
       isActive: row.status === 'active', // true if status = 'active', false otherwise
+      draftComplaintsCount: parseInt(row.draft_complaints_count) || 0,
     }));
 
     return NextResponse.json(stores, {
