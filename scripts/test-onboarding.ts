@@ -26,9 +26,9 @@ async function main() {
     process.exit(1);
   }
 
-  // Test store data
+  // Test store data - unique name to create new folder
   const testStoreId = 'test-store-' + Date.now();
-  const testStoreName = 'Тестовый магазин Claude';
+  const testStoreName = 'Тест-' + Date.now().toString().slice(-6);
 
   console.log(`Testing onboarding for: ${testStoreName} (${testStoreId})\n`);
 
