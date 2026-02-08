@@ -9,6 +9,7 @@
 
 import cron from 'node-cron';
 import * as dbHelpers from '@/db/helpers';
+import { runBackfillWorker } from '@/services/backfill-worker';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -420,6 +421,49 @@ export function startAdaptiveDialogueSync() {
 }
 
 /**
+ * Backfill worker job - processes backfill queue
+ * Runs every 5 minutes to process pending backfill jobs
+ * Handles mass complaint generation for activated products
+ */
+export function startBackfillWorker() {
+  // Every 5 minutes in all environments
+  const cronSchedule = '*/5 * * * *';
+
+  console.log(`[CRON] Scheduling backfill worker: ${cronSchedule}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'backfill-worker';
+
+    // Prevent concurrent runs
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  Job ${jobName} is already running, skipping this trigger`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+
+    try {
+      const result = await runBackfillWorker(5); // Process up to 5 jobs per run
+
+      if (result.jobs_processed > 0) {
+        console.log(`[CRON] Backfill worker: processed ${result.jobs_processed} jobs, generated ${result.total_generated} complaints`);
+      }
+    } catch (error: any) {
+      console.error('[CRON] ❌ Backfill worker error:', error.message);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Backfill worker job started successfully');
+
+  return job;
+}
+
+/**
  * Stop all cron jobs
  */
 export function stopAllJobs() {
@@ -438,9 +482,9 @@ export function getJobsStatus() {
   return {
     totalJobs: tasks.size,
     runningJobs: Object.keys(runningJobs).filter(key => runningJobs[key]),
-    allJobs: Array.from(tasks.entries()).map(([key, task]) => ({
+    allJobs: Array.from(tasks.entries()).map(([key]) => ({
       name: key,
-      running: task.options.scheduled || false,
+      running: runningJobs[key] || false,
     })),
   };
 }

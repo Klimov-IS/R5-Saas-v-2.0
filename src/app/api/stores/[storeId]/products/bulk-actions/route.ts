@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { onProductActivated } from '@/services/backfill-worker';
 
 /**
  * POST /api/stores/{storeId}/products/bulk-actions
@@ -193,6 +194,9 @@ export async function POST(
           }, { status: 400 });
         }
 
+        // Track activated products for backfill
+        const activatedProducts: Array<{ id: string; owner_id: string }> = [];
+
         for (const productId of product_ids) {
           try {
             // Verify product exists and belongs to store
@@ -201,11 +205,35 @@ export async function POST(
               throw new Error('Product not found or does not belong to this store');
             }
 
+            // Check if this is an activation
+            const isActivation = product.work_status !== 'active' && work_status === 'active';
+
             await dbHelpers.updateProductWorkStatus(productId, work_status);
             processed++;
+
+            // Track for backfill if activated
+            if (isActivation) {
+              activatedProducts.push({ id: productId, owner_id: product.owner_id });
+            }
           } catch (error: any) {
             failed++;
             errors.push({ product_id: productId, error: error.message });
+          }
+        }
+
+        // Trigger backfill for all activated products (fire and forget)
+        if (activatedProducts.length > 0) {
+          console.log(`[BACKFILL] Bulk activation: ${activatedProducts.length} products activated`);
+          for (const product of activatedProducts) {
+            onProductActivated(product.id, storeId, product.owner_id)
+              .then(job => {
+                if (job) {
+                  console.log(`[BACKFILL] Created job ${job.id} for product ${product.id}`);
+                }
+              })
+              .catch(err => {
+                console.error(`[BACKFILL] Failed to create job for product ${product.id}:`, err.message);
+              });
           }
         }
         break;

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { onProductActivated } from '@/services/backfill-worker';
 
 /**
  * PATCH /api/stores/{storeId}/products/{productId}/status
@@ -15,7 +16,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { storeId: string; productId: string } }
 ) {
-  const { productId } = params;
+  const { storeId, productId } = params;
 
   try {
     const body = await request.json();
@@ -30,6 +31,12 @@ export async function PATCH(
       }, { status: 400 });
     }
 
+    // Get current product to check if this is an activation
+    const currentProduct = await dbHelpers.getProductById(productId);
+    const isActivation = currentProduct &&
+      currentProduct.work_status !== 'active' &&
+      work_status === 'active';
+
     // Update product work status
     const updatedProduct = await dbHelpers.updateProductWorkStatus(productId, work_status);
 
@@ -38,6 +45,19 @@ export async function PATCH(
         error: 'Product not found',
         details: `Product with ID ${productId} not found`
       }, { status: 404 });
+    }
+
+    // Trigger backfill if product was activated (fire and forget)
+    if (isActivation && currentProduct) {
+      onProductActivated(productId, storeId, currentProduct.owner_id)
+        .then(job => {
+          if (job) {
+            console.log(`[BACKFILL] Created job ${job.id} for product ${productId}`);
+          }
+        })
+        .catch(err => {
+          console.error(`[BACKFILL] Failed to create job for product ${productId}:`, err.message);
+        });
     }
 
     return NextResponse.json({
