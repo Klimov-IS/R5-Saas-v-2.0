@@ -504,6 +504,21 @@ export async function getProductByWbId(wbProductId: string, storeId: string): Pr
   return result.rows[0] || null;
 }
 
+/**
+ * Get multiple products by their IDs (batch fetch for optimization)
+ * Used to load only the products needed for current page of reviews
+ */
+export async function getProductsByIds(productIds: string[]): Promise<Product[]> {
+  if (!productIds || productIds.length === 0) {
+    return [];
+  }
+  const result = await query<Product>(
+    'SELECT * FROM products WHERE id = ANY($1)',
+    [productIds]
+  );
+  return result.rows;
+}
+
 export async function createProduct(product: Omit<Product, 'created_at' | 'updated_at'>): Promise<Product> {
   const result = await query<Product>(
     `INSERT INTO products (
@@ -1215,23 +1230,35 @@ export async function verifyApiKey(apiKey: string): Promise<UserSettings | null>
 /**
  * Get reviews for a store with pagination and filtering support
  */
+export type ReviewsFilterOptions = {
+  limit?: number;
+  offset?: number;
+  rating?: string; // 'all' | '1,2,3' (comma-separated) | '1-2' | '3' | '4-5'
+  hasAnswer?: string; // 'all' | 'yes' | 'no'
+  hasComplaint?: string; // 'all' | 'with' | 'draft' | 'without'
+  productId?: string; // product ID to filter by (single)
+  productIds?: string[]; // product IDs to filter by (multiple)
+  activeOnly?: boolean; // legacy: filter by is_product_active
+  productStatus?: string; // 'all' | 'active' | 'not_working' | 'paused' | 'completed' (supports comma-separated)
+  search?: string;
+  reviewStatusWB?: string; // 'all' | 'visible' | 'unpublished' | 'excluded'
+  productStatusByReview?: string; // 'all' | 'purchased' | 'refused' | 'not_specified'
+  complaintStatus?: string; // 'all' | 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending'
+};
+
+export type ReviewsWithCount = {
+  reviews: Review[];
+  totalCount: number;
+};
+
+/**
+ * Get reviews for a store with pagination and filters
+ * OPTIMIZED: Uses COUNT(*) OVER() to get total count in single query
+ */
 export async function getReviewsByStoreWithPagination(
   storeId: string,
-  options?: {
-    limit?: number;
-    offset?: number;
-    rating?: string; // 'all' | '1,2,3' (comma-separated) | '1-2' | '3' | '4-5'
-    hasAnswer?: string; // 'all' | 'yes' | 'no'
-    hasComplaint?: string; // 'all' | 'with' | 'draft' | 'without'
-    productId?: string; // product ID to filter by
-    activeOnly?: boolean; // legacy: filter by is_product_active
-    productStatus?: string; // 'all' | 'active' | 'not_working' | 'paused' | 'completed' (supports comma-separated)
-    search?: string;
-    reviewStatusWB?: string; // 'all' | 'visible' | 'unpublished' | 'excluded'
-    productStatusByReview?: string; // 'all' | 'purchased' | 'refused' | 'not_specified'
-    complaintStatus?: string; // 'all' | 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending'
-  }
-): Promise<Review[]> {
+  options?: ReviewsFilterOptions
+): Promise<ReviewsWithCount> {
   const whereClauses: string[] = ['r.store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
@@ -1276,11 +1303,20 @@ export async function getReviewsByStoreWithPagination(
     }
   }
 
-  // Filter by product ID
+  // Filter by product ID (nmId from WB)
+  // product_id in DB is stored as {storeId}_{nmId}, so we match the nmId suffix
   if (options?.productId && options.productId.trim()) {
-    whereClauses.push(`r.product_id = $${paramIndex}`);
+    whereClauses.push(`r.product_id LIKE '%_' || $${paramIndex}`);
     params.push(options.productId.trim());
     paramIndex++;
+  }
+
+  // Filter by multiple product IDs (nmIds from WB)
+  if (options?.productIds && options.productIds.length > 0) {
+    const nmIdConditions = options.productIds.map((_, i) => `r.product_id LIKE '%_' || $${paramIndex + i}`);
+    whereClauses.push(`(${nmIdConditions.join(' OR ')})`);
+    options.productIds.forEach(id => params.push(id));
+    paramIndex += options.productIds.length;
   }
 
   // Filter by product work_status
@@ -1340,6 +1376,7 @@ export async function getReviewsByStoreWithPagination(
     }
   }
 
+  // Build SQL with COUNT(*) OVER() for single-query optimization
   let sql = `
     SELECT
       r.*,
@@ -1350,7 +1387,8 @@ export async function getReviewsByStoreWithPagination(
       COALESCE(r.complaint_status::text, rc.status, 'not_sent') as complaint_status,
       rc.generated_at as complaint_generated_at,
       rc.sent_at as complaint_sent_date,
-      rc.regenerated_count
+      rc.regenerated_count,
+      COUNT(*) OVER() as total_count
     FROM reviews r
     LEFT JOIN review_complaints rc ON r.id = rc.review_id
     WHERE ${whereClauses.join(' AND ')}
@@ -1367,12 +1405,23 @@ export async function getReviewsByStoreWithPagination(
     params.push(options.offset);
   }
 
-  const result = await query<Review>(sql, params);
-  return result.rows;
+  const result = await query<Review & { total_count: string }>(sql, params);
+
+  // Extract total count from first row (all rows have same total_count)
+  const totalCount = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+
+  // Remove total_count from each row as it's not part of Review type
+  const reviews = result.rows.map(row => {
+    const { total_count, ...review } = row;
+    return review as Review;
+  });
+
+  return { reviews, totalCount };
 }
 
 /**
  * Get total count of reviews for a store with filters
+ * @deprecated Use getReviewsByStoreWithPagination which returns { reviews, totalCount }
  */
 export async function getReviewsCount(
   storeId: string,
@@ -1433,11 +1482,20 @@ export async function getReviewsCount(
     }
   }
 
-  // Filter by product ID
+  // Filter by product ID (nmId from WB)
+  // product_id in DB is stored as {storeId}_{nmId}, so we match the nmId suffix
   if (options?.productId && options.productId.trim()) {
-    whereClauses.push(`r.product_id = $${paramIndex}`);
+    whereClauses.push(`r.product_id LIKE '%_' || $${paramIndex}`);
     params.push(options.productId.trim());
     paramIndex++;
+  }
+
+  // Filter by multiple product IDs (nmIds from WB)
+  if (options?.productIds && options.productIds.length > 0) {
+    const nmIdConditions = options.productIds.map((_, i) => `r.product_id LIKE '%_' || $${paramIndex + i}`);
+    whereClauses.push(`(${nmIdConditions.join(' OR ')})`);
+    options.productIds.forEach(id => params.push(id));
+    paramIndex += options.productIds.length;
   }
 
   // Filter by product work_status

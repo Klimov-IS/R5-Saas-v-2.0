@@ -1,10 +1,11 @@
 /**
  * MultiSelectDropdown Component
  * Dropdown with checkboxes for multi-select filtering
+ * Supports searchable mode for filtering options
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, Search } from 'lucide-react';
 
 type Option = {
   value: string;
@@ -17,6 +18,8 @@ type Props = {
   onChange: (selected: string[]) => void;
   placeholder?: string;
   allLabel?: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 };
 
 export const MultiSelectDropdown: React.FC<Props> = ({
@@ -25,21 +28,33 @@ export const MultiSelectDropdown: React.FC<Props> = ({
   onChange,
   placeholder = 'Выберите...',
   allLabel = 'Все',
+  searchable = false,
+  searchPlaceholder = 'Поиск...',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setSearchQuery(''); // Clear search on close
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && searchable && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [isOpen, searchable]);
 
   const toggleOption = (value: string) => {
     const newSelected = selected.includes(value)
@@ -57,6 +72,14 @@ export const MultiSelectDropdown: React.FC<Props> = ({
     return `Выбрано: ${selected.length}`;
   };
 
+  // Filter options by search query
+  const filteredOptions = searchable && searchQuery.trim()
+    ? options.filter(opt =>
+        opt.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        opt.value.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : options;
+
   return (
     <div className="multiselect-dropdown" ref={dropdownRef}>
       <button
@@ -73,23 +96,46 @@ export const MultiSelectDropdown: React.FC<Props> = ({
 
       {isOpen && (
         <div className="dropdown-menu">
-          {options.map((option) => (
-            <label
-              key={option.value}
-              className={`dropdown-option ${selected.includes(option.value) ? 'selected' : ''}`}
-              onClick={(e) => {
-                e.preventDefault();
-                toggleOption(option.value);
-              }}
-            >
-              <span className="option-checkbox">
-                {selected.includes(option.value) && (
-                  <Check style={{ width: '12px', height: '12px' }} />
-                )}
-              </span>
-              <span className="option-label">{option.label}</span>
-            </label>
-          ))}
+          {/* Search input */}
+          {searchable && (
+            <div className="search-container">
+              <Search className="search-icon" style={{ width: '14px', height: '14px' }} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="search-input"
+                placeholder={searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
+
+          {/* Options list */}
+          <div className="options-list">
+            {filteredOptions.length === 0 ? (
+              <div className="no-results">Ничего не найдено</div>
+            ) : (
+              filteredOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className={`dropdown-option ${selected.includes(option.value) ? 'selected' : ''}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    toggleOption(option.value);
+                  }}
+                >
+                  <span className="option-checkbox">
+                    {selected.includes(option.value) && (
+                      <Check style={{ width: '12px', height: '12px' }} />
+                    )}
+                  </span>
+                  <span className="option-label">{option.label}</span>
+                </label>
+              ))
+            )}
+          </div>
 
           {selected.length > 0 && (
             <button
@@ -168,9 +214,51 @@ export const MultiSelectDropdown: React.FC<Props> = ({
           border-radius: var(--radius-md);
           box-shadow: var(--shadow-lg);
           z-index: 100;
-          max-height: 280px;
+          max-height: 320px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .search-container {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--color-border-light);
+          background: #f8fafc;
+        }
+
+        .search-icon {
+          color: var(--color-muted);
+          flex-shrink: 0;
+        }
+
+        .search-input {
+          flex: 1;
+          border: none;
+          background: transparent;
+          font-size: var(--font-size-sm);
+          outline: none;
+          color: var(--color-foreground);
+        }
+
+        .search-input::placeholder {
+          color: var(--color-muted);
+        }
+
+        .options-list {
+          flex: 1;
           overflow-y: auto;
+          max-height: 240px;
           padding: 4px 0;
+        }
+
+        .no-results {
+          padding: 12px;
+          text-align: center;
+          color: var(--color-muted);
+          font-size: var(--font-size-sm);
         }
 
         .dropdown-option {
@@ -211,12 +299,14 @@ export const MultiSelectDropdown: React.FC<Props> = ({
 
         .option-label {
           flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
 
         .clear-button {
           width: 100%;
           padding: 8px 12px;
-          margin-top: 4px;
           border: none;
           border-top: 1px solid var(--color-border-light);
           background: transparent;
@@ -224,6 +314,7 @@ export const MultiSelectDropdown: React.FC<Props> = ({
           font-size: var(--font-size-xs);
           cursor: pointer;
           transition: all 0.15s;
+          flex-shrink: 0;
         }
 
         .clear-button:hover {

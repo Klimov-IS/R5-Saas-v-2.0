@@ -57,6 +57,11 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
     const hasAnswer = searchParams.get('hasAnswer') || 'all';
     const hasComplaint = searchParams.get('hasComplaint') || 'all';
     const productId = searchParams.get('productId') || '';
+    // Support multiple product IDs (comma-separated)
+    const productIdsParam = searchParams.get('productIds') || '';
+    const productIds = productIdsParam && productIdsParam !== 'all'
+        ? productIdsParam.split(',').map(id => id.trim()).filter(Boolean)
+        : [];
     const activeOnly = searchParams.get('activeOnly') === 'true';
     const productStatus = searchParams.get('productStatus') || 'all';
     const search = searchParams.get('search') || '';
@@ -67,28 +72,15 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
     const complaintStatus = searchParams.get('complaintStatus') || 'all';
 
     try {
-        // Get reviews with pagination and filters
-        const reviews = await dbHelpers.getReviewsByStoreWithPagination(storeId, {
+        // Get reviews with pagination, filters, AND total count in single optimized query
+        const { reviews, totalCount } = await dbHelpers.getReviewsByStoreWithPagination(storeId, {
             limit: take,
             offset: skip,
             rating,
             hasAnswer,
             hasComplaint,
             productId,
-            activeOnly,
-            productStatus,
-            search,
-            reviewStatusWB,
-            productStatusByReview,
-            complaintStatus
-        });
-
-        // Get total count with same filters
-        const totalCount = await dbHelpers.getReviewsCount(storeId, {
-            rating,
-            hasAnswer,
-            hasComplaint,
-            productId,
+            productIds: productIds.length > 0 ? productIds : undefined,
             activeOnly,
             productStatus,
             search,

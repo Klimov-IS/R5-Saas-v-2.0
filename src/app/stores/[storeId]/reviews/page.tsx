@@ -14,6 +14,7 @@ import type { Review } from '@/types/reviews';
 import { FilterCard, type FilterState } from '@/components/reviews-v2/FilterCard';
 import { ReviewRow } from '@/components/reviews-v2/ReviewRow';
 import { ReviewBulkActionsBar } from '@/components/reviews-v2/ReviewBulkActionsBar';
+import { usePersistedFilters } from '@/hooks/usePersistedFilters';
 
 type Product = {
   id: string;
@@ -44,7 +45,8 @@ async function fetchReviewsData(
     complaintStatus: filters.complaintStatuses.length > 0 ? filters.complaintStatuses.join(',') : 'all',
     productStatus: filters.productStatuses.length > 0 ? filters.productStatuses.join(',') : 'all',
     reviewStatusWB: filters.reviewStatusesWB.length > 0 ? filters.reviewStatusesWB.join(',') : 'all',
-    search: filters.search
+    search: filters.search,
+    productIds: filters.productIds && filters.productIds.length > 0 ? filters.productIds.join(',') : 'all',
   });
 
   // Load reviews and products in parallel
@@ -92,14 +94,26 @@ export default function ReviewsPageV2() {
   const [skip, setSkip] = useState(0);
   const [take, setTake] = useState(50);
 
-  // Filter state with DEFAULT values (1-3 stars, active products only, all other statuses)
-  const [filters, setFilters] = useState<FilterState>({
-    search: '',
-    ratings: [1, 2, 3], // DEFAULT: 1-3 stars
-    complaintStatuses: [],  // [] = all statuses
-    productStatuses: ['active'], // DEFAULT: active only
-    reviewStatusesWB: [], // [] = all statuses
-  });
+  // Filter state with session persistence
+  // Filters are preserved on page refresh and when switching stores
+  const {
+    filters,
+    setFilters: setFiltersBase,
+    resetFilters: resetFiltersBase,
+    activeFilterCount,
+  } = usePersistedFilters();
+
+  // Wrap setFilters to reset pagination when filters change
+  const setFilters = (newFilters: FilterState) => {
+    setFiltersBase(newFilters);
+    setSkip(0); // Reset to first page when filters change
+  };
+
+  // Wrap resetFilters to also reset pagination
+  const resetFilters = () => {
+    resetFiltersBase();
+    setSkip(0); // Reset to first page
+  };
 
   const [selectedReviews, setSelectedReviews] = useState<Set<string>>(new Set());
 
@@ -124,6 +138,22 @@ export default function ReviewsPageV2() {
       return response.json() as Promise<{ ratingCounts: Record<number, number> }>;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!storeId,
+  });
+
+  // Fetch products list for dropdown filter (cached independently)
+  const { data: productsData } = useQuery({
+    queryKey: ['store-products', storeId],
+    queryFn: async () => {
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+      const response = await fetch(`/api/stores/${storeId}/products`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error('Failed to fetch products');
+      return response.json() as Promise<Product[]>;
+    },
+    staleTime: 10 * 60 * 1000, // 10 minutes - products change less frequently
     enabled: !!storeId,
   });
 
@@ -304,6 +334,9 @@ export default function ReviewsPageV2() {
         onFullSync={handleFullSync}
         isSyncing={isSyncing}
         syncMode={syncMode}
+        onReset={resetFilters}
+        activeFilterCount={activeFilterCount}
+        products={productsData || []}
       />
 
       {/* Bulk Actions Bar */}

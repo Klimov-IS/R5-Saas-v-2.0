@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Filter, RefreshCw, ChevronDown } from 'lucide-react';
+import { Search, Filter, RefreshCw, ChevronDown, RotateCcw } from 'lucide-react';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 
 // Filter options
@@ -37,6 +37,14 @@ export type FilterState = {
   complaintStatuses: string[];  // [] = all
   productStatuses: string[];    // [] = all
   reviewStatusesWB: string[];   // [] = all
+  productIds: string[];         // [] = all products, array of nm_ids
+};
+
+type ProductOption = {
+  id: string;
+  nm_id: number;
+  name: string;
+  vendor_code?: string;
 };
 
 type Props = {
@@ -47,6 +55,11 @@ type Props = {
   onFullSync?: () => void;
   isSyncing?: boolean;
   syncMode?: 'incremental' | 'full';
+  // Session persistence features
+  onReset?: () => void;
+  activeFilterCount?: number;
+  // Product options for dropdown
+  products?: ProductOption[];
 };
 
 export const FilterCard: React.FC<Props> = ({
@@ -57,7 +70,15 @@ export const FilterCard: React.FC<Props> = ({
   onFullSync,
   isSyncing = false,
   syncMode,
+  onReset,
+  activeFilterCount = 0,
+  products = [],
 }) => {
+  // Build product options for dropdown
+  const productOptions = products.map(p => ({
+    value: String(p.nm_id),
+    label: p.name ? `${p.name} (${p.nm_id})` : String(p.nm_id),
+  }));
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const syncDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -89,8 +110,21 @@ export const FilterCard: React.FC<Props> = ({
         <h3 className="filter-title">
           <Filter style={{ width: '18px', height: '18px' }} />
           Фильтры
+          {activeFilterCount > 0 && (
+            <span className="filter-badge">{activeFilterCount}</span>
+          )}
         </h3>
         <div className="filter-actions">
+          {onReset && activeFilterCount > 0 && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={onReset}
+              title="Сбросить все фильтры"
+            >
+              <RotateCcw style={{ width: '14px', height: '14px' }} />
+              Сбросить
+            </button>
+          )}
           {(onSync || onFullSync) && (
             <div style={{ position: 'relative' }} ref={syncDropdownRef}>
               <button
@@ -147,16 +181,30 @@ export const FilterCard: React.FC<Props> = ({
 
       {/* Search Row */}
       <div className="search-section">
-        <div className="filter-group search-group">
-          <label className="filter-label">Поиск</label>
-          <div className="search-row">
-            <Search className="search-icon-standalone" style={{ width: '18px', height: '18px' }} />
-            <input
-              type="text"
-              className="search-input-no-icon"
-              placeholder="ID отзыва, текст, автор..."
-              value={filters.search}
-              onChange={(e) => updateFilter('search', e.target.value)}
+        <div className="search-filters-row">
+          <div className="filter-group search-group">
+            <label className="filter-label">Поиск</label>
+            <div className="search-row">
+              <Search className="search-icon-standalone" style={{ width: '18px', height: '18px' }} />
+              <input
+                type="text"
+                className="search-input-no-icon"
+                placeholder="ID отзыва, текст, автор..."
+                value={filters.search}
+                onChange={(e) => updateFilter('search', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="filter-group search-group products-dropdown-group">
+            <label className="filter-label">Товары</label>
+            <MultiSelectDropdown
+              options={productOptions}
+              selected={filters.productIds}
+              onChange={(selected) => updateFilter('productIds', selected)}
+              allLabel="Все товары"
+              searchable={true}
+              searchPlaceholder="Поиск по названию или артикулу..."
             />
           </div>
         </div>
@@ -290,6 +338,33 @@ export const FilterCard: React.FC<Props> = ({
           cursor: not-allowed;
         }
 
+        .btn-ghost {
+          background: transparent;
+          color: var(--color-muted);
+          border: 1px solid var(--color-border);
+        }
+
+        .btn-ghost:hover {
+          background: var(--color-border-light);
+          color: var(--color-foreground);
+          border-color: var(--color-border);
+        }
+
+        .filter-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 20px;
+          height: 20px;
+          padding: 0 6px;
+          background: var(--color-primary);
+          color: white;
+          font-size: 11px;
+          font-weight: 600;
+          border-radius: 10px;
+          margin-left: 4px;
+        }
+
         .spinning {
           animation: spin 1s linear infinite;
         }
@@ -356,6 +431,18 @@ export const FilterCard: React.FC<Props> = ({
         .search-input-no-icon:focus {
           border-color: var(--color-primary);
           box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .search-filters-row {
+          display: flex;
+          gap: var(--spacing-xl);
+          flex-wrap: wrap;
+        }
+
+        .products-dropdown-group {
+          min-width: 280px;
+          flex: 1;
+          max-width: 400px;
         }
 
         .checkbox-group {
