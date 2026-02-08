@@ -10,6 +10,7 @@
 import cron from 'node-cron';
 import * as dbHelpers from '@/db/helpers';
 import { runBackfillWorker } from '@/services/backfill-worker';
+import { refreshAllUsersCache, getCacheStats } from '@/lib/stores-cache';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -469,9 +470,6 @@ export function startBackfillWorker() {
  * Ensures instant response times for GET /api/extension/stores
  */
 export function startStoresCacheRefresh() {
-  // Import here to avoid circular dependency
-  const { refreshAllUsersCache, getCacheStats } = require('@/lib/stores-cache');
-
   const cronSchedule = '*/5 * * * *'; // Every 5 minutes
 
   console.log(`[CRON] Scheduling stores cache refresh: ${cronSchedule}`);
