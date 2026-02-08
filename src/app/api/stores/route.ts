@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { triggerStoreOnboarding, isOnboardingConfigured } from '@/services/store-onboarding';
 
 /**
  * @swagger
@@ -135,9 +136,15 @@ export async function POST(request: NextRequest) {
             feedbacks_api_token: feedbacksApiToken || null,
             chat_api_token: chatApiToken || null,
             owner_id: userSettings.id,
+            status: 'active',
             total_reviews: 0,
             total_chats: 0,
         });
+
+        // Trigger Google Drive onboarding (fire-and-forget)
+        if (isOnboardingConfigured()) {
+            triggerStoreOnboarding(newStore.id, newStore.name);
+        }
 
         return NextResponse.json({ data: newStore }, {
             status: 201,

@@ -10,10 +10,10 @@ const GOOGLE_TOKEN_URI = 'https://oauth2.googleapis.com/token';
 const GOOGLE_SHEETS_BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 const GOOGLE_DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3';
 
-// Request both Sheets and Drive scopes
+// Request both Sheets and Drive scopes (full drive access for folder/file creation)
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive.readonly'
+  'https://www.googleapis.com/auth/drive'
 ].join(' ');
 
 let cachedToken: { token: string; expires: number } | null = null;
@@ -334,5 +334,106 @@ export async function appendRows(
   const result = await response.json();
   return {
     appendedRows: result.updates?.updatedRows || rows.length
+  };
+}
+
+// ============================================
+// Google Drive Write API Functions
+// ============================================
+
+/**
+ * Create a folder in Google Drive
+ * @param config - Google API config
+ * @param name - Folder name
+ * @param parentFolderId - Parent folder ID
+ * @returns Created folder metadata
+ */
+export async function createFolder(
+  config: GoogleSheetsConfig,
+  name: string,
+  parentFolderId: string
+): Promise<DriveFile> {
+  const token = await getAccessToken(config);
+
+  const url = `${GOOGLE_DRIVE_BASE_URL}/files`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentFolderId]
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to create folder: ${response.status} ${error}`);
+  }
+
+  const data = await response.json();
+
+  return {
+    id: data.id,
+    name: data.name,
+    mimeType: data.mimeType,
+    webViewLink: `https://drive.google.com/drive/folders/${data.id}`
+  };
+}
+
+/**
+ * Copy a file (e.g., spreadsheet template) to a new location
+ * @param config - Google API config
+ * @param sourceFileId - Source file ID to copy
+ * @param name - New file name
+ * @param parentFolderId - Destination folder ID
+ * @returns Copied file metadata
+ */
+export async function copyFile(
+  config: GoogleSheetsConfig,
+  sourceFileId: string,
+  name: string,
+  parentFolderId: string
+): Promise<DriveFile> {
+  const token = await getAccessToken(config);
+
+  const url = `${GOOGLE_DRIVE_BASE_URL}/files/${sourceFileId}/copy`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name,
+      parents: [parentFolderId]
+    })
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Failed to copy file: ${response.status} ${error}`);
+  }
+
+  const data = await response.json();
+
+  // Determine webViewLink based on mimeType
+  let webViewLink = `https://drive.google.com/file/d/${data.id}`;
+  if (data.mimeType === 'application/vnd.google-apps.spreadsheet') {
+    webViewLink = `https://docs.google.com/spreadsheets/d/${data.id}`;
+  } else if (data.mimeType === 'application/vnd.google-apps.document') {
+    webViewLink = `https://docs.google.com/document/d/${data.id}`;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    mimeType: data.mimeType,
+    webViewLink
   };
 }
