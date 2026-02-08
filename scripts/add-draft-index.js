@@ -4,14 +4,14 @@
  */
 
 const { Pool } = require('pg');
-require('dotenv').config({ path: '.env.production' });
+require('dotenv').config({ path: '.env.local' });
 
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '6432'),
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  host: process.env.POSTGRES_HOST,
+  port: parseInt(process.env.POSTGRES_PORT || '6432'),
+  database: process.env.POSTGRES_DB,
+  user: process.env.POSTGRES_USER,
+  password: process.env.POSTGRES_PASSWORD,
   ssl: { rejectUnauthorized: false }
 });
 
