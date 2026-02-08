@@ -2,54 +2,21 @@
  * GET /api/extension/stores
  *
  * Returns list of stores accessible by the current API token
- * Includes isActive field based on store status
+ * Cache is pre-warmed every 5 minutes by CRON job
  *
  * Rate limiting: 100 requests per minute per token
  * CORS enabled for Chrome Extension
  *
- * @version 2.0.0
- * @date 2026-01-28
+ * @version 2.1.0
+ * @date 2026-02-08
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/db/client';
 import { getUserByApiToken } from '@/db/extension-helpers';
-
-interface Store {
-  id: string;
-  name: string;
-  owner_id: string;
-  status: string;
-  draft_complaints_count: string;
-}
+import { getCachedStores, refreshCacheForUser, getCacheAge } from '@/lib/stores-cache';
 
 // Simple in-memory rate limiter (100 req/min per token)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-// Cache for stores response (1 hour TTL)
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-interface CacheEntry {
-  data: any[];
-  cachedAt: number;
-}
-const storesCache = new Map<string, CacheEntry>();
-
-function getCachedStores(userId: string): any[] | null {
-  const entry = storesCache.get(userId);
-  if (!entry) return null;
-
-  const now = Date.now();
-  if (now - entry.cachedAt > CACHE_TTL_MS) {
-    storesCache.delete(userId);
-    return null;
-  }
-
-  return entry.data;
-}
-
-function setCachedStores(userId: string, data: any[]): void {
-  storesCache.set(userId, { data, cachedAt: Date.now() });
-}
 
 function checkRateLimit(token: string): { allowed: boolean; remaining: number; resetAt: number } {
   const now = Date.now();
@@ -144,58 +111,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Check cache first
-    const cachedStores = getCachedStores(user.id);
-    if (cachedStores) {
-      console.log(`[Extension API] Cache HIT for user ${user.id}: ${cachedStores.length} stores`);
-      return NextResponse.json(cachedStores, {
-        headers: {
-          ...corsHeaders,
-          'X-RateLimit-Limit': '100',
-          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
-          'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
-          'X-Cache': 'HIT',
-        }
-      });
+    // 4. Check cache first (pre-warmed by CRON every 5 min)
+    let stores = getCachedStores(user.id);
+    let cacheStatus = 'HIT';
+    const cacheAge = getCacheAge(user.id);
+
+    if (!stores) {
+      // Cache miss - refresh for this user (fallback)
+      console.log(`[Extension API] Cache MISS for user ${user.id}, refreshing...`);
+      stores = await refreshCacheForUser(user.id);
+      cacheStatus = 'MISS';
+    } else {
+      console.log(`[Extension API] Cache HIT for user ${user.id}: ${stores.length} stores (age: ${cacheAge}s)`);
     }
-
-    // 5. Get all stores for this user with draft complaints count (only for active products)
-    const result = await query<Store>(
-      `
-      SELECT
-        s.id,
-        s.name,
-        s.owner_id,
-        s.status,
-        COALESCE(
-          (SELECT COUNT(*)
-           FROM reviews r
-           JOIN review_complaints rc ON r.id = rc.review_id
-           JOIN products p ON r.product_id = p.id
-           WHERE r.store_id = s.id
-             AND rc.status = 'draft'
-             AND p.work_status = 'active'
-          ), 0
-        )::text as draft_complaints_count
-      FROM stores s
-      WHERE s.owner_id = $1
-      ORDER BY s.name ASC
-      `,
-      [user.id]
-    );
-
-    console.log(`[Extension API] Cache MISS for user ${user.id}: ${result.rows.length} stores (queried DB)`);
-
-    // 6. Format response with isActive field and draft complaints count
-    const stores = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      isActive: row.status === 'active', // true if status = 'active', false otherwise
-      draftComplaintsCount: parseInt(row.draft_complaints_count) || 0,
-    }));
-
-    // 7. Cache the result
-    setCachedStores(user.id, stores);
 
     return NextResponse.json(stores, {
       headers: {
@@ -203,7 +131,8 @@ export async function GET(request: NextRequest) {
         'X-RateLimit-Limit': '100',
         'X-RateLimit-Remaining': rateLimit.remaining.toString(),
         'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
-        'X-Cache': 'MISS',
+        'X-Cache': cacheStatus,
+        'X-Cache-Age': cacheAge?.toString() || '0',
       }
     });
 

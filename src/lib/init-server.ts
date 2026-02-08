@@ -3,7 +3,7 @@
  * This file runs once when the Next.js server starts (via instrumentation.ts)
  */
 
-import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker } from './cron-jobs';
+import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker, startStoresCacheRefresh } from './cron-jobs';
 
 let initialized = false;
 
@@ -24,6 +24,7 @@ export function initializeServer() {
     startAdaptiveDialogueSync(); // Adaptive dialogue sync (15min day / 60min night)
     startDailyProductSync(); // Daily product sync (7:00 AM MSK)
     startBackfillWorker(); // Backfill worker (every 5 min)
+    startStoresCacheRefresh(); // Stores cache refresh (every 5 min)
 
     initialized = true;
     const duration = Date.now() - startTime;
