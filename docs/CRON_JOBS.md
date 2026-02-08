@@ -1,6 +1,6 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-01-16
+**Last Updated:** 2026-02-08
 
 ---
 
@@ -649,6 +649,81 @@ pm2 show wb-reputation
 
 ---
 
+---
+
+## 6. Google Sheets Sync (Product Rules Export)
+
+**Job Name:** `google-sheets-sync`
+**Schedule:**
+- **Production:** `0 3 * * *` (6:00 AM MSK / 3:00 AM UTC)
+- **Development:** `*/30 * * * *` (every 30 minutes)
+
+**What It Does:**
+1. Exports all active product rules from all active stores to Google Sheets
+2. Full sync strategy: clear and rewrite entire sheet on every sync
+3. Provides management visibility into active stores and their configurations
+
+**Data Exported (per row):**
+| Магазин | Артикул WB | Название | Статус | Жалобы | ⭐1-4 | Чаты | ⭐1-4 | Стратегия | Компенсация | Тип | Макс ₽ | Кто платит | Обновлено |
+
+**Triggers:**
+1. **CRON** — ежедневно в 6:00 MSK
+2. **Manual API** — `POST /api/admin/google-sheets/sync`
+3. **Product rules change** — async hook (non-blocking)
+4. **Product status change** — async hook (non-blocking)
+5. **Store status change** — async hook (non-blocking)
+
+**Configuration (Environment Variables):**
+```bash
+GOOGLE_SHEETS_SPREADSHEET_ID=1-mxbnv0qkicJMVUCtqDGJH82FhLlDKDvICb-PAVbxfI
+GOOGLE_SHEETS_SHEET_NAME=Артикулы ТЗ
+GOOGLE_SERVICE_ACCOUNT_EMAIL=r5-automation@r5-wb-bot.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+**Important:** Share the Google Sheet with the Service Account email (role: Editor)
+
+**Source Files:**
+- [src/services/google-sheets-sync/](../src/services/google-sheets-sync/) — Sync service
+- [src/lib/cron-jobs.ts:518-579](../src/lib/cron-jobs.ts#L518-L579) — CRON job definition
+- [src/app/api/admin/google-sheets/sync/route.ts](../src/app/api/admin/google-sheets/sync/route.ts) — Manual sync API
+
+**Example Output:**
+```
+========================================
+[CRON] 📊 Starting Google Sheets sync at 2026-02-08T03:00:00.000Z
+========================================
+
+[GoogleSheetsSync] Starting full sync...
+[GoogleSheetsSync] Target: 1-mxbnv0qkicJMVUCtqDGJH82FhLlDKDvICb-PAVbxfI / "Артикулы ТЗ"
+[GoogleSheetsSync] Found 5 active stores
+[GoogleSheetsSync] Store "Тайди Центр": 42 active products
+[GoogleSheetsSync] Store "Test Store": 15 active products
+[GoogleSheetsSync] Total rows to write: 57
+[GoogleSheets] Clearing sheet "Артикулы ТЗ"...
+[GoogleSheets] Sheet cleared. Writing 58 rows...
+[GoogleSheets] ✅ Successfully wrote 58 rows
+[GoogleSheetsSync] ✅ Sync completed in 1250ms
+
+========================================
+[CRON] ✅ Google Sheets sync completed
+[CRON] Duration: 1250ms
+[CRON] Stores: 5, Products: 57
+[CRON] Rows written: 58
+========================================
+```
+
+**Manual Trigger:**
+```bash
+# Check status
+curl -X GET "http://localhost:9002/api/admin/google-sheets/sync"
+
+# Trigger sync
+curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
+```
+
+---
+
 ## Summary
 
 **Architecture:** Single unified CRON task (8:00 AM MSK) handles both review sync AND complaint generation
@@ -668,7 +743,99 @@ pm2 show wb-reputation
 
 ---
 
-**Last Updated:** 2026-01-16
-**Production CRON:** 8:00 AM MSK daily (0 5 * * * UTC) - Review Sync + Complaint Generation
-**Active Stores:** 43
+**Last Updated:** 2026-02-08
+
+**Production CRON Jobs:**
+| Job | Schedule (MSK) | Schedule (UTC) | Description |
+|-----|----------------|----------------|-------------|
+| Review Sync + Complaints | 8:00 AM | 0 5 * * * | Sync reviews + auto-generate complaints |
+| Dialogue Sync | Adaptive | 15min day/60min night | Sync chat dialogues |
+| Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog |
+| Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue |
+| Stores Cache | Every 5 min | */5 * * * * | Pre-warm stores cache for Extension API |
+| Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
+| Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
+
 **Estimated Daily Cost Savings:** 30-40% via template optimization
+
+---
+
+## 7. Client Directory Sync (Справочник клиентов)
+
+**Job Name:** `client-directory-sync`
+**Schedule:**
+- **Production:** `30 3 * * *` (6:30 AM MSK / 3:30 AM UTC)
+- **Manual:** `POST /api/admin/google-sheets/sync-clients`
+
+**What It Does:**
+1. Читает существующие данные листа "Список клиентов"
+2. Строит карту `storeId → rowNumber` для upsert
+3. Загружает все магазины из БД
+4. Загружает папки клиентов из Google Drive (fuzzy-matching по названию)
+5. Для каждого магазина:
+   - Находит папку Drive по fuzzy-match названия
+   - Внутри папки ищет "Отчёт:" и "Скриншоты"
+   - Если store есть в таблице → **UPDATE** строки
+   - Если нет → **APPEND** новой строки
+6. Сохраняет вручную заполненный ИНН (колонка C)
+
+**Стратегия:** Incremental Upsert (не full-rewrite как Product Rules)
+
+**Колонки:**
+| # | Колонка | Источник |
+|---|---------|----------|
+| A | ID магазина | `store.id` |
+| B | Название | `store.name` |
+| C | ИНН | (заполняется вручную) |
+| D | Дата подключения | `store.created_at` |
+| E | Статус | `store.status` |
+| F | API Main | ✅/❌ |
+| G | API Content | ✅/❌ |
+| H | API Feedbacks | ✅/❌ |
+| I | API Chat | ✅/❌ |
+| J | Папка клиента | Google Drive ссылка |
+| K | Отчёт | Ссылка на "Отчёт: ..." |
+| L | Скриншоты | Ссылка на папку |
+| M | Обновлено | Timestamp |
+
+**Source Files:**
+- [src/services/google-sheets-sync/client-directory/](../src/services/google-sheets-sync/client-directory/) — Sync module
+- [src/app/api/admin/google-sheets/sync-clients/route.ts](../src/app/api/admin/google-sheets/sync-clients/route.ts) — API endpoint
+
+**Google Drive Folder:** `1GelGC6stQVoc5OaJuachXNZtuJvOevyK` (Клиенты)
+
+**Fuzzy Matching Algorithm:**
+```typescript
+function normalizeStoreName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/["'«»""'']/g, '')          // Remove quotes
+    .replace(/^(ооо|ип|зао|пао)\s*/gi, '') // Remove legal forms
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+// Priority: 1) Exact match → 2) Contains → 3) 60%+ word match
+```
+
+**Example Output:**
+```
+[ClientDirectorySync] Starting incremental sync...
+[ClientDirectorySync] Target: 1-mxbnv... / "Список клиентов"
+[ClientDirectorySync] Found 63 existing rows
+[ClientDirectorySync] Mapped 62 existing stores
+[ClientDirectorySync] Found 63 stores in database
+[ClientDirectorySync] Found 45 client folders in Drive
+[ClientDirectorySync] Updates: 62, Appends: 1
+[ClientDirectorySync] Updated 806 cells
+[ClientDirectorySync] Appended 1 rows
+[ClientDirectorySync] ✅ Sync completed in 26728ms
+```
+
+**Manual Trigger:**
+```bash
+# Check status
+curl -X GET "http://localhost:9002/api/admin/google-sheets/sync-clients"
+
+# Trigger sync
+curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
+```

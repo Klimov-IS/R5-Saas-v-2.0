@@ -670,6 +670,121 @@ API для Chrome Extension.
 
 ---
 
+## Google Sheets Sync
+
+### GET /api/admin/google-sheets/sync
+
+Статус синхронизации Product Rules в Google Sheets.
+
+**Response:**
+```json
+{
+  "configured": true,
+  "config": {
+    "spreadsheetId": "1-mxbnv...",
+    "sheetName": "Артикулы ТЗ",
+    "serviceAccountEmail": "r5-automation@..."
+  },
+  "lastSync": {
+    "timestamp": "2026-02-08T03:00:00.000Z",
+    "success": true,
+    "rowsWritten": 58
+  }
+}
+```
+
+---
+
+### POST /api/admin/google-sheets/sync
+
+Ручной запуск синхронизации Product Rules.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Successfully synced 150 products from 5 stores",
+  "result": {
+    "rowsWritten": 151,
+    "storesProcessed": 5,
+    "productsProcessed": 150,
+    "duration_ms": 1250
+  }
+}
+```
+
+---
+
+### GET /api/admin/google-sheets/sync-clients
+
+Статус синхронизации справочника клиентов (Список клиентов).
+
+**Response:**
+```json
+{
+  "configured": true,
+  "config": {
+    "spreadsheetId": "1-mxbnv...",
+    "sheetName": "Список клиентов",
+    "serviceAccountEmail": "r5-automation@..."
+  },
+  "lastSync": {
+    "timestamp": "2026-02-08T10:00:00.000Z",
+    "success": true,
+    "storesProcessed": 63,
+    "rowsUpdated": 0,
+    "rowsAppended": 63
+  }
+}
+```
+
+---
+
+### POST /api/admin/google-sheets/sync-clients
+
+Запуск синхронизации справочника клиентов.
+
+**Что делает:**
+- Читает существующие данные листа "Список клиентов"
+- Для существующих магазинов — обновляет строку (UPDATE)
+- Для новых магазинов — добавляет строку (APPEND)
+- Сохраняет вручную заполненный ИНН (колонка C)
+- Связывает с папками Google Drive через fuzzy-matching
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Synced 63 stores: 10 updated, 5 appended",
+  "result": {
+    "storesProcessed": 63,
+    "rowsUpdated": 10,
+    "rowsAppended": 5,
+    "duration_ms": 26728
+  }
+}
+```
+
+**Колонки листа:**
+
+| # | Колонка | Источник |
+|---|---------|----------|
+| A | ID магазина | `store.id` |
+| B | Название | `store.name` |
+| C | ИНН | (заполняется вручную) |
+| D | Дата подключения | `store.created_at` |
+| E | Статус | `store.status` |
+| F | API Main | ✅/❌ |
+| G | API Content | ✅/❌ |
+| H | API Feedbacks | ✅/❌ |
+| I | API Chat | ✅/❌ |
+| J | Папка клиента | Google Drive ссылка |
+| K | Отчёт | Ссылка на "Отчёт: ..." |
+| L | Скриншоты | Ссылка на папку |
+| M | Обновлено | Timestamp |
+
+---
+
 ## Tasks API
 
 Управление фоновыми задачами.
