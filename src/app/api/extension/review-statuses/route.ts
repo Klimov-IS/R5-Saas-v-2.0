@@ -332,6 +332,15 @@ export async function POST(request: NextRequest) {
         );
 
         if (syncResult.rowCount && syncResult.rowCount > 0) {
+          // Also update review_complaints table status
+          for (const row of syncResult.rows) {
+            await query(
+              `UPDATE review_complaints
+               SET status = $1, updated_at = NOW()
+               WHERE review_id = $2 AND status = 'draft'`,
+              [complaintStatus, row.id]
+            );
+          }
           synced++;
           console.log(`[Extension ReviewStatuses] 🔄 Synced review ${review.reviewKey} → ${complaintStatus}`);
         }
