@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatById, getChatMessages, getStoreById, updateChat } from '@/db/helpers';
+import { getChatById, getChatMessages, getStoreById, getProductRulesByNmId, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 
 /**
@@ -43,14 +43,32 @@ export async function POST(
       .map((msg) => `[${msg.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${msg.text}`)
       .join('\n');
 
+    // Load product rules for enriched context
+    let productRulesContext = '';
+    if (chat.product_nm_id) {
+      const rules = await getProductRulesByNmId(storeId, chat.product_nm_id);
+      if (rules) {
+        productRulesContext = `\n**Правила товара:**\nРабота в чатах: ${rules.work_in_chats ? 'включена' : 'отключена'}`;
+        if (rules.offer_compensation) {
+          productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
+        } else {
+          productRulesContext += `\nКомпенсация: не предлагать`;
+        }
+        if (rules.chat_strategy) {
+          productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
+        }
+      }
+    }
+
     const context = `
-**Информация о магазине:**
-Store ID: ${storeId}
+**Магазин:**
+Название: ${store.name}
 
 **Товар:**
 Название: ${chat.product_name || 'Неизвестно'}
 Артикул WB: ${chat.product_nm_id}
 Вендор код: ${chat.product_vendor_code || 'Неизвестно'}
+${productRulesContext}
 
 **Клиент:**
 Имя: ${chat.client_name}
@@ -65,6 +83,7 @@ ${chatHistory}
       storeId,
       ownerId,
       chatId,
+      storeInstructions: store.ai_instructions || undefined,
     });
 
     // ✅ Save draft to database

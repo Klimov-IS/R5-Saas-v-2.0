@@ -153,6 +153,7 @@ async function classifyAllChatsForDeletion(
                     chatId: chat.id,
                     productName: chat.product_name || undefined,
                     productRules: productRules || undefined,
+                    storeInstructions: store.ai_instructions || undefined,
                 });
                 const duration = Date.now() - startTime;
 

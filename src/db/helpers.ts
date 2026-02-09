@@ -83,6 +83,7 @@ export interface Store {
   total_reviews?: number;
   total_chats?: number;
   chat_tag_counts?: Record<ChatTag, number> | null;
+  ai_instructions?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -453,6 +454,7 @@ export async function updateStore(
     ['total_reviews', 'total_reviews'],
     ['total_chats', 'total_chats'],
     ['chat_tag_counts', 'chat_tag_counts'],
+    ['ai_instructions', 'ai_instructions'],
   ];
 
   for (const [key, dbField] of fieldMappings) {
@@ -1881,6 +1883,19 @@ export async function getProductRule(productId: string): Promise<ProductRule | n
   const result = await query<ProductRule>(
     'SELECT * FROM product_rules WHERE product_id = $1',
     [productId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Get product rules by store + WB product NM ID (for AI context enrichment)
+ */
+export async function getProductRulesByNmId(storeId: string, productNmId: string): Promise<ProductRule | null> {
+  const result = await query<ProductRule>(
+    `SELECT pr.* FROM product_rules pr
+     JOIN products p ON p.id = pr.product_id
+     WHERE p.store_id = $1 AND p.wb_product_id = $2`,
+    [storeId, productNmId]
   );
   return result.rows[0] || null;
 }

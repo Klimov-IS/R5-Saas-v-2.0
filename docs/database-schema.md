@@ -237,6 +237,9 @@ CREATE TABLE stores (
   total_chats                INTEGER DEFAULT 0,
   chat_tag_counts            JSONB DEFAULT '{}'::jsonb,
 
+  -- AI Personalization
+  ai_instructions            TEXT NULL,  -- Store-specific AI instructions (tone, rules, restrictions)
+
   -- Status
   status                     VARCHAR(20) DEFAULT 'active',
 
@@ -247,6 +250,7 @@ CREATE TABLE stores (
 
 **Key Fields:**
 - `status` - 'active' or 'inactive' (controls visibility)
+- `ai_instructions` - Free-form text with AI instructions for this store (injected into system prompt)
 - `total_reviews` - cached count (updated during sync)
 - `last_*_update_*` - sync status tracking for monitoring
 

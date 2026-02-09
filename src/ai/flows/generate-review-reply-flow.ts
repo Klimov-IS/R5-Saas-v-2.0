@@ -24,6 +24,7 @@ const GenerateReviewReplyInputSchema = z.object({
     storeId: z.string().describe('Store ID for logging'),
     ownerId: z.string().describe('Owner ID for logging'),
     reviewId: z.string().describe('Review ID for logging'),
+    storeInstructions: z.string().optional().describe('Store-specific AI instructions'),
 });
 export type GenerateReviewReplyInput = z.infer<typeof GenerateReviewReplyInputSchema>;
 
@@ -58,10 +59,15 @@ export async function generateReviewReply(input: GenerateReviewReplyInput): Prom
     if (!settings) {
       throw new Error("Не найдены настройки AI.");
     }
-    const systemPrompt = settings.prompt_review_reply;
+    let systemPrompt = settings.prompt_review_reply;
 
     if (!systemPrompt) {
         throw new Error("Системный промт для ответов на отзывы не найден в настройках.");
+    }
+
+    // Inject store-specific instructions
+    if (input.storeInstructions) {
+      systemPrompt += `\n\n## Инструкции магазина\n${input.storeInstructions}`;
     }
 
     const replyText = await runChatCompletion({

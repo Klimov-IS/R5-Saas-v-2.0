@@ -97,6 +97,7 @@ export async function POST(
       storeId,
       ownerId: store.owner_id,
       reviewId,
+      storeInstructions: store.ai_instructions || undefined,
     });
 
     // Save as draft

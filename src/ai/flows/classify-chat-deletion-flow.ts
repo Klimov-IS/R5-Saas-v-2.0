@@ -32,6 +32,7 @@ const ClassifyChatDeletionInputSchema = z.object({
     chat_strategy: z.enum(['upgrade_to_5', 'delete', 'both']).optional(),
     max_compensation: z.string().optional(),
   }).optional(),
+  storeInstructions: z.string().optional().describe('Store-specific AI instructions'),
 });
 export type ClassifyChatDeletionInput = z.infer<typeof ClassifyChatDeletionInputSchema>;
 
@@ -121,7 +122,7 @@ export async function classifyChatDeletion(
     }
 
     // Use deletion-specific prompt if available, fallback to general chat tag prompt
-    const systemPrompt = settings.prompt_chat_deletion_tag || settings.prompt_chat_tag;
+    let systemPrompt = settings.prompt_chat_deletion_tag || settings.prompt_chat_tag;
 
     if (!systemPrompt) {
       console.warn("No AI prompt found, falling back to regex-only classification");
@@ -142,6 +143,11 @@ export async function classifyChatDeletion(
         reasoning: 'No AI prompt configured, defaulting to active',
         triggers: [],
       };
+    }
+
+    // Inject store-specific instructions
+    if (input.storeInstructions) {
+      systemPrompt += `\n\n## Инструкции магазина\n${input.storeInstructions}`;
     }
 
     // Build context for AI

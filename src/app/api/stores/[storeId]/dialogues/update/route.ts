@@ -273,6 +273,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         ownerId,
                         chatId,
                         productName: chat?.product_name || undefined,
+                        storeInstructions: store.ai_instructions || undefined,
                     });
 
                     const tag = result.tag;

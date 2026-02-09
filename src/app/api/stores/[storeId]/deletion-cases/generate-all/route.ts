@@ -71,6 +71,9 @@ export async function POST(
 
     console.log(`[GENERATE-ALL-OFFERS] Store ${storeId}: Starting (limit: ${limit || 'none'}, autoSend: ${autoSend})`);
 
+    // Get store for AI instructions
+    const store = await dbHelpers.getStoreById(storeId);
+
     // Step 1: Get all deletion_candidate chats
     const allChats = await dbHelpers.getChats(storeId);
     let candidateChats = allChats.filter(chat => chat.tag === 'deletion_candidate');
@@ -166,6 +169,7 @@ export async function POST(
           storeId,
           ownerId: chat.owner_id,
           chatId: chat.id,
+          storeInstructions: store?.ai_instructions || undefined,
         });
 
         // Create deletion case

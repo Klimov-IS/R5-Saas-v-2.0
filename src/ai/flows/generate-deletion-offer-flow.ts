@@ -39,6 +39,7 @@ const GenerateDeletionOfferInputSchema = z.object({
   storeId: z.string(),
   ownerId: z.string(),
   chatId: z.string(),
+  storeInstructions: z.string().optional().describe('Store-specific AI instructions'),
 });
 export type GenerateDeletionOfferInput = z.infer<typeof GenerateDeletionOfferInputSchema>;
 
@@ -132,9 +133,14 @@ export async function generateDeletionOffer(
       throw new Error('Не найдены настройки AI.');
     }
 
-    const systemPrompt = settings.prompt_deletion_offer || settings.prompt_chat_reply;
+    let systemPrompt = settings.prompt_deletion_offer || settings.prompt_chat_reply;
     if (!systemPrompt) {
       throw new Error('Системный промт для генерации офферов не найден в настройках.');
+    }
+
+    // Inject store-specific instructions
+    if (input.storeInstructions) {
+      systemPrompt += `\n\n## Инструкции магазина\n${input.storeInstructions}`;
     }
 
     // Stage 2: Build context for AI

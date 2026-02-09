@@ -84,6 +84,7 @@ async function classifyAllChatsForStore(
                     storeId,
                     ownerId,
                     chatId: chat.id,
+                    storeInstructions: store.ai_instructions || undefined,
                 });
 
                 // Update chat with new tag

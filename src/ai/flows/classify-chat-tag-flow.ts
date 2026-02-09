@@ -17,6 +17,7 @@ const ClassifyChatTagInputSchema = z.object({
   storeId: z.string().describe('Store ID for logging'),
   ownerId: z.string().describe('Owner ID for logging'),
   chatId: z.string().describe('Chat ID for logging'),
+  storeInstructions: z.string().optional().describe('Store-specific AI instructions'),
 });
 export type ClassifyChatTagInput = z.infer<typeof ClassifyChatTagInputSchema>;
 
@@ -55,10 +56,15 @@ export async function classifyChatTag(input: ClassifyChatTagInput): Promise<Clas
       throw new Error("Не найдены настройки AI.");
     }
 
-    const systemPrompt = settings.prompt_chat_tag;
+    let systemPrompt = settings.prompt_chat_tag;
 
     if (!systemPrompt) {
       throw new Error("Системный промт для тегирования чатов не найден в настройках.");
+    }
+
+    // Inject store-specific instructions
+    if (input.storeInstructions) {
+      systemPrompt += `\n\n## Инструкции магазина\n${input.storeInstructions}`;
     }
 
     const rawOutput = await runChatCompletion({

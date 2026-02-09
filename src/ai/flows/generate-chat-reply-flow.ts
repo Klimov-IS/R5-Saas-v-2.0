@@ -17,6 +17,7 @@ const GenerateChatReplyInputSchema = z.object({
   storeId: z.string().describe('Store ID for logging'),
   ownerId: z.string().describe('Owner ID for logging'),
   chatId: z.string().describe('Chat ID for logging'),
+  storeInstructions: z.string().optional().describe('Store-specific AI instructions'),
 });
 
 export type GenerateChatReplyInput = z.infer<typeof GenerateChatReplyInputSchema>;
@@ -26,7 +27,7 @@ export interface GenerateChatReplyOutput {
 }
 
 export async function generateChatReply(input: GenerateChatReplyInput): Promise<GenerateChatReplyOutput> {
-  const { context, storeId, ownerId, chatId } = input;
+  const { context, storeId, ownerId, chatId, storeInstructions } = input;
 
   // Get settings from PostgreSQL
   const settings = await dbHelpers.getUserSettings();
@@ -34,10 +35,16 @@ export async function generateChatReply(input: GenerateChatReplyInput): Promise<
   if (!settings) {
     throw new Error("Не найдены настройки AI.");
   }
-  const systemPrompt = settings.prompt_chat_reply;
+
+  let systemPrompt = settings.prompt_chat_reply;
 
   if (!systemPrompt) {
     throw new Error("Системный промт для ответов в чатах не найден в настройках.");
+  }
+
+  // Inject store-specific instructions
+  if (storeInstructions) {
+    systemPrompt += `\n\n## Инструкции магазина\n${storeInstructions}`;
   }
 
   const text = await runChatCompletion({

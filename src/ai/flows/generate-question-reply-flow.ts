@@ -20,6 +20,7 @@ const GenerateQuestionReplyInputSchema = z.object({
     storeId: z.string().describe('Store ID for logging'),
     ownerId: z.string().describe('Owner ID for logging'),
     questionId: z.string().describe('Question ID for logging'),
+    storeInstructions: z.string().optional().describe('Store-specific AI instructions'),
 });
 export type GenerateQuestionReplyInput = z.infer<typeof GenerateQuestionReplyInputSchema>;
 
@@ -50,10 +51,15 @@ export async function generateQuestionReply(input: GenerateQuestionReplyInput): 
   if (!settings) {
     throw new Error("Не найдены настройки AI.");
   }
-  const systemPrompt = settings.prompt_question_reply;
+  let systemPrompt = settings.prompt_question_reply;
 
   if (!systemPrompt) {
     throw new Error("Системный промт для ответов на вопросы не найден в настройках.");
+  }
+
+  // Inject store-specific instructions
+  if (input.storeInstructions) {
+    systemPrompt += `\n\n## Инструкции магазина\n${input.storeInstructions}`;
   }
 
   const replyText = await runChatCompletion({

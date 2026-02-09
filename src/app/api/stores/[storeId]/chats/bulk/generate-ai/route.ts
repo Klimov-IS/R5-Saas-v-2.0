@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatsByStoreWithPagination, getChatById, getChatMessages, updateChat } from '@/db/helpers';
+import { getChatsByStoreWithPagination, getChatById, getChatMessages, getStoreById, getProductRulesByNmId, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 
 /**
@@ -14,6 +14,9 @@ export async function POST(
     const { storeId } = params;
     const body = await request.json();
     const { chatIds } = body;
+
+    // Get store for AI instructions
+    const store = await getStoreById(storeId);
 
     // ⚠️ CRITICAL SAFETY: Require explicit chatIds array
     if (!chatIds || chatIds.length === 0) {
@@ -50,13 +53,31 @@ export async function POST(
           .map((msg) => `[${msg.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${msg.text}`)
           .join('\n');
 
+        // Load product rules for enriched context
+        let productRulesContext = '';
+        if (chat.product_nm_id) {
+          const rules = await getProductRulesByNmId(storeId, chat.product_nm_id);
+          if (rules) {
+            productRulesContext = `\n**Правила товара:**\nРабота в чатах: ${rules.work_in_chats ? 'включена' : 'отключена'}`;
+            if (rules.offer_compensation) {
+              productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
+            } else {
+              productRulesContext += `\nКомпенсация: не предлагать`;
+            }
+            if (rules.chat_strategy) {
+              productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
+            }
+          }
+        }
+
         const context = `
-**Информация о магазине:**
-Store ID: ${storeId}
+**Магазин:**
+Название: ${store?.name || storeId}
 
 **Товар:**
 Название: ${chat.product_name || 'Неизвестно'}
 Артикул WB: ${chat.product_nm_id}
+${productRulesContext}
 
 **Клиент:**
 Имя: ${chat.client_name}
@@ -71,6 +92,7 @@ ${chatHistory}
           storeId,
           ownerId: chat.owner_id,
           chatId,
+          storeInstructions: store?.ai_instructions || undefined,
         });
 
         // ✅ Save draft to database

@@ -114,6 +114,9 @@ export async function POST(
 
     console.log(`[GENERATE-DELETION-OFFER] Chat ${chatId}: Starting (autoSend: ${autoSend})`);
 
+    // Get store for AI instructions
+    const store = await dbHelpers.getStoreById(storeId);
+
     // Step 1: Get chat
     const chat = await dbHelpers.getChatById(chatId);
     if (!chat) {
@@ -208,6 +211,7 @@ export async function POST(
       storeId,
       ownerId: chat.owner_id,
       chatId,
+      storeInstructions: store?.ai_instructions || undefined,
     });
 
     console.log(
