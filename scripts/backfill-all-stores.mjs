@@ -189,7 +189,28 @@ async function run() {
         }
 
         try {
-          // Create sequence
+          // SEND FIRST, create sequence only on success
+          const formData = new FormData();
+          formData.append('replySign', row.reply_sign);
+          formData.append('message', template.text);
+
+          const response = await fetch('https://buyer-chat-api.wildberries.ru/api/v1/seller/message', {
+            method: 'POST',
+            headers: { 'Authorization': token },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const body = await response.text();
+            if (storeErrors < 3) {
+              console.log(`  ❌ HTTP ${response.status}: ${body.substring(0, 100)}`);
+            }
+            storeErrors++;
+            // Do NOT create sequence if send failed
+            continue;
+          }
+
+          // Send succeeded — now create sequence + update DB
           const nextSendAt = getNextSlotTime();
           const seqRes = await client.query(`
             INSERT INTO chat_auto_sequences
@@ -209,40 +230,21 @@ async function run() {
             WHERE id = $1
           `, [row.chat_id]);
 
-          // Send via WB Chat API
-          const formData = new FormData();
-          formData.append('replySign', row.reply_sign);
-          formData.append('message', template.text);
+          // Record message
+          const msgId = 'auto_' + seqId.substring(0, 8) + '_0';
+          await client.query(
+            `INSERT INTO chat_messages (id, chat_id, store_id, owner_id, sender, text, timestamp)
+             VALUES ($1, $2, $3, $4, 'seller', $5, NOW())`,
+            [msgId, row.chat_id, store.id, row.owner_id, template.text]
+          );
 
-          const response = await fetch('https://buyer-chat-api.wildberries.ru/api/v1/seller/message', {
-            method: 'POST',
-            headers: { 'Authorization': token },
-            body: formData,
-          });
+          // Update chat last message
+          await client.query(
+            `UPDATE chats SET last_message_text = $2, last_message_sender = 'seller', last_message_date = NOW(), updated_at = NOW() WHERE id = $1`,
+            [row.chat_id, template.text]
+          );
 
-          if (response.ok) {
-            // Record message
-            const msgId = 'auto_' + seqId.substring(0, 8) + '_0';
-            await client.query(
-              `INSERT INTO chat_messages (id, chat_id, store_id, owner_id, sender, text, timestamp)
-               VALUES ($1, $2, $3, $4, 'seller', $5, NOW())`,
-              [msgId, row.chat_id, store.id, row.owner_id, template.text]
-            );
-
-            // Update chat last message
-            await client.query(
-              `UPDATE chats SET last_message_text = $2, last_message_sender = 'seller', last_message_date = NOW(), updated_at = NOW() WHERE id = $1`,
-              [row.chat_id, template.text]
-            );
-
-            storeSent++;
-          } else {
-            const body = await response.text();
-            if (storeSent === 0 || storeErrors < 3) {
-              console.log(`  ❌ HTTP ${response.status}: ${body.substring(0, 100)}`);
-            }
-            storeErrors++;
-          }
+          storeSent++;
 
           // Rate limit
           if (i < candidatesRes.rows.length - 1) {
