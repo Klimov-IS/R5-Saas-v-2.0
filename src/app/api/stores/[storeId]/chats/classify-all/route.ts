@@ -100,13 +100,19 @@ async function classifyAllChatsForStore(
 
         // Recalculate stats
         const allChats = await dbHelpers.getChats(storeId);
-        const chatTagCounts: Record<dbHelpers.ChatTag, number> = {
+        const chatTagCounts: Record<string, number> = {
             active: 0,
             no_reply: 0,
             successful: 0,
             unsuccessful: 0,
             untagged: 0,
             completed: 0,
+            deletion_candidate: 0,
+            deletion_offered: 0,
+            deletion_agreed: 0,
+            deletion_confirmed: 0,
+            refund_requested: 0,
+            spam: 0,
         };
 
         allChats.forEach(chat => {

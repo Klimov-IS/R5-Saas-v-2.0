@@ -743,7 +743,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-09
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -755,8 +755,59 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Stores Cache | Every 5 min | */5 * * * * | Pre-warm stores cache for Extension API |
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
 | Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
+| **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages for awaiting_reply chats |
 
 **Estimated Daily Cost Savings:** 30-40% via template optimization
+
+---
+
+## 8. Auto-Sequence Processor (Авто-рассылка)
+
+**Job Name:** `auto-sequence-processor`
+**Schedule:** `*/30 * * * *` (every 30 minutes, UTC)
+**Active hours:** 8:00-22:00 MSK only (skips nighttime)
+
+**Two template sets:**
+- `no_reply_followup` — negatives (1-2-3 stars), trigger from `no_reply_trigger_phrase`
+- `no_reply_followup_4star` — 4-star reviews, trigger from `no_reply_trigger_phrase2`
+
+**What It Does:**
+1. Queries `chat_auto_sequences` table for active sequences where `next_send_at <= NOW()`
+2. For each pending sequence (safety checks in order):
+   a. **Client replied?** → STOP sequence (`client_replied`)
+   b. **Chat status valid?** → STOP if not `awaiting_reply` or `inbox` (`status_changed`)
+   c. **Seller already sent today?** → SKIP, reschedule to tomorrow (no step advance)
+   d. **Max steps reached?** → Send СТОП message (per `sequence_type`) + close chat
+   e. Send next follow-up via WB Chat API
+   f. Record in `chat_messages`, update chat, advance sequence
+3. Rate limits: 3 seconds between sends
+
+**Dry Run Mode:**
+Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decisions are logged, but NO messages are sent and NO database changes are made.
+
+Manual dry run script: `node scripts/dry-run-sequences.mjs`
+
+**Triggering a Sequence:**
+- Dialogue sync detects trigger phrase in seller message → auto-tag + auto-sequence
+- Manual status change to `awaiting_reply` (via PATCH `/api/stores/:storeId/chats/:chatId/status`)
+- Templates: `user_settings.no_reply_messages` / `no_reply_messages2`, fallback to defaults
+
+**Stopping Conditions:**
+- Client replied (detected in dialogue sync and in cron job)
+- Chat status changed away from `awaiting_reply`/`inbox` (checked in cron)
+- Seller already sent a message today (skip + reschedule, not stop)
+- All messages sent (14 days) → СТОП message + close
+
+**Database Table:** `chat_auto_sequences`
+- See `migrations/005_create_chat_auto_sequences.sql`
+- Field `sequence_type` determines template set and stop message
+
+**Source Files:**
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — Cron job definition
+- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (2 sets: negatives + 4-star)
+- [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, rescheduleSequence, etc.)
+- [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) — Trigger detection (Step 5b)
+- [scripts/dry-run-sequences.mjs](../scripts/dry-run-sequences.mjs) — Manual dry run
 
 ---
 

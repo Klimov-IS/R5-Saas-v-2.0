@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
-import type { ChatTag } from '@/db/helpers';
+import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
+import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -65,7 +66,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                 last_message_date: existingChat?.last_message_date || null,
                 last_message_text: existingChat?.last_message_text || null,
                 last_message_sender: existingChat?.last_message_sender || null,
-                legacy_tag: existingChat?.legacy_tag || null, // DEPRECATED: Preserve old tag for history
+                tag: existingChat?.tag || null,
                 status: existingChat?.status || 'inbox', // NEW: Preserve Kanban status
                 draft_reply: existingChat?.draft_reply || null,
                 draft_reply_thread_id: existingChat?.draft_reply_thread_id || null,
@@ -117,6 +118,8 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         if (allEvents.length > 0) {
             // Track latest message per chat for updating last_message fields
             const latestMessagesPerChat: { [chatId: string]: any } = {};
+            // Track new seller messages per chat for trigger detection
+            const newSellerMessagesByChat: { [chatId: string]: string[] } = {};
 
             for (const event of allEvents) {
                 if (event.eventType === 'message' && event.chatID) {
@@ -137,6 +140,12 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
 
                     await dbHelpers.upsertChatMessage(messagePayload);
 
+                    // Track seller messages for trigger detection
+                    if (event.sender === 'seller' && event.message?.text) {
+                        if (!newSellerMessagesByChat[chatId]) newSellerMessagesByChat[chatId] = [];
+                        newSellerMessagesByChat[chatId].push(event.message.text);
+                    }
+
                     // Track latest message
                     if (!latestMessagesPerChat[chatId] || new Date(event.addTime) > new Date(latestMessagesPerChat[chatId].addTime)) {
                         latestMessagesPerChat[chatId] = event;
@@ -151,11 +160,85 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                     last_message_text: latestMsg.message?.text || 'Вложение',
                     last_message_date: latestMsg.addTime,
                     last_message_sender: latestMsg.sender,
-                    // ✅ Clear draft when new message arrives (draft is outdated)
+                    // Clear draft when new message arrives (draft is outdated)
                     draft_reply: null,
                     draft_reply_generated_at: null,
                     draft_reply_edited: null,
                 });
+
+                // Stop auto-sequence if client replied
+                if (latestMsg.sender === 'client') {
+                    try {
+                        const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+                        if (activeSeq) {
+                            await dbHelpers.stopSequence(activeSeq.id, 'client_replied');
+                            console.log(`[DIALOGUES] 🛑 Auto-sequence stopped for chat ${chatId} (client replied)`);
+                        }
+                    } catch (seqErr: any) {
+                        console.error(`[DIALOGUES] Failed to stop auto-sequence for chat ${chatId}:`, seqErr.message);
+                    }
+                }
+            }
+
+            // --- Step 5b: Trigger detection — auto-tag + auto-sequence for outreach messages ---
+            // Supports two trigger sets: negatives (1-2-3 stars) and 4-star reviews
+            const settings = await dbHelpers.getUserSettings();
+            const triggerPhrase = settings?.no_reply_trigger_phrase || DEFAULT_TRIGGER_PHRASE;
+            const triggerPhrase2 = settings?.no_reply_trigger_phrase2 || null; // 4-star trigger (null = disabled)
+
+            for (const chatId of Object.keys(newSellerMessagesByChat)) {
+                try {
+                    const sellerTexts = newSellerMessagesByChat[chatId];
+
+                    // Check which trigger matched (set 1 = negatives, set 2 = 4-star)
+                    const matchedSet1 = sellerTexts.some(text => text.includes(triggerPhrase));
+                    const matchedSet2 = triggerPhrase2 ? sellerTexts.some(text => text.includes(triggerPhrase2)) : false;
+
+                    if (!matchedSet1 && !matchedSet2) continue;
+
+                    // Check current chat state (avoid re-processing)
+                    const chat = await dbHelpers.getChatById(chatId);
+                    if (!chat) continue;
+
+                    // Skip if already tagged as deletion workflow or already has active sequence
+                    const deletionTags: ChatTag[] = [
+                        'deletion_candidate', 'deletion_offered', 'deletion_agreed',
+                        'deletion_confirmed', 'refund_requested'
+                    ];
+                    if (chat.tag && deletionTags.includes(chat.tag as ChatTag)) continue;
+
+                    // Determine which template set to use
+                    const is4Star = matchedSet2 && !matchedSet1; // Prefer set 1 if both match
+                    const sequenceType = is4Star ? 'no_reply_followup_4star' : 'no_reply_followup';
+
+                    // Tag as deletion_candidate + set awaiting_reply
+                    await dbHelpers.updateChat(chatId, {
+                        tag: 'deletion_candidate' as ChatTag,
+                        status: 'awaiting_reply' as ChatStatus,
+                        status_updated_at: new Date().toISOString(),
+                    });
+
+                    // Create auto-sequence if none exists
+                    const existingSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+                    if (!existingSeq) {
+                        let templates;
+                        if (is4Star) {
+                            templates = settings?.no_reply_messages2?.length
+                                ? settings.no_reply_messages2.map((text: string, i: number) => ({ day: i + 1, text }))
+                                : DEFAULT_FOLLOWUP_TEMPLATES_4STAR;
+                        } else {
+                            templates = settings?.no_reply_messages?.length
+                                ? settings.no_reply_messages.map((text: string, i: number) => ({ day: i + 1, text }))
+                                : DEFAULT_FOLLOWUP_TEMPLATES;
+                        }
+                        await dbHelpers.createAutoSequence(chatId, chat.store_id, chat.owner_id, templates, sequenceType);
+                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + awaiting_reply + sequence [${sequenceType}] (${templates.length} msgs)`);
+                    } else {
+                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + awaiting_reply (sequence already active)`);
+                    }
+                } catch (triggerErr: any) {
+                    console.error(`[DIALOGUES] Trigger detection error for chat ${chatId}:`, triggerErr.message);
+                }
             }
 
             // --- Step 6: Re-classify tags for updated chats using AI ---
@@ -194,11 +277,9 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
 
                     const tag = result.tag;
 
-                    // Update chat with new tag (DEPRECATED: legacy_tag only for history)
-                    // NOTE: We only update legacy_tag here, status remains unchanged
-                    // In the future, consider adding logic to update status based on tag changes
+                    // Update chat tag (AI classification), status remains unchanged
                     await dbHelpers.updateChat(chatId, {
-                        legacy_tag: tag,
+                        tag,
                     });
 
                     classifiedCount++;
@@ -237,7 +318,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         };
 
         allStoreChats.forEach(chat => {
-            const tag = chat.legacy_tag || 'untagged'; // Use legacy_tag (old field)
+            const tag = chat.tag || 'untagged';
             if (chatTagCounts.hasOwnProperty(tag)) {
                 chatTagCounts[tag]++;
             } else {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { triggerAsyncSync } from '@/services/google-sheets-sync';
 
 /**
  * PUT /api/stores/{storeId}/products/{productId}/rules
@@ -83,6 +84,9 @@ export async function PUT(
 
     // Create or update rules
     const updatedRules = await dbHelpers.upsertProductRule(ruleData);
+
+    // Trigger Google Sheets sync (async, non-blocking)
+    triggerAsyncSync();
 
     return NextResponse.json({
       success: true,
@@ -183,6 +187,9 @@ export async function POST(
 
     // Apply default rules
     const updatedRules = await dbHelpers.upsertProductRule(defaultRules);
+
+    // Trigger Google Sheets sync (async, non-blocking)
+    triggerAsyncSync();
 
     return NextResponse.json({
       success: true,

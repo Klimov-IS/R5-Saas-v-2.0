@@ -12,23 +12,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import type { TagStats } from '@/types/chats';
 
 interface FilterPanelProps {
   storeId: string;
-  tagStats?: {
-    active: number;
-    successful: number;
-    unsuccessful: number;
-    no_reply: number;
-    untagged: number;
-    // Deletion workflow tags (added 2026-01-16)
-    deletion_candidate?: number;
-    deletion_offered?: number;
-    deletion_agreed?: number;
-    deletion_confirmed?: number;
-    refund_requested?: number;
-    spam?: number;
-  };
+  tagStats?: TagStats;
 }
 
 export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {

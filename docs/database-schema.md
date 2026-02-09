@@ -3,7 +3,7 @@
 **Database:** PostgreSQL 15 (Yandex Managed)
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-02-09
 
 ---
 
@@ -556,15 +556,19 @@ CREATE TABLE chats (
   last_message_text         TEXT NULL,
   last_message_sender       TEXT NULL,
 
-  -- Chat classification
+  -- Chat classification (AI-assigned tag)
   tag                       TEXT NOT NULL DEFAULT 'untagged',
   tag_update_date           TIMESTAMPTZ NULL,
+
+  -- Kanban board status (user-managed)
+  status                    TEXT NOT NULL DEFAULT 'inbox',
+  completion_reason         TEXT NULL,  -- required when status='closed'
 
   -- AI draft reply
   draft_reply               TEXT NULL,
   draft_reply_thread_id     TEXT NULL,
 
-  -- No-reply automation
+  -- No-reply automation (tracking sent messages)
   sent_no_reply_messages    JSONB DEFAULT '[]'::jsonb,
   sent_no_reply_messages2   JSONB DEFAULT '[]'::jsonb,
 
@@ -574,8 +578,11 @@ CREATE TABLE chats (
 ```
 
 **Key Fields:**
-- `tag` - classification: 'untagged', 'negative', 'positive', 'question', etc.
-- `sent_no_reply_messages` - auto-reply history
+- `tag` - AI classification (12 тегов): `active`, `successful`, `unsuccessful`, `no_reply`, `untagged`, `completed`, `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`, `refund_requested`, `spam`
+- `status` - Kanban position (5 статусов): `inbox`, `in_progress`, `awaiting_reply`, `resolved`, `closed`
+- `completion_reason` - причина закрытия: `review_deleted`, `review_upgraded`, `no_reply`, `old_dialog`, `not_our_issue`, `spam`, `negative`, `other`
+- `sent_no_reply_messages` - история отправленных авто-сообщений (набор 1)
+- `sent_no_reply_messages2` - история отправленных авто-сообщений (набор 2)
 
 **Indexes:**
 ```sql
@@ -658,6 +665,44 @@ CREATE INDEX idx_questions_created ON questions(created_date DESC);
 
 ---
 
+### `chat_auto_sequences`
+
+**Purpose:** Track automated follow-up message sequences for chats in `awaiting_reply` status. 1 message/day, up to 14 days.
+
+```sql
+CREATE TABLE chat_auto_sequences (
+  id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  chat_id                 TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  store_id                TEXT NOT NULL,
+  owner_id                TEXT NOT NULL,
+
+  -- Sequence configuration
+  sequence_type           VARCHAR(50) NOT NULL DEFAULT 'no_reply_followup',
+  messages                JSONB NOT NULL DEFAULT '[]'::jsonb,  -- [{day: 1, text: "..."}, ...]
+  current_step            INT NOT NULL DEFAULT 0,
+  max_steps               INT NOT NULL DEFAULT 14,
+
+  -- State machine: active → stopped/completed
+  status                  VARCHAR(20) NOT NULL DEFAULT 'active',
+  stop_reason             VARCHAR(50),  -- client_replied | stop_message | max_reached | manual
+
+  -- Timestamps
+  started_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_sent_at            TIMESTAMPTZ,
+  next_send_at            TIMESTAMPTZ,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_auto_sequences_pending ON chat_auto_sequences(next_send_at) WHERE status = 'active';
+CREATE INDEX idx_auto_sequences_chat ON chat_auto_sequences(chat_id, status);
+```
+
+**Key helpers:** `createAutoSequence`, `getPendingSequences`, `advanceSequence`, `stopSequence`, `completeSequence`
+
+---
+
 ## Configuration Tables
 
 ### `user_settings`
@@ -676,12 +721,14 @@ CREATE TABLE user_settings (
   -- AI configuration
   ai_concurrency            INTEGER DEFAULT 5,
 
-  -- Custom prompts
-  prompt_chat_reply         TEXT NULL,
-  prompt_chat_tag           TEXT NULL,
-  prompt_question_reply     TEXT NULL,
-  prompt_review_complaint   TEXT NULL,
-  prompt_review_reply       TEXT NULL,
+  -- Custom prompts (system prompts for Deepseek AI)
+  prompt_chat_reply         TEXT NULL,  -- генерация ответов в чатах
+  prompt_chat_tag           TEXT NULL,  -- классификация тегов чатов
+  prompt_chat_deletion_tag  TEXT NULL,  -- deletion-классификация (fallback: prompt_chat_tag)
+  prompt_deletion_offer     TEXT NULL,  -- генерация deletion offer (fallback: prompt_chat_reply)
+  prompt_question_reply     TEXT NULL,  -- ответы на вопросы
+  prompt_review_complaint   TEXT NULL,  -- генерация жалоб
+  prompt_review_reply       TEXT NULL,  -- ответы на отзывы
 
   -- OpenAI assistants (deprecated)
   assistant_chat_reply      TEXT NULL,
@@ -1041,7 +1088,7 @@ LIMIT 20;
 
 ---
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-02-09
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials

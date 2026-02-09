@@ -16,7 +16,8 @@ export * from './complaint-helpers';
 // ============================================================================
 
 export type UpdateStatus = "idle" | "pending" | "success" | "error";
-export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'completed';
+export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'completed'
+  | 'deletion_candidate' | 'deletion_offered' | 'deletion_agreed' | 'deletion_confirmed' | 'refund_requested' | 'spam';
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'resolved' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
@@ -141,7 +142,7 @@ export interface Chat {
   last_message_text?: string | null;
   last_message_sender?: 'client' | 'seller' | null;
   reply_sign: string;
-  legacy_tag?: ChatTag | null; // DEPRECATED: Old tag field (renamed from 'tag')
+  tag?: ChatTag | null;
   status: ChatStatus; // NEW: Kanban status (inbox, in_progress, awaiting_reply, resolved, closed)
   status_updated_at?: string | null; // NEW: When status was last changed
   completion_reason?: CompletionReason | null; // NEW: Why chat was closed (only for status='closed')
@@ -358,8 +359,8 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
       (SELECT COUNT(*)::int FROM products WHERE store_id = s.id) as product_count,
       (SELECT COUNT(*)::int FROM reviews WHERE store_id = s.id) as total_reviews,
       (SELECT COUNT(*)::int FROM chats WHERE store_id = s.id) as total_chats,
-      (SELECT jsonb_object_agg(legacy_tag, count) FROM (
-        SELECT legacy_tag, COUNT(*)::int as count FROM chats WHERE store_id = s.id GROUP BY legacy_tag
+      (SELECT jsonb_object_agg(tag, count) FROM (
+        SELECT tag, COUNT(*)::int as count FROM chats WHERE store_id = s.id GROUP BY tag
       ) t) as chat_tag_counts
     FROM stores s
   `;
@@ -839,7 +840,7 @@ export async function updateChat(
     ['last_message_text', 'last_message_text'],
     ['last_message_sender', 'last_message_sender'],
     ['reply_sign', 'reply_sign'],
-    ['legacy_tag', 'legacy_tag'], // DEPRECATED
+    ['tag', 'tag'],
     ['status', 'status'], // NEW: Kanban status
     ['status_updated_at', 'status_updated_at'], // NEW
     ['completion_reason', 'completion_reason'], // NEW: Why chat was closed
@@ -1588,9 +1589,9 @@ export async function getChatsByStoreWithPagination(
     params.push(options.sender);
   }
 
-  // Filter by legacy tag (DEPRECATED - for backwards compatibility)
+  // Filter by tag (AI classification)
   if (options?.tag && options.tag !== 'all') {
-    whereClauses.push(`c.legacy_tag = $${paramIndex++}`);
+    whereClauses.push(`c.tag = $${paramIndex++}`);
     params.push(options.tag);
   }
 
@@ -1661,9 +1662,9 @@ export async function getChatsCount(
     params.push(options.sender);
   }
 
-  // Filter by legacy tag (DEPRECATED - for backwards compatibility)
+  // Filter by tag (AI classification)
   if (options?.tag && options.tag !== 'all') {
-    whereClauses.push(`legacy_tag = $${paramIndex++}`);
+    whereClauses.push(`tag = $${paramIndex++}`);
     params.push(options.tag);
   }
 
@@ -1814,13 +1815,13 @@ export async function markReviewComplaintSent(
 // ============================================================================
 
 /**
- * Update chat tag (DEPRECATED - use updateChatStatus instead)
+ * Update chat tag (AI classification)
  */
 export async function updateChatTag(
   chatId: string,
   tag: ChatTag
 ): Promise<Chat | null> {
-  return updateChat(chatId, { legacy_tag: tag });
+  return updateChat(chatId, { tag });
 }
 
 /**
@@ -2362,4 +2363,149 @@ export async function getManagerTasksCount(
   const sql = `SELECT COUNT(*) as count FROM manager_tasks WHERE ${whereClauses.join(' AND ')}`;
   const result = await query<{ count: string }>(sql, params);
   return parseInt(result.rows[0].count, 10);
+}
+
+// ============================================================================
+// Chat Auto Sequences
+// ============================================================================
+
+export interface SequenceMessage {
+  day: number;
+  text: string;
+}
+
+export type AutoSequenceStatus = 'active' | 'paused' | 'completed' | 'stopped';
+
+export interface ChatAutoSequence {
+  id: string;
+  chat_id: string;
+  store_id: string;
+  owner_id: string;
+  sequence_type: string;
+  messages: SequenceMessage[];
+  current_step: number;
+  max_steps: number;
+  status: AutoSequenceStatus;
+  stop_reason: string | null;
+  started_at: string;
+  last_sent_at: string | null;
+  next_send_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Create a new auto-sequence for a chat
+ */
+export async function createAutoSequence(
+  chatId: string,
+  storeId: string,
+  ownerId: string,
+  messages: SequenceMessage[],
+  sequenceType: string = 'no_reply_followup'
+): Promise<ChatAutoSequence> {
+  const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const result = await query<ChatAutoSequence>(
+    `INSERT INTO chat_auto_sequences
+      (chat_id, store_id, owner_id, sequence_type, messages, max_steps, next_send_at)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING *`,
+    [chatId, storeId, ownerId, sequenceType, JSON.stringify(messages), messages.length, nextSendAt]
+  );
+  return result.rows[0];
+}
+
+/**
+ * Get active sequence for a chat (if any)
+ */
+export async function getActiveSequenceForChat(chatId: string): Promise<ChatAutoSequence | null> {
+  const result = await query<ChatAutoSequence>(
+    `SELECT * FROM chat_auto_sequences WHERE chat_id = $1 AND status = 'active' LIMIT 1`,
+    [chatId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Get all pending sequences ready to send (cron job)
+ */
+export async function getPendingSequences(limit: number = 50): Promise<ChatAutoSequence[]> {
+  const result = await query<ChatAutoSequence>(
+    `SELECT * FROM chat_auto_sequences
+     WHERE status = 'active' AND next_send_at <= NOW()
+     ORDER BY next_send_at ASC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows;
+}
+
+/**
+ * Advance sequence to next step after sending a message
+ */
+export async function advanceSequence(id: string): Promise<ChatAutoSequence | null> {
+  const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const result = await query<ChatAutoSequence>(
+    `UPDATE chat_auto_sequences
+     SET current_step = current_step + 1,
+         last_sent_at = NOW(),
+         next_send_at = $2,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, nextSendAt]
+  );
+  const seq = result.rows[0];
+  // Auto-complete if max steps reached
+  if (seq && seq.current_step >= seq.max_steps) {
+    return completeSequence(id);
+  }
+  return seq || null;
+}
+
+/**
+ * Stop a sequence (client replied, stop message, manual)
+ */
+export async function stopSequence(
+  id: string,
+  reason: string
+): Promise<ChatAutoSequence | null> {
+  const result = await query<ChatAutoSequence>(
+    `UPDATE chat_auto_sequences
+     SET status = 'stopped',
+         stop_reason = $2,
+         next_send_at = NULL,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id, reason]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Reschedule a sequence to a new send time (without advancing step)
+ */
+export async function rescheduleSequence(id: string, nextSendAt: string): Promise<void> {
+  await query(
+    `UPDATE chat_auto_sequences SET next_send_at = $2, updated_at = NOW() WHERE id = $1`,
+    [id, nextSendAt]
+  );
+}
+
+/**
+ * Complete a sequence (all messages sent)
+ */
+export async function completeSequence(id: string): Promise<ChatAutoSequence | null> {
+  const result = await query<ChatAutoSequence>(
+    `UPDATE chat_auto_sequences
+     SET status = 'completed',
+         stop_reason = 'max_reached',
+         next_send_at = NULL,
+         updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [id]
+  );
+  return result.rows[0] || null;
 }

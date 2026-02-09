@@ -126,7 +126,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             lastMessageText: chat.last_message_text,
             lastMessageSender: chat.last_message_sender,
             replySign: chat.reply_sign,
-            legacyTag: chat.legacy_tag, // DEPRECATED: old tag field
+            tag: chat.tag,
             status: chat.status, // NEW: Kanban status
             draftReply: chat.draft_reply || null,
             messageCount: chat.message_count || 0, // NEW: Real message count

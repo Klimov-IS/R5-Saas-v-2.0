@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import type { StoreStatus } from '@/db/helpers';
+import { triggerAsyncSync } from '@/services/google-sheets-sync';
 
 /**
  * PATCH /api/stores/[storeId]/status
@@ -79,6 +80,9 @@ export async function PATCH(
         { status: 500 }
       );
     }
+
+    // Trigger Google Sheets sync on store status change (async, non-blocking)
+    triggerAsyncSync();
 
     return NextResponse.json({
       data: updatedStore,

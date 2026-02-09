@@ -41,6 +41,8 @@ export interface Chat {
   lastMessageText: string;
   lastMessageSender: MessageSender;
   tag: ChatTag;
+  status: ChatStatus;
+  completionReason?: string | null;
   draftReply: string | null;
   product?: Product;
 }
@@ -72,4 +74,11 @@ export interface TagStats {
   unsuccessful: number;
   no_reply: number;
   untagged: number;
+  completed: number;
+  deletion_candidate: number;
+  deletion_offered: number;
+  deletion_agreed: number;
+  deletion_confirmed: number;
+  refund_requested: number;
+  spam: number;
 }

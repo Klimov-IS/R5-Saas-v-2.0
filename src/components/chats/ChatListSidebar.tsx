@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useChatsStore } from '@/store/chatsStore';
-import type { Chat } from '@/types/chats';
+import type { Chat, TagStats } from '@/types/chats';
 import { ChatItem } from './ChatItem';
 import { SelectAllCheckbox } from './SelectAllCheckbox';
 import { Input } from '@/components/ui/input';
@@ -12,13 +12,7 @@ import { Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 interface ChatListSidebarProps {
   storeId: string;
   chats: Chat[];
-  tagStats?: {
-    active: number;
-    successful: number;
-    unsuccessful: number;
-    no_reply: number;
-    untagged: number;
-  };
+  tagStats?: TagStats;
   isLoading?: boolean;
   totalCount?: number;
   // ✅ INFINITE SCROLL PROPS

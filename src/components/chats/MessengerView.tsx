@@ -7,15 +7,11 @@ import { ChatListSidebar } from './ChatListSidebar';
 import { ConversationPanel } from './ConversationPanel';
 import { Loader2 } from 'lucide-react';
 
+import { TagStats } from '@/types/chats';
+
 interface MessengerViewProps {
   storeId: string;
-  tagStats?: {
-    active: number;
-    successful: number;
-    unsuccessful: number;
-    no_reply: number;
-    untagged: number;
-  };
+  tagStats?: TagStats;
 }
 
 export function MessengerView({ storeId, tagStats: propTagStats }: MessengerViewProps) {
@@ -46,12 +42,19 @@ export function MessengerView({ storeId, tagStats: propTagStats }: MessengerView
   const totalCount = data?.pages[0]?.totalCount || 0;
 
   // Calculate tag stats (use props if available, otherwise calculate)
-  const tagStats = propTagStats || {
+  const tagStats: TagStats = propTagStats || {
     active: chats.filter((c) => c.tag === 'active').length,
     successful: chats.filter((c) => c.tag === 'successful').length,
     unsuccessful: chats.filter((c) => c.tag === 'unsuccessful').length,
     no_reply: chats.filter((c) => c.tag === 'no_reply').length,
     untagged: chats.filter((c) => c.tag === 'untagged').length,
+    completed: chats.filter((c) => c.tag === 'completed').length,
+    deletion_candidate: chats.filter((c) => c.tag === 'deletion_candidate').length,
+    deletion_offered: chats.filter((c) => c.tag === 'deletion_offered').length,
+    deletion_agreed: chats.filter((c) => c.tag === 'deletion_agreed').length,
+    deletion_confirmed: chats.filter((c) => c.tag === 'deletion_confirmed').length,
+    refund_requested: chats.filter((c) => c.tag === 'refund_requested').length,
+    spam: chats.filter((c) => c.tag === 'spam').length,
   };
 
   // Error state

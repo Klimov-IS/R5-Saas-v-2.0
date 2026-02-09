@@ -103,7 +103,7 @@ id | store_id | tag          | created_at | updated_at
 ### После миграции:
 ```sql
 -- chats table
-id | store_id | status       | legacy_tag   | status_updated_at | created_at | updated_at
+id | store_id | status       | tag          | status_updated_at | created_at | updated_at
 ---|----------|--------------|--------------|-------------------|------------|------------
 1  | store1   | inbox        | untagged     | 2026-01-22        | 2026-01-20 | 2026-01-22
 2  | store1   | in_progress  | active       | 2026-01-22        | 2026-01-21 | 2026-01-22
@@ -129,19 +129,16 @@ id | store_id | status       | legacy_tag   | status_updated_at | created_at | u
 ## ❓ FAQ
 
 ### Q: Что произойдет со старыми "тегами"?
-**A:** Они сохранятся в поле `legacy_tag`. Ничего не потеряется!
+**A:** Теги сохранены в поле `tag`. Это поле активно используется для AI-классификации (deletion_candidate, spam и т.д.) параллельно со статусами.
 
-### Q: Можно ли откатить миграцию?
-**A:** Да! В SQL файле есть секция Rollback:
-```sql
-ALTER TABLE chats RENAME COLUMN legacy_tag TO tag;
-ALTER TABLE chats DROP COLUMN status;
-ALTER TABLE chats DROP COLUMN status_updated_at;
-```
+### Q: Как соотносятся `tag` и `status`?
+**A:** Это два параллельных поля:
+- `tag` = AI-классификация (что это за чат)
+- `status` = CRM-воронка (где чат в процессе)
 
 ### Q: Как будут работать deletion workflow теги (deletion_candidate, deletion_offered, etc.)?
 **A:** Они будут:
-1. Сохранены в `legacy_tag`
+1. Сохранены в `tag`
 2. Мигрированы в соответствующие статусы:
    - `deletion_candidate` → `in_progress`
    - `deletion_offered` → `awaiting_reply`
@@ -184,7 +181,7 @@ ALTER TABLE chats DROP COLUMN status_updated_at;
 Таблица `chats`:
 - `status` (ChatStatus) - текущий статус в воронке
 - `status_updated_at` (timestamp) - когда статус изменился
-- `legacy_tag` (ChatTag) - старые теги (сохранены для истории)
+- `tag` (ChatTag) - AI-классификация (active, deletion_candidate, spam...)
 
 ---
 

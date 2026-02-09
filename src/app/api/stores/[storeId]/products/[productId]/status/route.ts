@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { onProductActivated } from '@/services/backfill-worker';
+import { triggerAsyncSync } from '@/services/google-sheets-sync';
 
 /**
  * PATCH /api/stores/{storeId}/products/{productId}/status
@@ -59,6 +60,9 @@ export async function PATCH(
           console.error(`[BACKFILL] Failed to create job for product ${productId}:`, err.message);
         });
     }
+
+    // Trigger Google Sheets sync on status change (async, non-blocking)
+    triggerAsyncSync();
 
     return NextResponse.json({
       success: true,

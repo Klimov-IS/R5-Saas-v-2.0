@@ -11,6 +11,8 @@ import cron from 'node-cron';
 import * as dbHelpers from '@/db/helpers';
 import { runBackfillWorker } from '@/services/backfill-worker';
 import { refreshAllUsersCache, getCacheStats } from '@/lib/stores-cache';
+import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
+import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR } from '@/lib/auto-sequence-templates';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -511,6 +513,278 @@ export function startStoresCacheRefresh() {
       console.error('[CRON] ❌ Initial cache warm-up failed:', error.message);
     }
   }, 10000);
+
+  return job;
+}
+
+/**
+ * Daily Google Sheets sync job
+ * Exports all active product rules to Google Sheets for management visibility
+ * Runs daily at 6:00 AM MSK (3:00 AM UTC)
+ */
+export function startGoogleSheetsSync() {
+  // Check if configured
+  if (!isGoogleSheetsConfigured()) {
+    console.log('[CRON] ⚠️ Google Sheets sync not configured (missing env variables), skipping...');
+    return null;
+  }
+
+  // 6:00 AM MSK = 3:00 AM UTC
+  const cronSchedule = process.env.NODE_ENV === 'production'
+    ? '0 3 * * *'  // 6:00 AM MSK daily
+    : '*/30 * * * *'; // Every 30 minutes for testing
+
+  console.log(`[CRON] Scheduling Google Sheets sync: ${cronSchedule}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (6:00 AM MSK daily)' : 'TESTING (every 30 min)'}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'google-sheets-sync';
+
+    // Prevent concurrent runs
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️ Job ${jobName} is already running, skipping this trigger`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+
+    try {
+      console.log('\n========================================');
+      console.log(`[CRON] 📊 Starting Google Sheets sync at ${new Date().toISOString()}`);
+      console.log('========================================\n');
+
+      const result = await syncProductRulesToSheets();
+
+      console.log('\n========================================');
+      console.log(`[CRON] ${result.success ? '✅' : '❌'} Google Sheets sync ${result.success ? 'completed' : 'failed'}`);
+      console.log(`[CRON] Duration: ${result.duration_ms}ms`);
+      console.log(`[CRON] Stores: ${result.storesProcessed}, Products: ${result.productsProcessed}`);
+      console.log(`[CRON] Rows written: ${result.rowsWritten}`);
+      if (result.error) {
+        console.log(`[CRON] Error: ${result.error}`);
+      }
+      console.log('========================================\n');
+
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in Google Sheets sync:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Google Sheets sync job started successfully');
+
+  return job;
+}
+
+/**
+ * Auto-sequence processor
+ * Sends scheduled follow-up messages for chats in 'awaiting_reply' status.
+ * 1 message/day, up to 14 days. Stops if client replies.
+ */
+export function startAutoSequenceProcessor() {
+  const runProcessor = async () => {
+    const jobName = 'auto-sequence-processor';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  Auto-sequence processor already running, skipping`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+    const startTime = Date.now();
+
+    try {
+      // Only send messages during daytime (8:00-22:00 MSK)
+      const now = new Date();
+      const mskHour = (now.getUTCHours() + 3) % 24;
+      if (mskHour < 8 || mskHour >= 22) {
+        return; // Nighttime, skip silently
+      }
+
+      const pendingSequences = await dbHelpers.getPendingSequences(20);
+
+      if (pendingSequences.length === 0) {
+        return;
+      }
+
+      const dryRun = process.env.AUTO_SEQUENCE_DRY_RUN === 'true';
+      console.log(`[CRON] 📨 Auto-sequence: processing ${pendingSequences.length} pending sequences${dryRun ? ' [DRY RUN]' : ''}`);
+
+      let sent = 0;
+      let stopped = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const seq of pendingSequences) {
+        try {
+          // Check stop condition 1: did client reply since sequence started?
+          const messages = await dbHelpers.getChatMessages(seq.chat_id);
+          const clientReplied = messages.some(
+            m => m.sender === 'client' && new Date(m.timestamp) > new Date(seq.started_at)
+          );
+
+          if (clientReplied) {
+            if (!dryRun) await dbHelpers.stopSequence(seq.id, 'client_replied');
+            stopped++;
+            console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (client replied)${dryRun ? ' [DRY RUN]' : ''}`);
+            continue;
+          }
+
+          // Check stop condition 2: chat status still valid?
+          const chat = await dbHelpers.getChatById(seq.chat_id);
+          if (!chat || (chat.status !== 'awaiting_reply' && chat.status !== 'inbox')) {
+            if (!dryRun) await dbHelpers.stopSequence(seq.id, 'status_changed');
+            stopped++;
+            console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (chat status=${chat?.status || 'not found'})${dryRun ? ' [DRY RUN]' : ''}`);
+            continue;
+          }
+
+          // Check skip condition: seller already sent a message today?
+          const todayStart = new Date();
+          todayStart.setUTCHours(0, 0, 0, 0);
+          const sellerSentToday = messages.some(
+            m => m.sender === 'seller' && new Date(m.timestamp) >= todayStart
+          );
+
+          if (sellerSentToday) {
+            // Reschedule to tomorrow without advancing step
+            const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            if (!dryRun) await dbHelpers.rescheduleSequence(seq.id, tomorrow);
+            skipped++;
+            console.log(`[CRON] ⏭️  Sequence ${seq.id}: skipped (seller already sent today), rescheduled to tomorrow${dryRun ? ' [DRY RUN]' : ''}`);
+            continue;
+          }
+
+          // Load settings for stop message and templates
+          const settings = await dbHelpers.getUserSettings();
+
+          // Check max steps — send СТОП message and close chat
+          if (seq.current_step >= seq.max_steps) {
+            // Choose stop message based on sequence type (negatives vs 4-star)
+            const is4Star = seq.sequence_type === 'no_reply_followup_4star';
+            const stopMessage = is4Star
+              ? (settings?.no_reply_stop_message2 || DEFAULT_STOP_MESSAGE_4STAR)
+              : (settings?.no_reply_stop_message || DEFAULT_STOP_MESSAGE);
+
+            if (dryRun) {
+              console.log(`[CRON] 🧪 DRY RUN: would send STOP message to chat ${seq.chat_id} and close it`);
+            } else {
+              try {
+                const { sendChatMessage: sendStopMsg } = await import('@/lib/wb-chat-api');
+                await sendStopMsg(seq.store_id, seq.chat_id, stopMessage);
+
+                // Record stop message in chat_messages
+                const stopMsgId = `auto_stop_${seq.id}`;
+                await dbHelpers.createChatMessage({
+                  id: stopMsgId,
+                  chat_id: seq.chat_id,
+                  store_id: seq.store_id,
+                  owner_id: seq.owner_id,
+                  sender: 'seller',
+                  text: stopMessage,
+                  timestamp: new Date().toISOString(),
+                });
+
+                // Update chat last message + close
+                await dbHelpers.updateChat(seq.chat_id, {
+                  last_message_text: stopMessage,
+                  last_message_sender: 'seller',
+                  last_message_date: new Date().toISOString(),
+                  status: 'closed' as dbHelpers.ChatStatus,
+                  status_updated_at: new Date().toISOString(),
+                  completion_reason: 'no_reply' as dbHelpers.CompletionReason,
+                });
+
+                console.log(`[CRON] 🛑 Sequence ${seq.id}: completed → stop message sent + chat closed`);
+              } catch (stopErr: any) {
+                console.error(`[CRON] Failed to send stop message for sequence ${seq.id}:`, stopErr.message);
+              }
+
+              await dbHelpers.completeSequence(seq.id);
+            }
+            stopped++;
+            continue;
+          }
+
+          // Get message template
+          const msgTemplates = seq.messages as { day: number; text: string }[];
+          const template = msgTemplates[seq.current_step];
+
+          if (!template) {
+            if (!dryRun) await dbHelpers.completeSequence(seq.id);
+            stopped++;
+            continue;
+          }
+
+          // DRY RUN: log what would be sent
+          if (dryRun) {
+            console.log(`[CRON] 🧪 DRY RUN: would send step ${seq.current_step + 1}/${seq.max_steps} to chat ${seq.chat_id}`);
+            console.log(`[CRON] 🧪 DRY RUN: "${template.text.substring(0, 100)}..."`);
+            sent++;
+            continue;
+          }
+
+          // Send message via WB Chat API
+          const { sendChatMessage } = await import('@/lib/wb-chat-api');
+          await sendChatMessage(seq.store_id, seq.chat_id, template.text);
+
+          // Record sent message in chat_messages
+          const msgId = `auto_${seq.id}_${seq.current_step}`;
+          await dbHelpers.createChatMessage({
+            id: msgId,
+            chat_id: seq.chat_id,
+            store_id: seq.store_id,
+            owner_id: seq.owner_id,
+            sender: 'seller',
+            text: template.text,
+            timestamp: new Date().toISOString(),
+          });
+
+          // Update chat's last message info
+          await dbHelpers.updateChat(seq.chat_id, {
+            last_message_text: template.text,
+            last_message_sender: 'seller',
+            last_message_date: new Date().toISOString(),
+          });
+
+          // Advance sequence
+          await dbHelpers.advanceSequence(seq.id);
+
+          sent++;
+          console.log(`[CRON] ✉️  Sequence ${seq.id}: sent step ${seq.current_step + 1}/${seq.max_steps}`);
+
+          // Rate limit: 3 seconds between sends
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+        } catch (error: any) {
+          errors++;
+          console.error(`[CRON] ❌ Sequence ${seq.id}: error - ${error.message}`);
+        }
+      }
+
+      if (sent > 0 || stopped > 0 || skipped > 0 || errors > 0) {
+        const duration = Math.round((Date.now() - startTime) / 1000);
+        console.log(`[CRON] 📨 Auto-sequence: ${sent} sent, ${stopped} stopped, ${skipped} skipped, ${errors} errors (${duration}s)${dryRun ? ' [DRY RUN]' : ''}`);
+      }
+
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in auto-sequence processor:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  };
+
+  // Run every 30 minutes
+  const job = cron.schedule('*/30 * * * *', runProcessor, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Auto-sequence processor started (every 30 min)');
 
   return job;
 }
