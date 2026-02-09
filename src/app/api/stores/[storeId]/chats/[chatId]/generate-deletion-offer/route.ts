@@ -4,6 +4,7 @@ import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
 import { generateDeletionOffer } from '@/ai/flows/generate-deletion-offer-flow';
 import { createDeletionCase, getDeletionCaseByChatId } from '@/db/deletion-case-helpers';
+import { buildStoreInstructions } from '@/lib/ai-context';
 
 /**
  * Generate deletion offer for a specific chat
@@ -211,7 +212,7 @@ export async function POST(
       storeId,
       ownerId: chat.owner_id,
       chatId,
-      storeInstructions: store?.ai_instructions || undefined,
+      storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions),
     });
 
     console.log(

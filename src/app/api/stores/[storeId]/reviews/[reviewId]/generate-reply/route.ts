@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getReviewById, getStoreById, getProductById, updateReviewDraftReply } from '@/db/helpers';
 import { generateReviewReply } from '@/ai/flows/generate-review-reply-flow';
 import { verifyApiKey } from '@/lib/server-utils';
+import { buildStoreInstructions } from '@/lib/ai-context';
 
 /**
  * @swagger
@@ -97,7 +98,7 @@ export async function POST(
       storeId,
       ownerId: store.owner_id,
       reviewId,
-      storeInstructions: store.ai_instructions || undefined,
+      storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
     });
 
     // Save as draft

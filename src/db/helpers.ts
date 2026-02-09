@@ -2525,3 +2525,85 @@ export async function completeSequence(id: string): Promise<ChatAutoSequence | n
   );
   return result.rows[0] || null;
 }
+
+// ============================================================================
+// Store FAQ (Knowledge Base)
+// ============================================================================
+
+export interface StoreFaqEntry {
+  id: string;
+  store_id: string;
+  question: string;
+  answer: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getStoreFaq(storeId: string): Promise<StoreFaqEntry[]> {
+  const result = await query<StoreFaqEntry>(
+    `SELECT * FROM store_faq WHERE store_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    [storeId]
+  );
+  return result.rows;
+}
+
+export async function createStoreFaqEntry(
+  storeId: string,
+  question: string,
+  answer: string
+): Promise<StoreFaqEntry> {
+  const result = await query<StoreFaqEntry>(
+    `INSERT INTO store_faq (store_id, question, answer)
+     VALUES ($1, $2, $3)
+     RETURNING *`,
+    [storeId, question, answer]
+  );
+  return result.rows[0];
+}
+
+export async function updateStoreFaqEntry(
+  id: string,
+  fields: Partial<Pick<StoreFaqEntry, 'question' | 'answer' | 'is_active' | 'sort_order'>>
+): Promise<StoreFaqEntry | null> {
+  const setClauses: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  if (fields.question !== undefined) {
+    setClauses.push(`question = $${idx++}`);
+    values.push(fields.question);
+  }
+  if (fields.answer !== undefined) {
+    setClauses.push(`answer = $${idx++}`);
+    values.push(fields.answer);
+  }
+  if (fields.is_active !== undefined) {
+    setClauses.push(`is_active = $${idx++}`);
+    values.push(fields.is_active);
+  }
+  if (fields.sort_order !== undefined) {
+    setClauses.push(`sort_order = $${idx++}`);
+    values.push(fields.sort_order);
+  }
+
+  if (setClauses.length === 0) return null;
+
+  setClauses.push(`updated_at = NOW()`);
+  values.push(id);
+
+  const result = await query<StoreFaqEntry>(
+    `UPDATE store_faq SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
+  );
+  return result.rows[0] || null;
+}
+
+export async function deleteStoreFaqEntry(id: string): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM store_faq WHERE id = $1`,
+    [id]
+  );
+  return (result.rowCount ?? 0) > 0;
+}

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
 import { classifyChatTag } from '@/ai/flows/classify-chat-tag-flow';
+import { buildStoreInstructions } from '@/lib/ai-context';
 
 /**
  * Force AI classification for all chats (or untagged chats only)
@@ -84,7 +85,7 @@ async function classifyAllChatsForStore(
                     storeId,
                     ownerId,
                     chatId: chat.id,
-                    storeInstructions: store.ai_instructions || undefined,
+                    storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
                 });
 
                 // Update chat with new tag

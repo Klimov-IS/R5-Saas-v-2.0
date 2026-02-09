@@ -5,6 +5,7 @@ import { verifyApiKey } from '@/lib/server-utils';
 import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
+import { buildStoreInstructions } from '@/lib/ai-context';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -273,7 +274,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         ownerId,
                         chatId,
                         productName: chat?.product_name || undefined,
-                        storeInstructions: store.ai_instructions || undefined,
+                        storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
                     });
 
                     const tag = result.tag;

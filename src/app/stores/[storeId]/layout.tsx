@@ -100,14 +100,26 @@ export default function StoreDetailLayout({
       staleTime: 2 * 60 * 1000,
     });
 
-    // Prefetch AI Logs tab
+    // Prefetch AI Settings tab
     queryClient.prefetchQuery({
-      queryKey: ['ai-logs', storeId, 0, 50],
+      queryKey: ['ai-instructions', storeId],
       queryFn: async () => {
-        const response = await fetch(`/api/stores/${storeId}/logs?skip=0&take=50`, {
+        const response = await fetch(`/api/stores/${storeId}/ai-instructions`, {
           headers: { 'Authorization': `Bearer ${apiKey}` }
         });
-        if (!response.ok) throw new Error('Failed to prefetch AI logs');
+        if (!response.ok) throw new Error('Failed to prefetch AI instructions');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000,
+    });
+
+    queryClient.prefetchQuery({
+      queryKey: ['store-faq', storeId],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/faq`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch FAQ');
         return response.json();
       },
       staleTime: 2 * 60 * 1000,
@@ -118,8 +130,7 @@ export default function StoreDetailLayout({
     { href: `/stores/${storeId}/products`, label: 'Товары', icon: Package },
     { href: `/stores/${storeId}/reviews`, label: 'Отзывы', icon: Star },
     { href: `/stores/${storeId}/chats`, label: 'Чаты', icon: MessageSquare },
-    // TODO: Временно скрыт таб AI
-    // { href: `/stores/${storeId}/logs`, label: 'AI', icon: Sparkles },
+    { href: `/stores/${storeId}/ai`, label: 'AI', icon: Sparkles },
   ];
 
   return (

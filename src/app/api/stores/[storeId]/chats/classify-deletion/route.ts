@@ -5,6 +5,7 @@ import { verifyApiKey } from '@/lib/server-utils';
 import { classifyChatDeletion, bulkClassifyChatsForDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { getChatsEligibleForDeletion, getDeletionWorkflowStats } from '@/db/chat-deletion-helpers';
 import type { ChatTag } from '@/types/chats';
+import { buildStoreInstructions } from '@/lib/ai-context';
 
 /**
  * Enhanced AI classification for deletion workflow
@@ -153,7 +154,7 @@ async function classifyAllChatsForDeletion(
                     chatId: chat.id,
                     productName: chat.product_name || undefined,
                     productRules: productRules || undefined,
-                    storeInstructions: store.ai_instructions || undefined,
+                    storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
                 });
                 const duration = Date.now() - startTime;
 

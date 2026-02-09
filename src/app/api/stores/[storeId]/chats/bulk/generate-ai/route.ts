@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChatsByStoreWithPagination, getChatById, getChatMessages, getStoreById, getProductRulesByNmId, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
+import { buildStoreInstructions } from '@/lib/ai-context';
 
 /**
  * POST /api/stores/[storeId]/chats/bulk/generate-ai
@@ -92,7 +93,7 @@ ${chatHistory}
           storeId,
           ownerId: chat.owner_id,
           chatId,
-          storeInstructions: store?.ai_instructions || undefined,
+          storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions),
         });
 
         // ✅ Save draft to database

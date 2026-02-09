@@ -1088,3 +1088,327 @@ body {
     box-shadow: var(--shadow-sm);
   }
 }
+
+/* ============================
+   AI Settings Page
+   ============================ */
+
+.ai-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3xl);
+  max-width: 800px;
+}
+
+.ai-section {
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
+}
+
+.ai-section-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.ai-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ai-section-title h2 {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  margin: 0;
+}
+
+.ai-section-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Templates */
+.ai-templates {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.ai-templates-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.ai-template-chip {
+  padding: 6px 14px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.ai-template-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* Textarea */
+.ai-instructions-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  line-height: 1.6;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.ai-instructions-textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.ai-instructions-textarea::placeholder {
+  color: #94A3B8;
+}
+
+/* Actions */
+.ai-instructions-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+}
+
+.ai-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 10px 20px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: white;
+  color: var(--color-muted);
+  cursor: not-allowed;
+  transition: all 0.15s;
+}
+
+.ai-btn-save.has-changes {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.ai-btn-save.has-changes:hover {
+  background: #2563EB;
+}
+
+.ai-char-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+/* FAQ */
+.ai-btn-add {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 10px 20px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: white;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: var(--spacing-lg);
+}
+
+.ai-btn-add:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.ai-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 10px 20px;
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: white;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.ai-btn-cancel:hover {
+  background: var(--color-border-light);
+}
+
+.ai-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-xl) 0;
+}
+
+.faq-add-form, .faq-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.faq-add-actions, .faq-edit-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.faq-input {
+  width: 100%;
+  padding: 10px var(--spacing-md);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+}
+
+.faq-input:focus {
+  border-color: var(--color-primary);
+}
+
+.faq-textarea {
+  width: 100%;
+  padding: 10px var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  outline: none;
+}
+
+.faq-textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.faq-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-lg);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s;
+}
+
+.faq-card:hover {
+  border-color: var(--color-border);
+}
+
+.faq-card-inactive {
+  opacity: 0.5;
+}
+
+.faq-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.faq-question {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-foreground);
+  margin-bottom: 4px;
+}
+
+.faq-answer {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.faq-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.faq-toggle {
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: white;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.faq-toggle.active {
+  background: #DCFCE7;
+  color: #16A34A;
+  border-color: #BBF7D0;
+}
+
+.faq-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.faq-action-btn:hover {
+  background: var(--color-border-light);
+  color: var(--color-foreground);
+}
+
+.faq-action-delete:hover {
+  background: #FEE2E2;
+  color: #DC2626;
+}
+
+.faq-empty {
+  text-align: center;
+  padding: var(--spacing-3xl) var(--spacing-xl);
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
