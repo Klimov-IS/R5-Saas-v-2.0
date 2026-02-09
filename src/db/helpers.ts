@@ -7,6 +7,7 @@
 
 import { query, transaction, getClient } from './client';
 import type { PoolClient } from 'pg';
+import { getNextSlotTime } from '@/lib/auto-sequence-templates';
 
 // Export complaint helpers
 export * from './complaint-helpers';
@@ -2404,7 +2405,7 @@ export async function createAutoSequence(
   messages: SequenceMessage[],
   sequenceType: string = 'no_reply_followup'
 ): Promise<ChatAutoSequence> {
-  const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const nextSendAt = getNextSlotTime();
   const result = await query<ChatAutoSequence>(
     `INSERT INTO chat_auto_sequences
       (chat_id, store_id, owner_id, sequence_type, messages, max_steps, next_send_at)
@@ -2444,7 +2445,7 @@ export async function getPendingSequences(limit: number = 50): Promise<ChatAutoS
  * Advance sequence to next step after sending a message
  */
 export async function advanceSequence(id: string): Promise<ChatAutoSequence | null> {
-  const nextSendAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const nextSendAt = getNextSlotTime();
   const result = await query<ChatAutoSequence>(
     `UPDATE chat_auto_sequences
      SET current_step = current_step + 1,

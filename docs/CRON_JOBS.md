@@ -755,7 +755,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Stores Cache | Every 5 min | */5 * * * * | Pre-warm stores cache for Extension API |
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
 | Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
-| **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages for awaiting_reply chats |
+| **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
 
 **Estimated Daily Cost Savings:** 30-40% via template optimization
 
@@ -766,21 +766,45 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 **Job Name:** `auto-sequence-processor`
 **Schedule:** `*/30 * * * *` (every 30 minutes, UTC)
 **Active hours:** 8:00-22:00 MSK only (skips nighttime)
+**Batch limit:** 100 sequences per run
 
 **Two template sets:**
 - `no_reply_followup` — negatives (1-2-3 stars), trigger from `no_reply_trigger_phrase`
 - `no_reply_followup_4star` — 4-star reviews, trigger from `no_reply_trigger_phrase2`
 
 **What It Does:**
-1. Queries `chat_auto_sequences` table for active sequences where `next_send_at <= NOW()`
+1. Queries `chat_auto_sequences` table for active sequences where `next_send_at <= NOW()` (limit 100)
 2. For each pending sequence (safety checks in order):
    a. **Client replied?** → STOP sequence (`client_replied`)
    b. **Chat status valid?** → STOP if not `awaiting_reply` or `inbox` (`status_changed`)
-   c. **Seller already sent today?** → SKIP, reschedule to tomorrow (no step advance)
+   c. **Seller already sent today?** → SKIP, reschedule to random slot tomorrow (no step advance)
    d. **Max steps reached?** → Send СТОП message (per `sequence_type`) + close chat
    e. Send next follow-up via WB Chat API
    f. Record in `chat_messages`, update chat, advance sequence
 3. Rate limits: 3 seconds between sends
+
+### Distributed Time Slots
+
+Messages are **not sent all at once** — they are distributed across the day using weighted time slots to avoid overwhelming managers with responses arriving simultaneously.
+
+| Slot (MSK) | Weight | Share |
+|------------|--------|-------|
+| 10:00 | 15 | 15% |
+| 11:00 | 15 | 15% |
+| 12:00 | 15 | 15% |
+| 13:00 | 15 | 15% |
+| 14:00 | 10 | 10% |
+| 15:00 | 10 | 10% |
+| 16:00 | 10 | 10% |
+| 17:00 | 10 | 10% |
+
+**How it works:**
+- When a sequence is created or advanced, `next_send_at` is set to a **random time tomorrow** within a weighted slot (e.g. tomorrow at 11:37 MSK)
+- Random minute (0-59) within each hour for additional scatter
+- Cron picks up sequences where `next_send_at <= NOW()` — no changes to cron logic needed
+- Function: `getNextSlotTime()` in `src/lib/auto-sequence-templates.ts`
+
+**Result:** ~4700 sequences spread as ~700/hr (10-13 MSK) and ~470/hr (14-17 MSK) instead of all at once.
 
 **Dry Run Mode:**
 Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decisions are logged, but NO messages are sent and NO database changes are made.
@@ -795,7 +819,7 @@ Manual dry run script: `node scripts/dry-run-sequences.mjs`
 **Stopping Conditions:**
 - Client replied (detected in dialogue sync and in cron job)
 - Chat status changed away from `awaiting_reply`/`inbox` (checked in cron)
-- Seller already sent a message today (skip + reschedule, not stop)
+- Seller already sent a message today (skip + reschedule to random slot, not stop)
 - All messages sent (14 days) → СТОП message + close
 
 **Database Table:** `chat_auto_sequences`
@@ -804,10 +828,12 @@ Manual dry run script: `node scripts/dry-run-sequences.mjs`
 
 **Source Files:**
 - [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — Cron job definition
-- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (2 sets: negatives + 4-star)
-- [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, rescheduleSequence, etc.)
+- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (2 sets), `getNextSlotTime()` slot distributor
+- [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, advanceSequence, rescheduleSequence, etc.)
 - [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) — Trigger detection (Step 5b)
 - [scripts/dry-run-sequences.mjs](../scripts/dry-run-sequences.mjs) — Manual dry run
+- [scripts/backfill-and-send.mjs](../scripts/backfill-and-send.mjs) — Batch backfill + immediate send
+- [scripts/backfill-store-sequences.mjs](../scripts/backfill-store-sequences.mjs) — Backfill sequences (no send)
 
 ---
 

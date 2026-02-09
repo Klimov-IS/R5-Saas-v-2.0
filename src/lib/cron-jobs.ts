@@ -12,7 +12,7 @@ import * as dbHelpers from '@/db/helpers';
 import { runBackfillWorker } from '@/services/backfill-worker';
 import { refreshAllUsersCache, getCacheStats } from '@/lib/stores-cache';
 import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
-import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR } from '@/lib/auto-sequence-templates';
+import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, getNextSlotTime } from '@/lib/auto-sequence-templates';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -605,7 +605,7 @@ export function startAutoSequenceProcessor() {
         return; // Nighttime, skip silently
       }
 
-      const pendingSequences = await dbHelpers.getPendingSequences(20);
+      const pendingSequences = await dbHelpers.getPendingSequences(100);
 
       if (pendingSequences.length === 0) {
         return;
@@ -651,9 +651,9 @@ export function startAutoSequenceProcessor() {
           );
 
           if (sellerSentToday) {
-            // Reschedule to tomorrow without advancing step
-            const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-            if (!dryRun) await dbHelpers.rescheduleSequence(seq.id, tomorrow);
+            // Reschedule to a random slot tomorrow without advancing step
+            const nextSlot = getNextSlotTime();
+            if (!dryRun) await dbHelpers.rescheduleSequence(seq.id, nextSlot);
             skipped++;
             console.log(`[CRON] ⏭️  Sequence ${seq.id}: skipped (seller already sent today), rescheduled to tomorrow${dryRun ? ' [DRY RUN]' : ''}`);
             continue;

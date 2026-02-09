@@ -113,6 +113,52 @@ export const DEFAULT_FOLLOWUP_TEMPLATES_4STAR: SequenceMessage[] = [
   },
 ];
 
+/**
+ * Time slots for distributed message sending (MSK hours → weight).
+ * Total weight = 100%. Messages are spread across the day to avoid
+ * overwhelming managers with responses arriving all at once.
+ */
+const SEND_SLOTS: { hour: number; weight: number }[] = [
+  { hour: 10, weight: 15 },
+  { hour: 11, weight: 15 },
+  { hour: 12, weight: 15 },
+  { hour: 13, weight: 15 },
+  { hour: 14, weight: 10 },
+  { hour: 15, weight: 10 },
+  { hour: 16, weight: 10 },
+  { hour: 17, weight: 10 },
+];
+
+/**
+ * Pick a random time slot for tomorrow based on weighted distribution.
+ * Returns ISO string for a specific time tomorrow (MSK converted to UTC).
+ */
+export function getNextSlotTime(): string {
+  const totalWeight = SEND_SLOTS.reduce((sum, s) => sum + s.weight, 0);
+  let rand = Math.random() * totalWeight;
+  let selectedHour = SEND_SLOTS[0].hour;
+
+  for (const slot of SEND_SLOTS) {
+    rand -= slot.weight;
+    if (rand <= 0) {
+      selectedHour = slot.hour;
+      break;
+    }
+  }
+
+  // Random minute within the hour (0-59) for scatter
+  const randomMinute = Math.floor(Math.random() * 60);
+
+  // Build tomorrow's date at selectedHour MSK
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  // MSK = UTC+3, so UTC hour = MSK hour - 3
+  const utcHour = selectedHour - 3;
+  tomorrow.setUTCHours(utcHour, randomMinute, 0, 0);
+
+  return tomorrow.toISOString();
+}
+
 export const DEFAULT_FOLLOWUP_TEMPLATES: SequenceMessage[] = [
   // Phase 1: Soft reminder (Day 1-3)
   {
