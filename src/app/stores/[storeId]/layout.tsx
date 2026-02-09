@@ -124,6 +124,18 @@ export default function StoreDetailLayout({
       },
       staleTime: 2 * 60 * 1000,
     });
+
+    queryClient.prefetchQuery({
+      queryKey: ['store-guides', storeId],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/guides`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch guides');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000,
+    });
   }, [storeId, queryClient]);
 
   const tabs = [

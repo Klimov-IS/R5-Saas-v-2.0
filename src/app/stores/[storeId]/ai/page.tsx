@@ -3,10 +3,11 @@
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen, ChevronDown, ChevronUp, ListChecks } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen, ChevronDown, ChevronUp, ListChecks, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AI_INSTRUCTION_TEMPLATES } from '@/lib/ai-instruction-templates';
-import { FAQ_TEMPLATE_GROUPS, type FaqTemplate } from '@/lib/faq-templates';
+import { FAQ_TEMPLATE_GROUPS } from '@/lib/faq-templates';
+import { GUIDE_TEMPLATES } from '@/lib/guide-templates';
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
@@ -15,6 +16,17 @@ type FaqEntry = {
   store_id: string;
   question: string;
   answer: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type GuideEntry = {
+  id: string;
+  store_id: string;
+  title: string;
+  content: string;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -78,6 +90,43 @@ async function deleteFaqEntry(storeId: string, faqId: string) {
   return res.json();
 }
 
+async function fetchGuides(storeId: string): Promise<{ entries: GuideEntry[] }> {
+  const res = await fetch(`/api/stores/${storeId}/guides`, {
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
+  });
+  if (!res.ok) throw new Error('Failed to fetch guides');
+  return res.json();
+}
+
+async function createGuideEntry(storeId: string, title: string, content: string) {
+  const res = await fetch(`/api/stores/${storeId}/guides`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content }),
+  });
+  if (!res.ok) throw new Error('Failed to create guide');
+  return res.json();
+}
+
+async function updateGuideEntry(storeId: string, guideId: string, fields: Partial<GuideEntry>) {
+  const res = await fetch(`/api/stores/${storeId}/guides/${guideId}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) throw new Error('Failed to update guide');
+  return res.json();
+}
+
+async function deleteGuideEntry(storeId: string, guideId: string) {
+  const res = await fetch(`/api/stores/${storeId}/guides/${guideId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
+  });
+  if (!res.ok) throw new Error('Failed to delete guide');
+  return res.json();
+}
+
 // ---- Component ----
 
 export default function AISettingsPage() {
@@ -106,6 +155,17 @@ export default function AISettingsPage() {
   const [selectedTemplates, setSelectedTemplates] = useState<Set<string>>(new Set());
   const [addingTemplates, setAddingTemplates] = useState(false);
 
+  // Guides state
+  const [showGuideForm, setShowGuideForm] = useState(false);
+  const [newGuideTitle, setNewGuideTitle] = useState('');
+  const [newGuideContent, setNewGuideContent] = useState('');
+  const [editingGuideId, setEditingGuideId] = useState<string | null>(null);
+  const [editGuideTitle, setEditGuideTitle] = useState('');
+  const [editGuideContent, setEditGuideContent] = useState('');
+  const [showGuideTemplates, setShowGuideTemplates] = useState(false);
+  const [selectedGuideTemplates, setSelectedGuideTemplates] = useState<Set<string>>(new Set());
+  const [addingGuideTemplates, setAddingGuideTemplates] = useState(false);
+
   // Fetch AI instructions
   const { data: aiData, isLoading: loadingInstructions } = useQuery({
     queryKey: ['ai-instructions', storeId],
@@ -127,6 +187,14 @@ export default function AISettingsPage() {
   });
 
   const faqEntries = faqData?.entries || [];
+
+  // Fetch Guides
+  const { data: guidesData, isLoading: loadingGuides } = useQuery({
+    queryKey: ['store-guides', storeId],
+    queryFn: () => fetchGuides(storeId),
+  });
+
+  const guideEntries = guidesData?.entries || [];
 
   // Save instructions mutation
   const saveMutation = useMutation({
@@ -171,6 +239,39 @@ export default function AISettingsPage() {
     onError: () => toast({ title: 'Ошибка удаления', variant: 'destructive' }),
   });
 
+  // Guide mutations
+  const createGuideMutation = useMutation({
+    mutationFn: () => createGuideEntry(storeId, newGuideTitle, newGuideContent),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
+      setNewGuideTitle('');
+      setNewGuideContent('');
+      setShowGuideForm(false);
+      toast({ title: 'Инструкция добавлена' });
+    },
+    onError: () => toast({ title: 'Ошибка создания', variant: 'destructive' }),
+  });
+
+  const updateGuideMutation = useMutation({
+    mutationFn: ({ guideId, fields }: { guideId: string; fields: Partial<GuideEntry> }) =>
+      updateGuideEntry(storeId, guideId, fields),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
+      setEditingGuideId(null);
+    },
+    onError: () => toast({ title: 'Ошибка обновления', variant: 'destructive' }),
+  });
+
+  const deleteGuideMutation = useMutation({
+    mutationFn: (guideId: string) => deleteGuideEntry(storeId, guideId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
+      toast({ title: 'Инструкция удалена' });
+    },
+    onError: () => toast({ title: 'Ошибка удаления', variant: 'destructive' }),
+  });
+
+  // FAQ template handlers
   const toggleTemplate = (templateId: string) => {
     setSelectedTemplates(prev => {
       const next = new Set(prev);
@@ -212,6 +313,35 @@ export default function AISettingsPage() {
     toast({ title: `Добавлено ${added} из ${toAdd.length} FAQ` });
   };
 
+  // Guide template handlers
+  const toggleGuideTemplate = (id: string) => {
+    setSelectedGuideTemplates(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const addSelectedGuideTemplates = async () => {
+    const toAdd = GUIDE_TEMPLATES.filter(t => selectedGuideTemplates.has(t.id));
+    if (toAdd.length === 0) return;
+
+    setAddingGuideTemplates(true);
+    let added = 0;
+    for (const t of toAdd) {
+      try {
+        await createGuideEntry(storeId, t.title, t.content);
+        added++;
+      } catch { /* skip failed */ }
+    }
+    queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
+    setSelectedGuideTemplates(new Set());
+    setShowGuideTemplates(false);
+    setAddingGuideTemplates(false);
+    toast({ title: `Добавлено ${added} из ${toAdd.length} инструкций` });
+  };
+
   const handleTemplateClick = (template: string) => {
     if (instructions.trim() && !confirm('Текущие инструкции будут заменены. Продолжить?')) {
       return;
@@ -233,6 +363,22 @@ export default function AISettingsPage() {
 
   const toggleActive = (entry: FaqEntry) => {
     updateMutation.mutate({ faqId: entry.id, fields: { is_active: !entry.is_active } });
+  };
+
+  const startGuideEdit = (entry: GuideEntry) => {
+    setEditingGuideId(entry.id);
+    setEditGuideTitle(entry.title);
+    setEditGuideContent(entry.content);
+  };
+
+  const saveGuideEdit = () => {
+    if (editingGuideId && editGuideTitle.trim() && editGuideContent.trim()) {
+      updateGuideMutation.mutate({ guideId: editingGuideId, fields: { title: editGuideTitle, content: editGuideContent } });
+    }
+  };
+
+  const toggleGuideActive = (entry: GuideEntry) => {
+    updateGuideMutation.mutate({ guideId: entry.id, fields: { is_active: !entry.is_active } });
   };
 
   return (
@@ -459,7 +605,6 @@ export default function AISettingsPage() {
             {faqEntries.map((entry) => (
               <div key={entry.id} className={`faq-card ${!entry.is_active ? 'faq-card-inactive' : ''}`}>
                 {editingId === entry.id ? (
-                  /* Edit mode */
                   <div className="faq-edit-form">
                     <input
                       type="text"
@@ -483,7 +628,6 @@ export default function AISettingsPage() {
                     </div>
                   </div>
                 ) : (
-                  /* View mode */
                   <>
                     <div className="faq-card-content">
                       <div className="faq-question">В: {entry.question}</div>
@@ -505,6 +649,204 @@ export default function AISettingsPage() {
                         onClick={() => {
                           if (confirm('Удалить эту запись FAQ?')) {
                             deleteMutation.mutate(entry.id);
+                          }
+                        }}
+                        title="Удалить"
+                      >
+                        <Trash2 style={{ width: 14, height: 14 }} />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Section 3: Guides — Step-by-step instructions */}
+      <section className="ai-section">
+        <div className="ai-section-header">
+          <div className="ai-section-title">
+            <FileText style={{ width: 20, height: 20 }} />
+            <h2>Инструкции для клиентов</h2>
+          </div>
+          <p className="ai-section-desc">
+            Пошаговые инструкции: как удалить отзыв, как оформить возврат, как получить компенсацию.
+            AI будет ссылаться на них при общении с клиентами.
+          </p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="faq-top-actions">
+          {!showGuideForm && (
+            <button className="ai-btn-add" onClick={() => setShowGuideForm(true)}>
+              <Plus style={{ width: 16, height: 16 }} /> Добавить инструкцию
+            </button>
+          )}
+          <button
+            className={`ai-btn-add faq-btn-templates ${showGuideTemplates ? 'active' : ''}`}
+            onClick={() => setShowGuideTemplates(!showGuideTemplates)}
+          >
+            <ListChecks style={{ width: 16, height: 16 }} />
+            {showGuideTemplates ? 'Скрыть шаблоны' : 'Выбрать из шаблонов'}
+          </button>
+        </div>
+
+        {/* Guide Templates Picker */}
+        {showGuideTemplates && (
+          <div className="faq-templates-panel">
+            <div className="faq-templates-header">
+              <p className="faq-templates-desc">
+                Готовые пошаговые инструкции на основе анализа реальных диалогов продавцов.
+                Выберите нужные и добавьте в базу знаний магазина.
+              </p>
+              {selectedGuideTemplates.size > 0 && (
+                <button
+                  className="ai-btn-save has-changes"
+                  onClick={addSelectedGuideTemplates}
+                  disabled={addingGuideTemplates}
+                >
+                  {addingGuideTemplates ? (
+                    <><Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> Добавление...</>
+                  ) : (
+                    <><Check style={{ width: 16, height: 16 }} /> Добавить выбранные ({selectedGuideTemplates.size})</>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <div className="faq-template-group-items" style={{ borderTop: 'none', paddingTop: 0 }}>
+              <button
+                className="faq-template-select-all"
+                onClick={() => {
+                  const allIds = GUIDE_TEMPLATES.map(t => t.id);
+                  const allSelected = allIds.every(id => selectedGuideTemplates.has(id));
+                  setSelectedGuideTemplates(allSelected ? new Set() : new Set(allIds));
+                }}
+              >
+                {GUIDE_TEMPLATES.every(t => selectedGuideTemplates.has(t.id)) ? 'Снять все' : 'Выбрать все'}
+              </button>
+              {GUIDE_TEMPLATES.map((tmpl) => {
+                const isSelected = selectedGuideTemplates.has(tmpl.id);
+                const existingTitles = new Set(guideEntries.map(e => e.title.toLowerCase().trim()));
+                const alreadyExists = existingTitles.has(tmpl.title.toLowerCase().trim());
+
+                return (
+                  <label
+                    key={tmpl.id}
+                    className={`faq-template-item ${isSelected ? 'selected' : ''} ${alreadyExists ? 'exists' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleGuideTemplate(tmpl.id)}
+                      disabled={alreadyExists}
+                    />
+                    <div className="faq-template-item-content">
+                      <div className="faq-template-item-q">{tmpl.title}</div>
+                      <div className="faq-template-item-a guide-preview">{tmpl.content}</div>
+                      {alreadyExists && <span className="faq-template-item-badge">Уже добавлен</span>}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Add guide form */}
+        {showGuideForm && (
+          <div className="faq-add-form">
+            <input
+              type="text"
+              className="faq-input"
+              placeholder="Название (например: Как удалить отзыв)"
+              value={newGuideTitle}
+              onChange={(e) => setNewGuideTitle(e.target.value)}
+            />
+            <textarea
+              className="faq-textarea guide-content-textarea"
+              placeholder={"Пошаговая инструкция, например:\n1. Зайдите на сайт WB через браузер\n2. Откройте профиль → «Отзывы и вопросы»\n3. Найдите отзыв → три точки → «Удалить»"}
+              value={newGuideContent}
+              onChange={(e) => setNewGuideContent(e.target.value)}
+              rows={6}
+            />
+            <div className="faq-add-actions">
+              <button
+                className="ai-btn-save has-changes"
+                onClick={() => createGuideMutation.mutate()}
+                disabled={!newGuideTitle.trim() || !newGuideContent.trim() || createGuideMutation.isPending}
+              >
+                {createGuideMutation.isPending ? (
+                  <><Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> Добавление...</>
+                ) : (
+                  <><Check style={{ width: 16, height: 16 }} /> Добавить</>
+                )}
+              </button>
+              <button className="ai-btn-cancel" onClick={() => { setShowGuideForm(false); setNewGuideTitle(''); setNewGuideContent(''); }}>
+                <X style={{ width: 16, height: 16 }} /> Отмена
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Guide list */}
+        {loadingGuides ? (
+          <div className="ai-loading"><Loader2 className="animate-spin" style={{ width: 20, height: 20 }} /> Загрузка инструкций...</div>
+        ) : guideEntries.length === 0 && !showGuideForm ? (
+          <div className="faq-empty">
+            Нет инструкций. Добавьте пошаговые руководства, чтобы AI мог отправлять их клиентам.
+          </div>
+        ) : (
+          <div className="faq-list">
+            {guideEntries.map((entry) => (
+              <div key={entry.id} className={`faq-card guide-card ${!entry.is_active ? 'faq-card-inactive' : ''}`}>
+                {editingGuideId === entry.id ? (
+                  <div className="faq-edit-form">
+                    <input
+                      type="text"
+                      className="faq-input"
+                      value={editGuideTitle}
+                      onChange={(e) => setEditGuideTitle(e.target.value)}
+                    />
+                    <textarea
+                      className="faq-textarea guide-content-textarea"
+                      value={editGuideContent}
+                      onChange={(e) => setEditGuideContent(e.target.value)}
+                      rows={8}
+                    />
+                    <div className="faq-edit-actions">
+                      <button className="ai-btn-save has-changes" onClick={saveGuideEdit} disabled={updateGuideMutation.isPending}>
+                        <Check style={{ width: 14, height: 14 }} /> Сохранить
+                      </button>
+                      <button className="ai-btn-cancel" onClick={() => setEditingGuideId(null)}>
+                        <X style={{ width: 14, height: 14 }} /> Отмена
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="faq-card-content">
+                      <div className="guide-title">{entry.title}</div>
+                      <div className="guide-content">{entry.content}</div>
+                    </div>
+                    <div className="faq-card-actions">
+                      <button
+                        className={`faq-toggle ${entry.is_active ? 'active' : ''}`}
+                        onClick={() => toggleGuideActive(entry)}
+                        title={entry.is_active ? 'Отключить' : 'Включить'}
+                      >
+                        {entry.is_active ? 'Вкл' : 'Выкл'}
+                      </button>
+                      <button className="faq-action-btn" onClick={() => startGuideEdit(entry)} title="Редактировать">
+                        <Pencil style={{ width: 14, height: 14 }} />
+                      </button>
+                      <button
+                        className="faq-action-btn faq-action-delete"
+                        onClick={() => {
+                          if (confirm('Удалить эту инструкцию?')) {
+                            deleteGuideMutation.mutate(entry.id);
                           }
                         }}
                         title="Удалить"

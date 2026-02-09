@@ -1606,3 +1606,32 @@ body {
   padding: 1px 6px;
   border-radius: var(--radius-full);
 }
+
+/* ── Guide Section Styles ── */
+.guide-title {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: var(--color-foreground);
+  margin-bottom: 6px;
+}
+
+.guide-content {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+  line-height: 1.6;
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.guide-card .faq-card-content {
+  flex: 1;
+}
+
+.guide-content-textarea {
+  min-height: 120px !important;
+  font-family: inherit;
+  line-height: 1.6;
+}

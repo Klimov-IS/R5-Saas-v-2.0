@@ -2607,3 +2607,67 @@ export async function deleteStoreFaqEntry(id: string): Promise<boolean> {
   );
   return (result.rowCount ?? 0) > 0;
 }
+
+// ============================================================
+// STORE GUIDES (step-by-step instructions for AI context)
+// ============================================================
+
+export interface StoreGuide {
+  id: string;
+  store_id: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getStoreGuides(storeId: string): Promise<StoreGuide[]> {
+  const result = await query(
+    `SELECT * FROM store_guides WHERE store_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+    [storeId]
+  );
+  return result.rows;
+}
+
+export async function createStoreGuide(storeId: string, title: string, content: string): Promise<StoreGuide> {
+  const result = await query(
+    `INSERT INTO store_guides (store_id, title, content) VALUES ($1, $2, $3) RETURNING *`,
+    [storeId, title, content]
+  );
+  return result.rows[0];
+}
+
+export async function updateStoreGuide(
+  id: string,
+  fields: Partial<Pick<StoreGuide, 'title' | 'content' | 'is_active' | 'sort_order'>>
+): Promise<StoreGuide | null> {
+  const sets: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  if (fields.title !== undefined) { sets.push(`title = $${idx++}`); values.push(fields.title); }
+  if (fields.content !== undefined) { sets.push(`content = $${idx++}`); values.push(fields.content); }
+  if (fields.is_active !== undefined) { sets.push(`is_active = $${idx++}`); values.push(fields.is_active); }
+  if (fields.sort_order !== undefined) { sets.push(`sort_order = $${idx++}`); values.push(fields.sort_order); }
+
+  if (sets.length === 0) return null;
+
+  sets.push(`updated_at = NOW()`);
+  values.push(id);
+
+  const result = await query(
+    `UPDATE store_guides SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+    values
+  );
+  return result.rows[0] || null;
+}
+
+export async function deleteStoreGuide(id: string): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM store_guides WHERE id = $1`,
+    [id]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
