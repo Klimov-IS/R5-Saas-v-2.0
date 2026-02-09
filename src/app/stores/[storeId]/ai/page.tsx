@@ -3,9 +3,10 @@
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen, ChevronDown, ChevronUp, ListChecks } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AI_INSTRUCTION_TEMPLATES } from '@/lib/ai-instruction-templates';
+import { FAQ_TEMPLATE_GROUPS, type FaqTemplate } from '@/lib/faq-templates';
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
@@ -99,6 +100,12 @@ export default function AISettingsPage() {
   const [editQuestion, setEditQuestion] = useState('');
   const [editAnswer, setEditAnswer] = useState('');
 
+  // FAQ templates
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [selectedTemplates, setSelectedTemplates] = useState<Set<string>>(new Set());
+  const [addingTemplates, setAddingTemplates] = useState(false);
+
   // Fetch AI instructions
   const { data: aiData, isLoading: loadingInstructions } = useQuery({
     queryKey: ['ai-instructions', storeId],
@@ -163,6 +170,47 @@ export default function AISettingsPage() {
     },
     onError: () => toast({ title: 'Ошибка удаления', variant: 'destructive' }),
   });
+
+  const toggleTemplate = (templateId: string) => {
+    setSelectedTemplates(prev => {
+      const next = new Set(prev);
+      if (next.has(templateId)) next.delete(templateId);
+      else next.add(templateId);
+      return next;
+    });
+  };
+
+  const toggleGroup = (groupId: string) => {
+    const group = FAQ_TEMPLATE_GROUPS.find(g => g.id === groupId);
+    if (!group) return;
+    const allIds = group.templates.map(t => t.id);
+    const allSelected = allIds.every(id => selectedTemplates.has(id));
+    setSelectedTemplates(prev => {
+      const next = new Set(prev);
+      allIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const addSelectedTemplates = async () => {
+    const allTemplates = FAQ_TEMPLATE_GROUPS.flatMap(g => g.templates);
+    const toAdd = allTemplates.filter(t => selectedTemplates.has(t.id));
+    if (toAdd.length === 0) return;
+
+    setAddingTemplates(true);
+    let added = 0;
+    for (const t of toAdd) {
+      try {
+        await createFaqEntry(storeId, t.question, t.answer);
+        added++;
+      } catch { /* skip failed */ }
+    }
+    queryClient.invalidateQueries({ queryKey: ['store-faq', storeId] });
+    setSelectedTemplates(new Set());
+    setShowTemplates(false);
+    setAddingTemplates(false);
+    toast({ title: `Добавлено ${added} из ${toAdd.length} FAQ` });
+  };
 
   const handleTemplateClick = (template: string) => {
     if (instructions.trim() && !confirm('Текущие инструкции будут заменены. Продолжить?')) {
@@ -261,11 +309,106 @@ export default function AISettingsPage() {
           </p>
         </div>
 
-        {/* Add button */}
-        {!showAddForm && (
-          <button className="ai-btn-add" onClick={() => setShowAddForm(true)}>
-            <Plus style={{ width: 16, height: 16 }} /> Добавить вопрос
+        {/* Action buttons */}
+        <div className="faq-top-actions">
+          {!showAddForm && (
+            <button className="ai-btn-add" onClick={() => setShowAddForm(true)}>
+              <Plus style={{ width: 16, height: 16 }} /> Добавить вопрос
+            </button>
+          )}
+          <button
+            className={`ai-btn-add faq-btn-templates ${showTemplates ? 'active' : ''}`}
+            onClick={() => setShowTemplates(!showTemplates)}
+          >
+            <ListChecks style={{ width: 16, height: 16 }} />
+            {showTemplates ? 'Скрыть шаблоны' : 'Выбрать из шаблонов'}
           </button>
+        </div>
+
+        {/* FAQ Templates Picker */}
+        {showTemplates && (
+          <div className="faq-templates-panel">
+            <div className="faq-templates-header">
+              <p className="faq-templates-desc">
+                Выберите готовые вопросы из категорий (на основе анализа реальных диалогов). Нажмите «Добавить выбранные», чтобы добавить их в FAQ.
+              </p>
+              {selectedTemplates.size > 0 && (
+                <button
+                  className="ai-btn-save has-changes"
+                  onClick={addSelectedTemplates}
+                  disabled={addingTemplates}
+                >
+                  {addingTemplates ? (
+                    <><Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> Добавление...</>
+                  ) : (
+                    <><Check style={{ width: 16, height: 16 }} /> Добавить выбранные ({selectedTemplates.size})</>
+                  )}
+                </button>
+              )}
+            </div>
+
+            <div className="faq-template-groups">
+              {FAQ_TEMPLATE_GROUPS.map((group) => {
+                const isExpanded = expandedGroup === group.id;
+                const groupSelected = group.templates.filter(t => selectedTemplates.has(t.id)).length;
+                const existingQuestions = new Set(faqEntries.map(e => e.question.toLowerCase().trim()));
+
+                return (
+                  <div key={group.id} className="faq-template-group">
+                    <button
+                      className="faq-template-group-header"
+                      onClick={() => setExpandedGroup(isExpanded ? null : group.id)}
+                    >
+                      <div className="faq-template-group-info">
+                        <span className="faq-template-group-icon">{group.icon}</span>
+                        <span className="faq-template-group-label">{group.label}</span>
+                        <span className="faq-template-group-count">{group.templates.length} шт.</span>
+                        {groupSelected > 0 && (
+                          <span className="faq-template-group-selected">{groupSelected} выбрано</span>
+                        )}
+                      </div>
+                      {isExpanded ? (
+                        <ChevronUp style={{ width: 16, height: 16, opacity: 0.5 }} />
+                      ) : (
+                        <ChevronDown style={{ width: 16, height: 16, opacity: 0.5 }} />
+                      )}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="faq-template-group-items">
+                        <button className="faq-template-select-all" onClick={() => toggleGroup(group.id)}>
+                          {group.templates.every(t => selectedTemplates.has(t.id)) ? 'Снять все' : 'Выбрать все'}
+                        </button>
+                        {group.templates.map((tmpl) => {
+                          const isSelected = selectedTemplates.has(tmpl.id);
+                          const alreadyExists = existingQuestions.has(tmpl.question.toLowerCase().trim());
+
+                          return (
+                            <label
+                              key={tmpl.id}
+                              className={`faq-template-item ${isSelected ? 'selected' : ''} ${alreadyExists ? 'exists' : ''}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleTemplate(tmpl.id)}
+                                disabled={alreadyExists}
+                              />
+                              <div className="faq-template-item-content">
+                                <div className="faq-template-item-q">В: {tmpl.question}</div>
+                                <div className="faq-template-item-a">О: {tmpl.answer}</div>
+                                {alreadyExists && <span className="faq-template-item-badge">Уже добавлен</span>}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Add form */}
