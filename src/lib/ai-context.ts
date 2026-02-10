@@ -1,8 +1,27 @@
 import { getStoreFaq, getStoreGuides } from '@/db/helpers';
 
 /**
+ * Default AI instructions used when store has no custom instructions.
+ * Ensures AI always has base behavioral rules even for unconfigured stores.
+ */
+export const DEFAULT_AI_INSTRUCTIONS = `Тон: вежливый, профессиональный, обращение на "вы"
+
+Правила общения:
+- Всегда начинай с приветствия
+- Будь эмпатичным — покажи, что понимаешь проблему клиента
+- Предлагай конкретные решения, а не общие фразы
+- Если клиент жалуется на брак — предложи оформить возврат
+- Не обещай того, что нельзя гарантировать
+- Не упоминай конкурентов
+- Заканчивай сообщение готовностью помочь дальше
+
+Компенсация: предлагай кэшбек за удаление негативного отзыва (сумма из правил товара).
+Возврат: возврат через WB в соответствии с правилами площадки.`;
+
+/**
  * Build combined store instructions for AI flows.
  * Merges ai_instructions + active FAQ entries + active guides into a single string.
+ * Falls back to DEFAULT_AI_INSTRUCTIONS when no custom instructions are set.
  */
 export async function buildStoreInstructions(
   storeId: string,
@@ -24,6 +43,7 @@ export async function buildStoreInstructions(
     ? `\n\n## Инструкции для клиентов\n${activeGuides.map(g => `### ${g.title}\n${g.content}`).join('\n\n')}`
     : '';
 
-  const combined = [aiInstructions || '', faqText, guidesText].join('').trim();
+  const effectiveInstructions = aiInstructions?.trim() || DEFAULT_AI_INSTRUCTIONS;
+  const combined = [effectiveInstructions, faqText, guidesText].join('').trim();
   return combined || undefined;
 }

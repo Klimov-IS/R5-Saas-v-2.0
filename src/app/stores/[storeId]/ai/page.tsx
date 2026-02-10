@@ -7,7 +7,7 @@ import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen, Chev
 import { useToast } from '@/hooks/use-toast';
 import { AI_INSTRUCTION_TEMPLATES } from '@/lib/ai-instruction-templates';
 import { FAQ_TEMPLATE_GROUPS } from '@/lib/faq-templates';
-import { GUIDE_TEMPLATES } from '@/lib/guide-templates';
+import { GUIDE_TEMPLATES, type GuideTemplate } from '@/lib/guide-templates';
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
@@ -165,6 +165,7 @@ export default function AISettingsPage() {
   const [showGuideTemplates, setShowGuideTemplates] = useState(false);
   const [selectedGuideTemplates, setSelectedGuideTemplates] = useState<Set<string>>(new Set());
   const [addingGuideTemplates, setAddingGuideTemplates] = useState(false);
+  const [addingDefaults, setAddingDefaults] = useState(false);
 
   // Fetch AI instructions
   const { data: aiData, isLoading: loadingInstructions } = useQuery({
@@ -340,6 +341,32 @@ export default function AISettingsPage() {
     setShowGuideTemplates(false);
     setAddingGuideTemplates(false);
     toast({ title: `Добавлено ${added} из ${toAdd.length} инструкций` });
+  };
+
+  // Default guides handler — adds 3 essential guides
+  const DEFAULT_GUIDE_IDS = ['delete-review-browser', 'supplement-review', 'return-defect'];
+
+  const addDefaultGuides = async () => {
+    const toAdd = GUIDE_TEMPLATES.filter(t => DEFAULT_GUIDE_IDS.includes(t.id));
+    const existingTitles = new Set(guideEntries.map(e => e.title.toLowerCase().trim()));
+
+    const filtered = toAdd.filter(t => !existingTitles.has(t.title.toLowerCase().trim()));
+    if (filtered.length === 0) {
+      toast({ title: 'Все базовые инструкции уже добавлены' });
+      return;
+    }
+
+    setAddingDefaults(true);
+    let added = 0;
+    for (const t of filtered) {
+      try {
+        await createGuideEntry(storeId, t.title, t.content);
+        added++;
+      } catch { /* skip failed */ }
+    }
+    queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
+    setAddingDefaults(false);
+    toast({ title: `Добавлено ${added} базовых инструкций` });
   };
 
   const handleTemplateClick = (template: string) => {
@@ -795,8 +822,22 @@ export default function AISettingsPage() {
         {loadingGuides ? (
           <div className="ai-loading"><Loader2 className="animate-spin" style={{ width: 20, height: 20 }} /> Загрузка инструкций...</div>
         ) : guideEntries.length === 0 && !showGuideForm ? (
-          <div className="faq-empty">
-            Нет инструкций. Добавьте пошаговые руководства, чтобы AI мог отправлять их клиентам.
+          <div className="guides-defaults-banner">
+            <div className="guides-defaults-info">
+              <strong>Рекомендуем начать с базовых инструкций</strong>
+              <p>Добавьте 3 ключевых инструкции, которые чаще всего нужны клиентам: удаление отзыва, дополнение до 5 звёзд, возврат по браку.</p>
+            </div>
+            <button
+              className="ai-btn-save has-changes"
+              onClick={addDefaultGuides}
+              disabled={addingDefaults}
+            >
+              {addingDefaults ? (
+                <><Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> Добавление...</>
+              ) : (
+                <><Plus style={{ width: 16, height: 16 }} /> Добавить 3 базовых</>
+              )}
+            </button>
           </div>
         ) : (
           <div className="faq-list">
