@@ -15,15 +15,27 @@ require('dotenv').config({ path: '.env.production' });
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'https://r5saas.ru/tg';
-const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!BOT_TOKEN) {
   console.error('[TG-BOT] ❌ TELEGRAM_BOT_TOKEN is not set');
   process.exit(1);
 }
 
+// Build DATABASE_URL from individual POSTGRES_* vars if not set directly
+let DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error('[TG-BOT] ❌ DATABASE_URL is not set');
+  const host = process.env.POSTGRES_HOST;
+  const port = process.env.POSTGRES_PORT || '6432';
+  const db = process.env.POSTGRES_DB || process.env.POSTGRES_DATABASE;
+  const user = process.env.POSTGRES_USER;
+  const password = process.env.POSTGRES_PASSWORD;
+  if (host && db && user && password) {
+    DATABASE_URL = `postgresql://${user}:${password}@${host}:${port}/${db}`;
+  }
+}
+
+if (!DATABASE_URL) {
+  console.error('[TG-BOT] ❌ Database config is not set (need DATABASE_URL or POSTGRES_* vars)');
   process.exit(1);
 }
 
@@ -36,13 +48,8 @@ console.log('[TG-BOT] 📅 Timestamp:', new Date().toISOString());
 
 const { Pool } = require('pg');
 
-let connectionString = DATABASE_URL;
-if (connectionString.includes('?sslmode=')) {
-  connectionString = connectionString.split('?')[0];
-}
-
 const pool = new Pool({
-  connectionString,
+  connectionString: DATABASE_URL,
   max: 5,
   ssl: { rejectUnauthorized: false },
   application_name: 'wb-reputation-tg-bot',
