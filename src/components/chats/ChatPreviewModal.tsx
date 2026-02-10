@@ -8,7 +8,8 @@ import { MessageComposer } from './MessageComposer';
 import { Loader2, Package, MessageSquare, X, ChevronDown } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import type { ChatStatus } from '@/db/helpers';
+import type { ChatStatus, CompletionReason } from '@/db/helpers';
+import CompletionReasonModal from './CompletionReasonModal';
 
 interface ChatPreviewModalProps {
   storeId: string;
@@ -46,6 +47,7 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
   const queryClient = useQueryClient();
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState<ChatStatus | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const { data, isLoading, error } = useChatMessages(storeId, open ? chatId : null);
 
@@ -71,6 +73,13 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
     }
 
     setStatusDropdownOpen(false);
+
+    // If closing — show CompletionReasonModal first
+    if (newStatus === 'closed') {
+      setShowCompletionModal(true);
+      return;
+    }
+
     setOptimisticStatus(newStatus);
 
     try {
@@ -92,6 +101,35 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
       setOptimisticStatus(null);
       toast.error('Не удалось изменить статус');
       console.error('Failed to update status:', error);
+    }
+  };
+
+  // Handle completion reason confirmation (close with reason)
+  const handleCompletionConfirm = async (reason: CompletionReason) => {
+    setShowCompletionModal(false);
+    if (!chatId) return;
+
+    setOptimisticStatus('closed');
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'closed', completion_reason: reason }),
+      });
+
+      if (!response.ok) throw new Error('Failed to close chat');
+
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', storeId, chatId] });
+      queryClient.invalidateQueries({ queryKey: ['all-chats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-stats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-infinite', storeId] });
+
+      toast.success('Чат закрыт');
+    } catch (error) {
+      setOptimisticStatus(null);
+      toast.error('Не удалось закрыть чат');
+      console.error('Failed to close chat:', error);
     }
   };
 
@@ -284,5 +322,20 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
 
   // Portal directly to document.body — guaranteed to bypass any CSS containing blocks
   if (typeof document === 'undefined') return null;
-  return createPortal(modalContent, document.body);
+  return createPortal(
+    <>
+      {modalContent}
+      {/* CompletionReasonModal — z-index override to appear above ChatPreviewModal (z-9999) */}
+      {showCompletionModal && (
+        <div style={{ position: 'relative', zIndex: 10000 }}>
+          <CompletionReasonModal
+            isOpen={showCompletionModal}
+            onClose={() => setShowCompletionModal(false)}
+            onConfirm={handleCompletionConfirm}
+          />
+        </div>
+      )}
+    </>,
+    document.body
+  );
 }
