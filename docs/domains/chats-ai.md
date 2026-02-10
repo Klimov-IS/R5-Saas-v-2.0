@@ -464,6 +464,79 @@ Content-Type: application/json
 
 ---
 
+## AI Context Injection (Per-Store Personalization)
+
+**Файл:** `src/lib/ai-context.ts`
+
+Система инжекции контекста магазина в system prompt AI. Объединяет три источника данных в единый блок инструкций.
+
+### buildStoreInstructions(storeId, aiInstructions?)
+
+```typescript
+async function buildStoreInstructions(
+  storeId: string,
+  aiInstructions?: string | null
+): Promise<string | undefined>
+```
+
+**Объединяет:**
+
+1. **AI Instructions** (`stores.ai_instructions`) — свободный текст: тон, правила, ограничения
+2. **FAQ** (`store_faq`) — пары вопрос-ответ, форматируются как `## FAQ магазина\nВ: ...\nО: ...`
+3. **Guides** (`store_guides`) — пошаговые инструкции, форматируются как `## Инструкции для клиентов\n### Title\nContent`
+
+**Используется в 6 customer-facing flows:**
+- generate-chat-reply
+- classify-chat-tag
+- classify-chat-deletion
+- generate-deletion-offer
+- generate-review-reply
+- generate-question-reply
+
+**НЕ используется в:** generate-review-complaint (жалоба — не клиентский ответ)
+
+### FAQ Templates
+
+**Файл:** `src/lib/faq-templates.ts`
+
+27 предустановленных FAQ пар в 9 категориях (на основе анализа 5000+ реальных диалогов):
+- Возвраты, Брак, Размеры, Доставка, Качество, Комплектность, Обмен, Компенсация, Описание
+
+### Guide Templates
+
+**Файл:** `src/lib/guide-templates.ts`
+
+7 предустановленных инструкций (на основе анализа 2000+ реальных сообщений продавцов):
+1. Как удалить отзыв (браузер)
+2. Как удалить отзыв (приложение)
+3. Как дополнить отзыв (изменить оценку на 5)
+4. Как оставить новый отзыв
+5. Как оформить возврат по браку
+6. Как оформить обычный возврат
+7. Как мы выплачиваем компенсацию
+
+### UI: Вкладка AI
+
+**Файл:** `src/app/stores/[storeId]/ai/page.tsx`
+
+Три секции:
+
+| # | Секция | Данные | Хранение |
+|---|--------|--------|----------|
+| 1 | Инструкции AI-агента | Свободный текст | `stores.ai_instructions` |
+| 2 | FAQ База знаний | Вопрос + Ответ пары | `store_faq` таблица |
+| 3 | Инструкции для клиентов | Название + Пошаговый текст | `store_guides` таблица |
+
+Каждая секция имеет:
+- CRUD (добавить, редактировать, удалить)
+- Toggle active/inactive
+- Template picker с multi-select и batch add
+- Детекция дубликатов ("уже добавлено")
+
+**Prefetch:** `src/app/stores/[storeId]/layout.tsx` предзагружает `ai-instructions`, `store-faq`, `store-guides`
+
+---
+
 ## Настройки
 
 ### User Settings (таблица `user_settings`)
@@ -624,7 +697,7 @@ INSERT INTO ai_logs (
 | autoSend для deletion offers | TODO в коде | generate-deletion-offer route, строка ~254 |
 | Messenger View (split-screen) | Не реализован | - |
 | Режимы AI (auto/supervised) | Планируется | - |
-| Персонализация по кабинетам | Планируется (следующий спринт) | - |
+| ~~Персонализация по кабинетам~~ | **Реализовано (2026-02-10)** | `stores.ai_instructions` + `store_faq` + `store_guides` |
 
 ---
 
@@ -638,4 +711,4 @@ INSERT INTO ai_logs (
 
 ---
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-10

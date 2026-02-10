@@ -478,6 +478,148 @@ Authorization: Bearer wbrm_xxxxxxxxxxxxxxxxxxxxx
 
 ---
 
+## AI Settings (Настройки AI)
+
+### GET /api/stores/:storeId/ai-instructions
+
+Получить AI инструкции магазина.
+
+**Response:**
+```json
+{
+  "ai_instructions": "Мы — бренд премиальной косметики. Обращайтесь к клиенту на Вы..."
+}
+```
+
+---
+
+### PUT /api/stores/:storeId/ai-instructions
+
+Обновить AI инструкции магазина.
+
+**Request:**
+```json
+{
+  "ai_instructions": "Новые инструкции для AI агента..."
+}
+```
+
+---
+
+## FAQ (База знаний)
+
+### GET /api/stores/:storeId/faq
+
+Получить все FAQ записи магазина.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "store_id": "store123",
+    "question": "Как вернуть товар?",
+    "answer": "Вы можете оформить возврат через личный кабинет WB...",
+    "is_active": true,
+    "sort_order": 0
+  }
+]
+```
+
+---
+
+### POST /api/stores/:storeId/faq
+
+Создать новую FAQ запись.
+
+**Request:**
+```json
+{
+  "question": "Вопрос клиента",
+  "answer": "Ответ продавца"
+}
+```
+
+---
+
+### PUT /api/stores/:storeId/faq/:faqId
+
+Обновить FAQ запись.
+
+**Request:**
+```json
+{
+  "question": "Обновлённый вопрос",
+  "answer": "Обновлённый ответ",
+  "is_active": false
+}
+```
+
+---
+
+### DELETE /api/stores/:storeId/faq/:faqId
+
+Удалить FAQ запись.
+
+---
+
+## Guides (Инструкции для клиентов)
+
+### GET /api/stores/:storeId/guides
+
+Получить все инструкции магазина.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "store_id": "store123",
+    "title": "Как удалить отзыв через браузер",
+    "content": "Шаг 1: Откройте wildberries.ru...\nШаг 2: ...",
+    "is_active": true,
+    "sort_order": 0
+  }
+]
+```
+
+---
+
+### POST /api/stores/:storeId/guides
+
+Создать новую инструкцию.
+
+**Request:**
+```json
+{
+  "title": "Как удалить отзыв",
+  "content": "Шаг 1: ..."
+}
+```
+
+---
+
+### PUT /api/stores/:storeId/guides/:guideId
+
+Обновить инструкцию.
+
+**Request:**
+```json
+{
+  "title": "Обновлённый заголовок",
+  "content": "Обновлённый текст",
+  "is_active": false
+}
+```
+
+---
+
+### DELETE /api/stores/:storeId/guides/:guideId
+
+Удалить инструкцию.
+
+---
+
 ## CRON Management
 
 ### GET /api/cron/status
@@ -909,4 +1051,4 @@ Proxy к WB Questions API.
 
 ---
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-10

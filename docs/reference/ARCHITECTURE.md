@@ -54,7 +54,7 @@ R5/
 │   │   │   ├── extension/      # Chrome Extension API
 │   │   │   ├── admin/          # Admin endpoints
 │   │   │   └── wb-proxy/       # WB API proxy
-│   │   └── stores/[storeId]/   # Store pages (Products, Reviews, Chats)
+│   │   └── stores/[storeId]/   # Store pages (Products, Reviews, Chats, AI)
 │   │
 │   ├── components/             # React components
 │   │   ├── reviews-v2/         # Reviews UI
@@ -80,7 +80,11 @@ R5/
 │   │   ├── cron-jobs.ts        # Cron job definitions
 │   │   ├── init-server.ts      # Server initialization
 │   │   ├── wb-api.ts           # WB API client
-│   │   └── sync-store.ts       # Sync orchestration
+│   │   ├── sync-store.ts       # Sync orchestration
+│   │   ├── ai-context.ts       # AI context builder (FAQ + Guides + Instructions)
+│   │   ├── faq-templates.ts    # 27 pre-built FAQ templates (9 categories)
+│   │   ├── guide-templates.ts  # 7 pre-built guide templates
+│   │   └── auto-sequence-templates.ts  # Auto-sequence message templates
 │   │
 │   ├── services/               # Business services
 │   │   ├── backfill-worker.ts  # Backfill queue processor
@@ -123,6 +127,9 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 | `/api/stores/[storeId]/products` | Товары |
 | `/api/stores/[storeId]/chats` | Чаты |
 | `/api/stores/[storeId]/complaints` | Жалобы |
+| `/api/stores/[storeId]/ai-instructions` | AI инструкции магазина |
+| `/api/stores/[storeId]/faq` | FAQ база знаний магазина |
+| `/api/stores/[storeId]/guides` | Инструкции для клиентов |
 | `/api/extension/*` | Chrome Extension API |
 | `/api/cron/*` | Cron management |
 
@@ -161,12 +168,23 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 | `generate-chat-reply-flow.ts` | Генерация ответа в чат |
 | `classify-chat-tag-flow.ts` | Классификация чата по тегам |
 | `classify-chat-deletion-flow.ts` | Классификация на удаление |
+| `generate-deletion-offer-flow.ts` | Генерация предложения удаления |
+| `generate-review-reply-flow.ts` | Генерация ответа на отзыв |
+| `generate-question-reply-flow.ts` | Генерация ответа на вопрос |
 
 **Prompts:** `src/ai/prompts/`
+
+**Per-Store AI Context:** `src/lib/ai-context.ts`
+
+Каждый AI flow получает контекст магазина через `buildStoreInstructions()`:
+- **AI Instructions** — свободный текст (тон, правила, ограничения)
+- **FAQ** — пары вопрос-ответ из `store_faq` таблицы
+- **Guides** — пошаговые инструкции из `store_guides` таблицы
 
 **Особенности:**
 
 - Template-based complaints для пустых отзывов (экономия токенов)
+- Per-store personalization (AI instructions + FAQ + Guides)
 - Логирование в `ai_logs` таблицу
 - Cost tracking (USD)
 
@@ -188,6 +206,7 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 | `backfill-worker` | Каждые 5 мин | Обработка очереди backfill |
 | `stores-cache-refresh` | Каждые 5 мин | Прогрев кэша магазинов для Extension API |
 | `google-sheets-sync` | 06:00 | Экспорт правил товаров в Google Sheets |
+| `auto-sequence-processor` | Каждые 30 мин (8-22 MSK) | Отправка follow-up сообщений |
 
 **Инициализация:** `instrumentation.ts` → `init-server.ts` → `cron-jobs.ts`
 
@@ -384,4 +403,4 @@ status: 'approved' | 'rejected'
 
 ---
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-10

@@ -3,7 +3,7 @@
 **Database:** PostgreSQL 15 (Yandex Managed)
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-10
 
 ---
 
@@ -21,6 +21,9 @@
    - [chats](#chats)
    - [chat_messages](#chat_messages)
    - [questions](#questions)
+   - [chat_auto_sequences](#chat_auto_sequences)
+   - [store_faq](#store_faq)
+   - [store_guides](#store_guides)
 5. [Configuration Tables](#configuration-tables)
    - [user_settings](#user_settings)
    - [product_rules](#product_rules)
@@ -707,6 +710,78 @@ CREATE INDEX idx_auto_sequences_chat ON chat_auto_sequences(chat_id, status);
 
 ---
 
+### `store_faq`
+
+**Purpose:** Per-store FAQ entries for AI context injection. Questions and answers that AI uses when responding to customers.
+
+```sql
+CREATE TABLE store_faq (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id    TEXT NOT NULL,
+  question    TEXT NOT NULL,
+  answer      TEXT NOT NULL,
+  is_active   BOOLEAN DEFAULT TRUE,
+  sort_order  INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Key Fields:**
+- `store_id` — магазин-владелец (no FK, TEXT ID)
+- `question` / `answer` — пара вопрос-ответ
+- `is_active` — вкл/выкл отдельных записей без удаления
+- `sort_order` — порядок отображения
+
+**Indexes:**
+```sql
+CREATE INDEX idx_store_faq_store_id ON store_faq(store_id);
+```
+
+**CRUD helpers:** `getStoreFaq`, `createStoreFaq`, `updateStoreFaq`, `deleteStoreFaq` в `src/db/helpers.ts`
+
+**UI:** Вкладка AI → секция "FAQ База знаний" (CRUD + шаблоны из `src/lib/faq-templates.ts`)
+
+**AI injection:** Активные FAQ форматируются как `В: ...\nО: ...` и инжектируются в system prompt через `buildStoreInstructions()` в `src/lib/ai-context.ts`
+
+---
+
+### `store_guides`
+
+**Purpose:** Per-store step-by-step instructions for customers. AI uses these guides when advising customers on processes (review deletion, returns, compensation).
+
+```sql
+CREATE TABLE store_guides (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id    TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  is_active   BOOLEAN DEFAULT TRUE,
+  sort_order  INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**Key Fields:**
+- `store_id` — магазин-владелец
+- `title` — название инструкции (напр. "Как удалить отзыв через браузер")
+- `content` — пошаговый текст инструкции (multiline, pre-line)
+- `is_active` — вкл/выкл без удаления
+
+**Indexes:**
+```sql
+CREATE INDEX idx_store_guides_store_id ON store_guides(store_id);
+```
+
+**CRUD helpers:** `getStoreGuides`, `createStoreGuide`, `updateStoreGuide`, `deleteStoreGuide` в `src/db/helpers.ts`
+
+**UI:** Вкладка AI → секция "Инструкции для клиентов" (CRUD + 7 шаблонов из `src/lib/guide-templates.ts`)
+
+**AI injection:** Активные гайды форматируются как `### Title\nContent` и инжектируются в system prompt через `buildStoreInstructions()` в `src/lib/ai-context.ts`
+
+---
+
 ## Configuration Tables
 
 ### `user_settings`
@@ -867,7 +942,11 @@ users (1) ───── (N) stores
   │                  │                  └─── (1) review_complaints (1:1)
   │                  │
   │                  ├─── (N) chats
-  │                  │        └─── (N) chat_messages
+  │                  │        ├─── (N) chat_messages
+  │                  │        └─── (N) chat_auto_sequences
+  │                  │
+  │                  ├─── (N) store_faq
+  │                  ├─── (N) store_guides
   │                  │
   │                  └─── (N) questions
   │
@@ -987,6 +1066,11 @@ CREATE TRIGGER update_reviews_complaint_flags
 Key migrations:
 1. `20260109_001_review_complaints_table.sql` - Created `review_complaints` table
 2. `20260109_add_review_statuses.sql` - Added ENUM types and status columns to `reviews`
+3. `20260209_004_rename_legacy_tag_to_tag.sql` - Renamed `legacy_tag` back to `tag` in chats
+4. `20260209_005_create_chat_auto_sequences.sql` - Created `chat_auto_sequences` table
+5. `20260209_006_add_stores_ai_instructions.sql` - Added `ai_instructions` TEXT to `stores`
+6. `20260209_007_create_store_faq.sql` - Created `store_faq` table
+7. `20260209_008_create_store_guides.sql` - Created `store_guides` table
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
@@ -1092,7 +1176,7 @@ LIMIT 20;
 
 ---
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-10
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials
