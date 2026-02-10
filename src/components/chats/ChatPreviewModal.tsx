@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useChatMessages } from '@/hooks/useChats';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
-import { Loader2, Package, MessageSquare, X } from 'lucide-react';
+import { Loader2, Package, MessageSquare, X, ChevronDown } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import type { ChatStatus } from '@/db/helpers';
 
 interface ChatPreviewModalProps {
@@ -24,24 +26,89 @@ const STATUS_LABELS: Record<ChatStatus, string> = {
 };
 
 const STATUS_COLORS: Record<ChatStatus, string> = {
-  inbox: 'bg-blue-100 text-blue-700',
-  in_progress: 'bg-amber-100 text-amber-700',
-  awaiting_reply: 'bg-orange-100 text-orange-700',
-  resolved: 'bg-green-100 text-green-700',
-  closed: 'bg-gray-100 text-gray-700',
+  inbox: 'bg-blue-100 text-blue-700 border-blue-200',
+  in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
+  awaiting_reply: 'bg-orange-100 text-orange-700 border-orange-200',
+  resolved: 'bg-green-100 text-green-700 border-green-200',
+  closed: 'bg-gray-100 text-gray-600 border-gray-200',
 };
+
+const STATUS_DOT_COLORS: Record<ChatStatus, string> = {
+  inbox: 'bg-blue-500',
+  in_progress: 'bg-amber-500',
+  awaiting_reply: 'bg-orange-500',
+  resolved: 'bg-green-500',
+  closed: 'bg-gray-400',
+};
+
+const ALL_STATUSES: ChatStatus[] = ['inbox', 'in_progress', 'awaiting_reply', 'resolved', 'closed'];
 
 export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPreviewModalProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+  const [optimisticStatus, setOptimisticStatus] = useState<ChatStatus | null>(null);
 
   const { data, isLoading, error } = useChatMessages(storeId, open ? chatId : null);
 
   const chat = data?.chat;
   const messages = data?.messages || [];
+  const currentStatus: ChatStatus = optimisticStatus || (chat?.status as ChatStatus) || 'inbox';
+
+  // Reset optimistic status when chat data changes
+  useEffect(() => {
+    setOptimisticStatus(null);
+  }, [chat?.status]);
 
   const handleClose = useCallback(() => {
     onOpenChange(false);
+    setStatusDropdownOpen(false);
   }, [onOpenChange]);
+
+  // Handle status change
+  const handleStatusChange = async (newStatus: ChatStatus) => {
+    if (!chatId || newStatus === currentStatus) {
+      setStatusDropdownOpen(false);
+      return;
+    }
+
+    setStatusDropdownOpen(false);
+    setOptimisticStatus(newStatus);
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update status');
+
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', storeId, chatId] });
+      queryClient.invalidateQueries({ queryKey: ['all-chats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-stats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-infinite', storeId] });
+
+      toast.success(`Статус: ${STATUS_LABELS[newStatus]}`);
+    } catch (error) {
+      setOptimisticStatus(null);
+      toast.error('Не удалось изменить статус');
+      console.error('Failed to update status:', error);
+    }
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!statusDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setStatusDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [statusDropdownOpen]);
 
   // Auto-scroll to bottom when messages load
   useEffect(() => {
@@ -128,16 +195,44 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {/* Status badge */}
-                {chat.status && (
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[chat.status as ChatStatus] || 'bg-gray-100 text-gray-700'}`}>
-                    {STATUS_LABELS[chat.status as ChatStatus] || chat.status}
-                  </span>
-                )}
+                {/* Status dropdown */}
+                <div ref={statusDropdownRef} className="relative">
+                  <button
+                    onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border cursor-pointer transition-all hover:shadow-sm ${STATUS_COLORS[currentStatus]}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${STATUS_DOT_COLORS[currentStatus]}`} />
+                    {STATUS_LABELS[currentStatus]}
+                    <ChevronDown className={`w-3 h-3 transition-transform ${statusDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {statusDropdownOpen && (
+                    <div
+                      className="absolute right-0 top-full mt-1 w-44 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-10"
+                    >
+                      {ALL_STATUSES.map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => handleStatusChange(s)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-50 transition-colors ${
+                            s === currentStatus ? 'bg-slate-50 font-medium' : ''
+                          }`}
+                        >
+                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT_COLORS[s]}`} />
+                          {STATUS_LABELS[s]}
+                          {s === currentStatus && (
+                            <span className="ml-auto text-xs text-slate-400">✓</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Close button */}
                 <button
                   onClick={handleClose}
-                  className="ml-2 p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="ml-1 p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
