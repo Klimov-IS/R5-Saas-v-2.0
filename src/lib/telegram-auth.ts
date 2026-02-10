@@ -94,6 +94,13 @@ export async function authenticateTelegramRequest(
   initData: string,
   maxAgeHours: number = 24
 ): Promise<AuthResult> {
+  // Dev mode bypass: X-Dev-User-Id header
+  if (initData.startsWith('dev_user:') && process.env.TELEGRAM_DEV_MODE === 'true') {
+    const devUserId = initData.replace('dev_user:', '');
+    console.log('[TG-AUTH] Dev mode: bypassing HMAC for user', devUserId);
+    return { valid: true, userId: devUserId };
+  }
+
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (!botToken) {
     return { valid: false, error: 'TELEGRAM_BOT_TOKEN not configured' };

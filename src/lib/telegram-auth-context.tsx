@@ -44,6 +44,35 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function authenticate() {
       try {
+        // Check for dev mode: ?dev_user=<userId>
+        const urlParams = new URLSearchParams(window.location.search);
+        const devUserId = urlParams.get('dev_user');
+
+        if (devUserId) {
+          // Dev mode: bypass Telegram auth
+          const response = await fetch('/api/telegram/auth/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ devUserId }),
+          });
+          const data = await response.json();
+
+          if (response.ok && data.valid) {
+            setState({
+              isLoading: false,
+              isAuthenticated: true,
+              isLinked: true,
+              userId: data.userId,
+              stores: data.stores || [],
+              error: null,
+              initData: `dev_user:${devUserId}`,
+            });
+          } else {
+            setState(s => ({ ...s, isLoading: false, error: data.error || 'Dev auth failed' }));
+          }
+          return;
+        }
+
         // Get initData from Telegram WebApp
         const tg = (window as any).Telegram?.WebApp;
         if (!tg) {

@@ -10,7 +10,23 @@ import { getUserStores } from '@/db/extension-helpers';
  */
 export async function POST(request: NextRequest) {
   try {
-    const { initData } = await request.json();
+    const body = await request.json();
+    const initData = body.initData as string | undefined;
+    const devUserId = body.devUserId as string | undefined;
+
+    // Dev mode: bypass TG auth with direct userId
+    if (devUserId && process.env.TELEGRAM_DEV_MODE === 'true') {
+      const stores = await getUserStores(devUserId);
+      if (stores.length === 0) {
+        return NextResponse.json({ valid: false, error: 'User not found or has no stores' }, { status: 404 });
+      }
+      console.log('[TG-AUTH] Dev mode login for user:', devUserId);
+      return NextResponse.json({
+        valid: true,
+        userId: devUserId,
+        stores: stores.map(s => ({ id: s.id, name: s.name })),
+      });
+    }
 
     if (!initData || typeof initData !== 'string') {
       return NextResponse.json({ valid: false, error: 'Missing initData' }, { status: 400 });

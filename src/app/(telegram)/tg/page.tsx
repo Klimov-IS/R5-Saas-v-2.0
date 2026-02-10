@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/lib/telegram-auth-context';
 import TgQueueCard from '@/components/telegram/TgQueueCard';
@@ -21,6 +21,10 @@ interface QueueItem {
 
 export default function TgQueuePage() {
   const router = useRouter();
+  const devUser = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return new URLSearchParams(window.location.search).get('dev_user');
+  }, []);
   const { isLoading: authLoading, isAuthenticated, isLinked, error: authError, apiFetch } = useTelegramAuth();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -188,7 +192,7 @@ export default function TgQueuePage() {
         <TgQueueCard
           key={item.id}
           {...item}
-          onClick={() => router.push(`/tg/chat/${item.id}?storeId=${item.storeId}`)}
+          onClick={() => router.push(`/tg/chat/${item.id}?storeId=${item.storeId}${devUser ? `&dev_user=${devUser}` : ''}`)}
         />
       ))}
     </div>
