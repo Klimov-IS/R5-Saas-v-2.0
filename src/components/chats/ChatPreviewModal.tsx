@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useChatMessages } from '@/hooks/useChats';
 import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Loader2, Package, MessageSquare } from 'lucide-react';
+import { Loader2, Package, MessageSquare, X } from 'lucide-react';
 import type { ChatStatus } from '@/db/helpers';
 
 interface ChatPreviewModalProps {
@@ -39,6 +39,10 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
   const chat = data?.chat;
   const messages = data?.messages || [];
 
+  const handleClose = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
   // Auto-scroll to bottom when messages load
   useEffect(() => {
     if (messages.length > 0) {
@@ -48,23 +52,74 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
     }
   }, [messages]);
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl h-[85vh] flex flex-col p-0 gap-0">
+  // Close on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open, handleClose]);
+
+  // Prevent body scroll when open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
+  if (!open) return null;
+
+  const modalContent = (
+    <>
+      {/* Overlay */}
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 9998,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        }}
+        onClick={handleClose}
+      />
+
+      {/* Modal */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 9999,
+          width: '90vw',
+          maxWidth: '768px',
+          height: '85vh',
+          display: 'flex',
+          flexDirection: 'column',
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+          overflow: 'hidden',
+        }}
+      >
         {/* Header */}
-        <DialogHeader className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
+        <div className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
           {isLoading ? (
-            <DialogTitle className="flex items-center gap-2 text-slate-400">
+            <div className="flex items-center gap-2 text-slate-400">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Загрузка...
-            </DialogTitle>
+              <span className="text-lg font-semibold">Загрузка...</span>
+            </div>
           ) : chat ? (
-            <div className="flex items-start justify-between pr-8">
+            <div className="flex items-start justify-between">
               <div>
-                <DialogTitle className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <MessageSquare className="w-5 h-5 text-slate-500" />
-                  {chat.clientName}
-                </DialogTitle>
+                  <h2 className="text-lg font-semibold">{chat.clientName}</h2>
+                </div>
                 {chat.productName && (
                   <div className="text-sm text-slate-500 mt-1 flex items-center gap-1">
                     <Package className="w-3.5 h-3.5" />
@@ -72,17 +127,34 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
                   </div>
                 )}
               </div>
-              {/* Status badge */}
-              {chat.status && (
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[chat.status as ChatStatus] || 'bg-gray-100 text-gray-700'}`}>
-                  {STATUS_LABELS[chat.status as ChatStatus] || chat.status}
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Status badge */}
+                {chat.status && (
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLORS[chat.status as ChatStatus] || 'bg-gray-100 text-gray-700'}`}>
+                    {STATUS_LABELS[chat.status as ChatStatus] || chat.status}
+                  </span>
+                )}
+                {/* Close button */}
+                <button
+                  onClick={handleClose}
+                  className="ml-2 p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           ) : (
-            <DialogTitle>Чат</DialogTitle>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Чат</h2>
+              <button
+                onClick={handleClose}
+                className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           )}
-        </DialogHeader>
+        </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-4 bg-slate-50">
@@ -114,7 +186,11 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
             <MessageComposer storeId={storeId} chatId={chatId} />
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </>
   );
+
+  // Portal directly to document.body — guaranteed to bypass any CSS containing blocks
+  if (typeof document === 'undefined') return null;
+  return createPortal(modalContent, document.body);
 }
