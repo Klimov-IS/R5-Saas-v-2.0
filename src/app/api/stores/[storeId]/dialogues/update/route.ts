@@ -6,6 +6,7 @@ import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
 import { buildStoreInstructions } from '@/lib/ai-context';
+import { sendTelegramNotifications } from '@/lib/telegram-notifications';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -179,6 +180,27 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         console.error(`[DIALOGUES] Failed to stop auto-sequence for chat ${chatId}:`, seqErr.message);
                     }
                 }
+            }
+
+            // --- Step 5a-tg: Send Telegram notifications for new client replies ---
+            try {
+                const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
+                for (const chatId in latestMessagesPerChat) {
+                    if (latestMessagesPerChat[chatId].sender === 'client') {
+                        const chatInfo = existingChatMap.get(chatId);
+                        clientRepliedChats.push({
+                            chatId,
+                            clientName: chatInfo?.client_name || 'Клиент',
+                            productName: chatInfo?.product_name || null,
+                            messagePreview: latestMessagesPerChat[chatId].message?.text || null,
+                        });
+                    }
+                }
+                if (clientRepliedChats.length > 0) {
+                    await sendTelegramNotifications(storeId, store.name || storeId, ownerId, clientRepliedChats);
+                }
+            } catch (tgErr: any) {
+                console.error(`[DIALOGUES] TG notification error (non-critical):`, tgErr.message);
             }
 
             // --- Step 5b: Trigger detection — auto-tag + auto-sequence for outreach messages ---

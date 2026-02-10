@@ -21,6 +21,26 @@ module.exports = {
       watch: false
     },
 
+    // Telegram Bot process (long-polling, separate from main app)
+    {
+      name: "wb-reputation-tg-bot",
+      script: "scripts/start-telegram-bot.js",
+      cwd: "/var/www/wb-reputation",
+      instances: 1,
+      exec_mode: "fork",
+      env: {
+        NODE_ENV: "production"
+      },
+      error_file: "/var/www/wb-reputation/logs/tg-bot-error.log",
+      out_file: "/var/www/wb-reputation/logs/tg-bot-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      merge_logs: true,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: "10s",
+      watch: false
+    },
+
     // Cron jobs process (separate from main app)
     {
       name: "wb-reputation-cron",
