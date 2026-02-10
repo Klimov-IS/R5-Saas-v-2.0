@@ -19,29 +19,26 @@ interface ChatPreviewModalProps {
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   inbox: 'Входящие',
-  in_progress: 'В работе',
   awaiting_reply: 'Ожидание',
-  resolved: 'Решено',
+  in_progress: 'В работе',
   closed: 'Закрыто',
 };
 
 const STATUS_COLORS: Record<ChatStatus, string> = {
   inbox: 'bg-blue-100 text-blue-700 border-blue-200',
-  in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
   awaiting_reply: 'bg-orange-100 text-orange-700 border-orange-200',
-  resolved: 'bg-green-100 text-green-700 border-green-200',
+  in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
   closed: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 
 const STATUS_DOT_COLORS: Record<ChatStatus, string> = {
   inbox: 'bg-blue-500',
-  in_progress: 'bg-amber-500',
   awaiting_reply: 'bg-orange-500',
-  resolved: 'bg-green-500',
+  in_progress: 'bg-amber-500',
   closed: 'bg-gray-400',
 };
 
-const ALL_STATUSES: ChatStatus[] = ['inbox', 'in_progress', 'awaiting_reply', 'resolved', 'closed'];
+const ALL_STATUSES: ChatStatus[] = ['inbox', 'awaiting_reply', 'in_progress', 'closed'];
 
 export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPreviewModalProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);

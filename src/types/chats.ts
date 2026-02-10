@@ -16,9 +16,8 @@ export type ChatTag =
 // NEW: Kanban Board Status (2026-01-22)
 export type ChatStatus =
   | 'inbox'           // Входящие
-  | 'in_progress'     // В работе
   | 'awaiting_reply'  // Ожидание ответа
-  | 'resolved'        // Решено
+  | 'in_progress'     // В работе
   | 'closed';         // Закрыто
 
 export type MessageSender = 'client' | 'seller';

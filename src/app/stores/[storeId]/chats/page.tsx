@@ -160,9 +160,8 @@ export default function ChatsPage() {
     return acc;
   }, {
     inbox: 0,
-    in_progress: 0,
     awaiting_reply: 0,
-    resolved: 0,
+    in_progress: 0,
     closed: 0,
   });
 

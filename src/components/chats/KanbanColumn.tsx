@@ -29,17 +29,15 @@ interface KanbanColumnProps {
 
 const COLUMN_COLORS: Record<ChatStatus, string> = {
   inbox: 'border-blue-300 bg-blue-50',
-  in_progress: 'border-amber-300 bg-amber-50',
   awaiting_reply: 'border-orange-300 bg-orange-50',
-  resolved: 'border-green-300 bg-green-50',
+  in_progress: 'border-amber-300 bg-amber-50',
   closed: 'border-gray-300 bg-gray-50',
 };
 
 const COLUMN_HEADER_COLORS: Record<ChatStatus, string> = {
   inbox: 'bg-blue-100 text-blue-800',
-  in_progress: 'bg-amber-100 text-amber-800',
   awaiting_reply: 'bg-orange-100 text-orange-800',
-  resolved: 'bg-green-100 text-green-800',
+  in_progress: 'bg-amber-100 text-amber-800',
   closed: 'bg-gray-100 text-gray-800',
 };
 

@@ -41,9 +41,8 @@ export interface KanbanBoardViewRef {
 
 const COLUMNS: { status: ChatStatus; title: string }[] = [
   { status: 'inbox', title: 'Входящие' },
-  { status: 'in_progress', title: 'В работе' },
   { status: 'awaiting_reply', title: 'Ожидание' },
-  { status: 'resolved', title: 'Решено' },
+  { status: 'in_progress', title: 'В работе' },
   { status: 'closed', title: 'Закрыто' },
 ];
 
@@ -69,9 +68,8 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
   const chatsByStatus = useMemo(() => {
     const grouped: Record<ChatStatus, Chat[]> = {
       inbox: [],
-      in_progress: [],
       awaiting_reply: [],
-      resolved: [],
+      in_progress: [],
       closed: [],
     };
 
@@ -379,7 +377,7 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
         onDragStart={(event) => setActiveId(event.active.id as string)}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-5 gap-4 flex-1 overflow-hidden">
+        <div className="grid grid-cols-4 gap-4 flex-1 overflow-hidden">
           {COLUMNS.map(column => (
             <KanbanColumn
               key={column.status}

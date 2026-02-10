@@ -23,7 +23,7 @@ export async function PATCH(
       );
     }
 
-    const validStatuses: ChatStatus[] = ['inbox', 'in_progress', 'awaiting_reply', 'resolved', 'closed'];
+    const validStatuses: ChatStatus[] = ['inbox', 'awaiting_reply', 'in_progress', 'closed'];
     if (!validStatuses.includes(status as ChatStatus)) {
       return NextResponse.json(
         { error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` },

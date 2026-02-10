@@ -19,7 +19,7 @@ export * from './complaint-helpers';
 export type UpdateStatus = "idle" | "pending" | "success" | "error";
 export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'completed'
   | 'deletion_candidate' | 'deletion_offered' | 'deletion_agreed' | 'deletion_confirmed' | 'refund_requested' | 'spam';
-export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'resolved' | 'closed';
+export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
 

@@ -101,17 +101,15 @@ export function ChatsToolbar({
 
   const STATUS_LABELS: Record<ChatStatus, string> = {
     inbox: 'Входящие',
-    in_progress: 'В работе',
     awaiting_reply: 'Ожидание',
-    resolved: 'Решено',
+    in_progress: 'В работе',
     closed: 'Закрыто',
   };
 
   const STATUS_EMOJIS: Record<ChatStatus, string> = {
     inbox: '📥',
-    in_progress: '⚙️',
     awaiting_reply: '⏳',
-    resolved: '✅',
+    in_progress: '⚙️',
     closed: '🔒',
   };
 

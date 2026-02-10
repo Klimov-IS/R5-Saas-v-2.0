@@ -22,17 +22,15 @@ interface ChatKanbanCardProps {
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
   inbox: 'Новый',
-  in_progress: 'В работе',
   awaiting_reply: 'Ожидание',
-  resolved: 'Решено',
+  in_progress: 'В работе',
   closed: 'Закрыто',
 };
 
 const STATUS_COLORS: Record<ChatStatus, string> = {
   inbox: 'bg-blue-100 text-blue-700',
-  in_progress: 'bg-amber-100 text-amber-700',
   awaiting_reply: 'bg-orange-100 text-orange-700',
-  resolved: 'bg-green-100 text-green-700',
+  in_progress: 'bg-amber-100 text-amber-700',
   closed: 'bg-gray-100 text-gray-700',
 };
 
