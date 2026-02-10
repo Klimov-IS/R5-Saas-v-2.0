@@ -5,7 +5,6 @@ import { DndContext, DragEndEvent, DragOverlay, PointerSensor, useSensor, useSen
 import KanbanColumn from './KanbanColumn';
 import ChatKanbanCard from './ChatKanbanCard';
 import CompletionReasonModal from './CompletionReasonModal';
-import { ChatPreviewModal } from './ChatPreviewModal';
 import { useRouter } from 'next/navigation';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
 import { useChatsStore } from '@/store/chatsStore';
@@ -29,6 +28,7 @@ interface Chat {
 interface KanbanBoardViewProps {
   chats: Chat[];
   storeId: string;
+  onChatClick?: (chatId: string) => void;
 }
 
 export interface KanbanBoardViewRef {
@@ -48,7 +48,7 @@ const COLUMNS: { status: ChatStatus; title: string }[] = [
 ];
 
 const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
-  function KanbanBoardView({ chats, storeId }, ref) {
+  function KanbanBoardView({ chats, storeId, onChatClick }, ref) {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { selectedChatIds, toggleChatSelection, selectAllChats, deselectAllChats, isSelected } = useChatsStore();
@@ -56,7 +56,6 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
     const [showCompletionModal, setShowCompletionModal] = useState(false);
     const [pendingCloseChatId, setPendingCloseChatId] = useState<string | null>(null);
     const [isBulkClose, setIsBulkClose] = useState(false);
-    const [previewChatId, setPreviewChatId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -390,7 +389,7 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
               selectedChatIds={selectedChatIds}
               onSelectChat={handleSelectChat}
               onSelectAll={handleSelectAll}
-              onChatClick={(chatId) => setPreviewChatId(chatId)}
+              onChatClick={onChatClick}
             />
           ))}
         </div>
@@ -423,15 +422,6 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
         chatCount={isBulkClose ? selectedChatIds.size : 1}
       />
 
-      {/* Chat Preview Modal */}
-      <ChatPreviewModal
-        storeId={storeId}
-        chatId={previewChatId}
-        open={!!previewChatId}
-        onOpenChange={(open) => {
-          if (!open) setPreviewChatId(null);
-        }}
-      />
     </div>
   );
 });

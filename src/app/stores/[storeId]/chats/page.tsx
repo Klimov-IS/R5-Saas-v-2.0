@@ -8,6 +8,7 @@ import { MessengerView } from '@/components/chats/MessengerView';
 import { ChatsToolbar } from '@/components/chats/ChatsToolbar';
 import { ChatsTableView } from '@/components/chats/ChatsTableView';
 import KanbanBoardView from '@/components/chats/KanbanBoardView';
+import { ChatPreviewModal } from '@/components/chats/ChatPreviewModal';
 import { useChatsStore } from '@/store/chatsStore';
 import { Toaster } from 'react-hot-toast';
 import type { ChatStatus } from '@/db/helpers';
@@ -32,6 +33,9 @@ export default function ChatsPage() {
   useEffect(() => {
     setCurrentStoreId(storeId);
   }, [storeId, setCurrentStoreId]);
+
+  // Chat preview modal state (rendered at page level to avoid DndContext transform issues)
+  const [previewChatId, setPreviewChatId] = useState<string | null>(null);
 
   // Ref to access KanbanBoardView methods
   const kanbanRef = useRef<{
@@ -290,10 +294,19 @@ export default function ChatsPage() {
                 completionReason: chat.completionReason || null,
               }))}
               storeId={storeId}
+              onChatClick={(chatId) => setPreviewChatId(chatId)}
             />
           )
         )}
       </div>
+
+      {/* Chat Preview Modal — rendered at page level outside DndContext */}
+      <ChatPreviewModal
+        storeId={storeId}
+        chatId={previewChatId}
+        open={!!previewChatId}
+        onOpenChange={(open) => { if (!open) setPreviewChatId(null); }}
+      />
     </>
   );
 }
