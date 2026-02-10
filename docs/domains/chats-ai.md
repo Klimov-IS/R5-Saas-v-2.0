@@ -519,19 +519,42 @@ async function buildStoreInstructions(
 
 **Файл:** `src/app/stores/[storeId]/ai/page.tsx`
 
-Три секции:
+Четыре секции:
 
 | # | Секция | Данные | Хранение |
 |---|--------|--------|----------|
 | 1 | Инструкции AI-агента | Свободный текст | `stores.ai_instructions` |
 | 2 | FAQ База знаний | Вопрос + Ответ пары | `store_faq` таблица |
 | 3 | Инструкции для клиентов | Название + Пошаговый текст | `store_guides` таблица |
+| 4 | AI-анализ диалогов | Кнопка анализа + модалка результатов | не хранится (on-demand) |
 
-Каждая секция имеет:
+Каждая секция (1-3) имеет:
 - CRUD (добавить, редактировать, удалить)
 - Toggle active/inactive
 - Template picker с multi-select и batch add
 - Детекция дубликатов ("уже добавлено")
+
+### Defaults (безкоробочный опыт)
+
+- **AI Instructions fallback:** если магазин не настроил `ai_instructions`, используется `DEFAULT_AI_INSTRUCTIONS` из `src/lib/ai-context.ts` — базовые правила вежливости, эмпатии, компенсации
+- **Default Guides banner:** при пустом списке инструкций показывается баннер "Добавить 3 базовых" → создаёт: удаление отзыва через браузер, дополнение до 5 звёзд, возврат по браку
+- **5 шаблонов инструкций:** Косметика, Электроника, Одежда, Продукты, Универсальный (`src/lib/ai-instruction-templates.ts`)
+
+### Секция 4: AI-анализ диалогов
+
+**Кнопка:** "Проанализировать диалоги" → `POST /api/stores/{storeId}/analyze-dialogues`
+
+**Логика:**
+1. `getRecentDialogues(storeId, 500)` — загружает 500 последних чатов с минимум 2 сообщениями
+2. Компактная сериализация: `[tag] Товар: name\nК: текст\nП: текст` (до 120K символов)
+3. Передаёт существующие FAQ/guides для дедупликации
+4. Deepseek API (JSON mode, max_tokens=4096) → анализирует паттерны
+5. Возвращает: предложенные FAQ (5-15 шт.), Guides (3-7 шт.), summary
+
+**UI модалка:** чекбоксы для каждого предложения, "Выбрать все / Снять все", batch add в один клик
+
+**Flow:** `src/ai/flows/analyze-store-dialogues-flow.ts`
+**DB helper:** `getRecentDialogues()` в `src/db/helpers.ts`
 
 **Prefetch:** `src/app/stores/[storeId]/layout.tsx` предзагружает `ai-instructions`, `store-faq`, `store-guides`
 

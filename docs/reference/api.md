@@ -620,6 +620,34 @@ Authorization: Bearer wbrm_xxxxxxxxxxxxxxxxxxxxx
 
 ---
 
+## AI Analysis (Анализ диалогов)
+
+### POST /api/stores/:storeId/analyze-dialogues
+
+Анализ последних 500 диалогов магазина с помощью AI. Возвращает предложенные FAQ и инструкции на основе реальных переписок. Длительная операция (~15-30 сек).
+
+**Response:**
+```json
+{
+  "faq": [
+    { "question": "Как вернуть товар?", "answer": "Возврат через WB в течение 14 дней..." }
+  ],
+  "guides": [
+    { "title": "Как удалить отзыв", "content": "1. Откройте сайт WB...\n2. ..." }
+  ],
+  "summary": "Основные паттерны: вопросы о возврате, размерах, компенсации",
+  "dialoguesAnalyzed": 347
+}
+```
+
+**Детали:**
+- Загружает до 500 последних чатов (с минимум 2 сообщениями)
+- Передаёт существующие FAQ/guides в AI для дедупликации
+- Использует Deepseek API с JSON mode
+- Логируется в `ai_logs` (operation: `analyze-store-dialogues`)
+
+---
+
 ## CRON Management
 
 ### GET /api/cron/status

@@ -130,6 +130,7 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 | `/api/stores/[storeId]/ai-instructions` | AI инструкции магазина |
 | `/api/stores/[storeId]/faq` | FAQ база знаний магазина |
 | `/api/stores/[storeId]/guides` | Инструкции для клиентов |
+| `/api/stores/[storeId]/analyze-dialogues` | AI-анализ диалогов → FAQ + Guides |
 | `/api/extension/*` | Chrome Extension API |
 | `/api/cron/*` | Cron management |
 
@@ -171,6 +172,7 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 | `generate-deletion-offer-flow.ts` | Генерация предложения удаления |
 | `generate-review-reply-flow.ts` | Генерация ответа на отзыв |
 | `generate-question-reply-flow.ts` | Генерация ответа на вопрос |
+| `analyze-store-dialogues-flow.ts` | Анализ 500 диалогов → авто-генерация FAQ + Guides |
 
 **Prompts:** `src/ai/prompts/`
 
