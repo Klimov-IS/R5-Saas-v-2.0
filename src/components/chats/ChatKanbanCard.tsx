@@ -90,6 +90,7 @@ export default function ChatKanbanCard({
             e.stopPropagation();
             onSelect?.(id, e.target.checked);
           }}
+          onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           className="w-4 h-4 cursor-pointer shrink-0 mt-0.5"
