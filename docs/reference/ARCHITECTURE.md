@@ -347,6 +347,32 @@ status: 'approved' | 'rejected'
 
 **Service:** `src/services/google-sheets-sync/`
 
+### 5. Telegram Bot & Mini App
+
+Telegram Mini App для управления чатами с покупателями через мобильный интерфейс.
+
+**Компоненты:**
+
+| Компонент | Расположение | Назначение |
+|-----------|-------------|------------|
+| TG Bot | `scripts/start-telegram-bot.js` | PM2 процесс (fork), long-polling, команды /link /stop /status |
+| Mini App UI | `src/app/(telegram)/tg/` | Мобильный интерфейс: очередь чатов + действия |
+| Proxy API | `src/app/api/telegram/` | Auth, queue, chat actions (initData HMAC) |
+| Notifications | `src/lib/telegram-notifications.ts` | Пуш при ответе клиента (хук в dialogue sync) |
+| Auth | `src/lib/telegram-auth.ts` | HMAC-SHA256 валидация initData |
+| DB helpers | `src/db/telegram-helpers.ts` | CRUD telegram_users, notification log, dedup |
+
+**Потоки данных:**
+
+```
+Клиент отвечает → Dialogue Sync → TG Push → Менеджер открывает Mini App
+→ Видит очередь → Тапает чат → 4 кнопки: Отправить / Заново / Закрыть / Пропустить
+```
+
+**API endpoints:** `/api/telegram/*`
+
+**Аутентификация:** Telegram `initData` → HMAC-SHA256 с BOT_TOKEN → lookup `telegram_users`
+
 ---
 
 ## Deployment
@@ -356,7 +382,7 @@ status: 'approved' | 'rejected'
 - **Cloud:** Yandex Cloud Compute
 - **Server:** 2 vCPU, 4GB RAM, 20GB SSD
 - **OS:** Ubuntu 24.04 LTS
-- **Process Manager:** PM2 (cluster mode, 2 instances)
+- **Process Manager:** PM2 (3 processes: app cluster x2, cron fork, tg-bot fork)
 - **Web Server:** Nginx (reverse proxy)
 - **Database:** Yandex Managed PostgreSQL 15
 
@@ -367,10 +393,11 @@ status: 'approved' | 'rejected'
 ## Security
 
 1. **API Authentication** — Bearer token (`wbrm_*`)
-2. **Store-level isolation** — `owner_id` checks
-3. **Rate limiting** — Per-endpoint limits
-4. **Input validation** — Zod schemas
-5. **SQL injection protection** — Parameterized queries
+2. **Telegram Auth** — HMAC-SHA256 initData validation + `auth_date` freshness (24h)
+3. **Store-level isolation** — `owner_id` checks
+4. **Rate limiting** — Per-endpoint limits
+5. **Input validation** — Zod schemas
+6. **SQL injection protection** — Parameterized queries
 
 ---
 

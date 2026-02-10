@@ -538,6 +538,22 @@ export function startDailyChatSync() {
 }
 ```
 
+### Telegram Notification Hook
+
+Dialogue sync includes a **non-blocking hook** (Step 5a-tg) that sends Telegram push notifications:
+
+1. After processing `latestMessagesPerChat`, collects all chats where `sender === 'client'`
+2. Calls `sendTelegramNotifications(storeId, clientReplyChats)`
+3. For each chat:
+   - Finds TG user linked to store owner
+   - Checks dedup (no duplicate within 1 hour)
+   - Sends formatted push with inline "Open chat" button
+4. Batching: 1-5 individual pushes, 6+ grouped summary
+
+**Non-blocking:** Wrapped in try/catch, errors logged but don't affect sync.
+
+**Source:** `src/lib/telegram-notifications.ts`
+
 **2. Register in `src/lib/init-server.ts`:**
 
 ```typescript
@@ -756,6 +772,11 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
 | Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
 | **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
+
+**Non-CRON Background Process:**
+| Process | Type | Description |
+|---------|------|-------------|
+| **TG Bot** (`wb-reputation-tg-bot`) | PM2 fork | Telegram bot long-polling + push notifications hook in dialogue sync |
 
 **Estimated Daily Cost Savings:** 30-40% via template optimization
 

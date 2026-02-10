@@ -15,7 +15,7 @@
 - **SSH Key:** `~/.ssh/yandex-cloud-wb-reputation`
 
 ### Application Configuration
-- **Process Manager:** PM2 (cluster mode, 2 instances)
+- **Process Manager:** PM2 (3 processes: app cluster x2, cron fork, tg-bot fork)
 - **Web Server:** Nginx (reverse proxy)
 - **Node.js:** v22.21.0
 - **Port:** 3000 (internal), 80 (external via Nginx)
@@ -177,17 +177,28 @@ Located at `/var/www/wb-reputation/ecosystem.config.js`:
 
 ```javascript
 module.exports = {
-  apps: [{
-    name: 'wb-reputation',
-    script: 'node_modules/next/dist/bin/next',
-    args: 'start',
-    instances: 2,
-    exec_mode: 'cluster',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
+  apps: [
+    {
+      name: 'wb-reputation',
+      script: 'node_modules/next/dist/bin/next',
+      args: 'start',
+      instances: 2,
+      exec_mode: 'cluster',
+      env: { NODE_ENV: 'production', PORT: 3000 }
+    },
+    {
+      name: 'wb-reputation-cron',
+      script: 'scripts/start-cron.js',
+      instances: 1,
+      exec_mode: 'fork'
+    },
+    {
+      name: 'wb-reputation-tg-bot',
+      script: 'scripts/start-telegram-bot.js',
+      instances: 1,
+      exec_mode: 'fork'
     }
-  }]
+  ]
 };
 ```
 
@@ -257,6 +268,10 @@ POSTGRES_PASSWORD=***
 
 # AI Service
 DEEPSEEK_API_KEY=sk-***
+
+# Telegram Mini App
+TELEGRAM_BOT_TOKEN=<token from @BotFather>
+TELEGRAM_MINI_APP_URL=https://<your-domain>/tg
 
 # Application
 NODE_ENV=production
@@ -389,6 +404,47 @@ pm2 logs wb-reputation
 
 ---
 
+## Telegram Bot Process
+
+TG бот — отдельный PM2 процесс (`wb-reputation-tg-bot`), long-polling, не зависит от Next.js.
+
+### Commands
+
+```bash
+# Start bot
+pm2 start ecosystem.config.js --only wb-reputation-tg-bot
+
+# View bot logs
+pm2 logs wb-reputation-tg-bot --lines 50 --nostream
+
+# Restart bot
+pm2 restart wb-reputation-tg-bot
+
+# Stop bot (не влияет на основное приложение)
+pm2 stop wb-reputation-tg-bot
+```
+
+### Setup (first time)
+
+1. Create bot via [@BotFather](https://t.me/BotFather) → get token
+2. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_MINI_APP_URL` to `.env.production`
+3. Run `pm2 start ecosystem.config.js --only wb-reputation-tg-bot && pm2 save`
+4. Configure Menu Button in BotFather → URL: `https://<domain>/tg`
+
+### Troubleshooting
+
+```bash
+# Bot crashing? Check error logs
+pm2 logs wb-reputation-tg-bot --err --lines 30
+
+# Common issues:
+# - Missing TELEGRAM_BOT_TOKEN → add to .env.production
+# - Database connection → check POSTGRES_* vars in .env.production
+# - Log permissions → chown ubuntu:ubuntu logs/tg-bot-*.log
+```
+
+---
+
 ## Monitoring After Deployment
 
 ### First 10 Minutes
@@ -439,7 +495,9 @@ pm2 logs wb-reputation --err --lines 100
 | Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 status"` |
 | View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation --lines 50 --nostream"` |
 | Restart app | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation"` |
+| TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
+| Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart wb-reputation-tg-bot"` |
 
 ---
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-02-10

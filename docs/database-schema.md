@@ -931,6 +931,62 @@ CREATE INDEX idx_ai_logs_store_error ON ai_logs(store_id, error) WHERE error IS 
 
 ---
 
+## Telegram Integration Tables
+
+### `telegram_users`
+
+**Purpose:** Link Telegram accounts to R5 users for Mini App auth and push notifications (1:1)
+
+```sql
+CREATE TABLE telegram_users (
+  id                       TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  user_id                  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  telegram_id              BIGINT NOT NULL,        -- TG user ID
+  telegram_username        TEXT,                    -- @username (optional)
+  chat_id                  BIGINT NOT NULL,         -- TG chat ID for sending messages
+  is_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  linked_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Indexes:**
+```sql
+CREATE UNIQUE INDEX idx_telegram_users_user ON telegram_users(user_id);   -- 1:1 with users
+CREATE UNIQUE INDEX idx_telegram_users_tg ON telegram_users(telegram_id); -- unique TG account
+```
+
+**Key constraints:**
+- One TG account per R5 user (UNIQUE on both `user_id` and `telegram_id`)
+- Cascade delete: removing user removes TG link
+
+### `telegram_notifications_log`
+
+**Purpose:** Track sent TG notifications for deduplication and debugging
+
+```sql
+CREATE TABLE telegram_notifications_log (
+  id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  telegram_user_id  TEXT NOT NULL REFERENCES telegram_users(id) ON DELETE CASCADE,
+  chat_id           TEXT NOT NULL,       -- R5 chat ID (not TG chat)
+  store_id          TEXT NOT NULL,
+  notification_type TEXT NOT NULL DEFAULT 'client_reply',
+  message_text      TEXT,
+  sent_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  tg_message_id     INTEGER              -- TG API message ID
+);
+```
+
+**Indexes:**
+```sql
+CREATE INDEX idx_tg_notif_user ON telegram_notifications_log(telegram_user_id, sent_at DESC);
+CREATE INDEX idx_tg_notif_chat ON telegram_notifications_log(chat_id, sent_at DESC);
+```
+
+**Dedup logic:** Before sending, check if notification for same `chat_id` was sent within last hour.
+
+---
+
 ## Entity Relationships
 
 ```
@@ -952,7 +1008,11 @@ users (1) ───── (N) stores
   │                  │
   │                  └─── (N) questions
   │
-  └─── (1) user_settings (1:1)
+  ├─── (1) user_settings (1:1)
+  │
+  └─── (1) telegram_users (1:1)
+              │
+              └─── (N) telegram_notifications_log
 ```
 
 **Key Relationships:**
@@ -1073,6 +1133,7 @@ Key migrations:
 5. `20260209_006_add_stores_ai_instructions.sql` - Added `ai_instructions` TEXT to `stores`
 6. `20260209_007_create_store_faq.sql` - Created `store_faq` table
 7. `20260209_008_create_store_guides.sql` - Created `store_guides` table
+8. `20260210_009_telegram_integration.sql` - Created `telegram_users` and `telegram_notifications_log` tables
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
