@@ -166,6 +166,7 @@ export interface ChatMessage {
   sender: 'client' | 'seller';
   timestamp: string;
   download_id?: string | null;
+  is_auto_reply?: boolean;
   created_at: string;
 }
 
@@ -985,8 +986,8 @@ export async function getRecentDialogues(storeId: string, limit = 500): Promise<
 export async function createChatMessage(message: Omit<ChatMessage, 'created_at'>): Promise<ChatMessage> {
   const result = await query<ChatMessage>(
     `INSERT INTO chat_messages (
-      id, chat_id, store_id, owner_id, text, sender, timestamp, download_id, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      id, chat_id, store_id, owner_id, text, sender, timestamp, download_id, is_auto_reply, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
     RETURNING *`,
     [
       message.id,
@@ -997,6 +998,7 @@ export async function createChatMessage(message: Omit<ChatMessage, 'created_at'>
       message.sender,
       message.timestamp,
       message.download_id || null,
+      message.is_auto_reply || false,
     ]
   );
   return result.rows[0];
@@ -1005,13 +1007,14 @@ export async function createChatMessage(message: Omit<ChatMessage, 'created_at'>
 export async function upsertChatMessage(message: Omit<ChatMessage, 'created_at'>): Promise<ChatMessage> {
   const result = await query<ChatMessage>(
     `INSERT INTO chat_messages (
-      id, chat_id, store_id, owner_id, text, sender, timestamp, download_id, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      id, chat_id, store_id, owner_id, text, sender, timestamp, download_id, is_auto_reply, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
     ON CONFLICT (id) DO UPDATE SET
       text = EXCLUDED.text,
       sender = EXCLUDED.sender,
       timestamp = EXCLUDED.timestamp,
-      download_id = EXCLUDED.download_id
+      download_id = EXCLUDED.download_id,
+      is_auto_reply = EXCLUDED.is_auto_reply
     RETURNING *`,
     [
       message.id,
@@ -1022,6 +1025,7 @@ export async function upsertChatMessage(message: Omit<ChatMessage, 'created_at'>
       message.sender,
       message.timestamp,
       message.download_id || null,
+      message.is_auto_reply || false,
     ]
   );
   return result.rows[0];

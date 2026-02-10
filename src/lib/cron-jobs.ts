@@ -687,6 +687,7 @@ export function startAutoSequenceProcessor() {
                   sender: 'seller',
                   text: stopMessage,
                   timestamp: new Date().toISOString(),
+                  is_auto_reply: true,
                 });
 
                 // Update chat last message + close
@@ -742,6 +743,7 @@ export function startAutoSequenceProcessor() {
             sender: 'seller',
             text: template.text,
             timestamp: new Date().toISOString(),
+            is_auto_reply: true,
           });
 
           // Update chat's last message info

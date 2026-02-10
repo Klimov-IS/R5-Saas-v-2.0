@@ -6,8 +6,10 @@ import { MessageBubble } from './MessageBubble';
 import { MessageComposer } from './MessageComposer';
 import { DeletionCaseInfo } from './DeletionCaseInfo';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { ChatTag } from '@/types/chats';
+import type { ChatTag, ChatStatus } from '@/types/chats';
 import { Loader2 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 
 interface ConversationPanelProps {
   storeId: string;
@@ -30,8 +32,25 @@ const TAG_LABELS: Record<ChatTag, string> = {
   spam: '🚫 Спам',
 };
 
+const STATUS_LABELS: Record<ChatStatus, string> = {
+  inbox: 'Входящие',
+  in_progress: 'В работе',
+  awaiting_reply: 'Ожидание',
+  resolved: 'Решено',
+  closed: 'Закрыто',
+};
+
+const STATUS_COLORS: Record<ChatStatus, string> = {
+  inbox: 'bg-blue-100 text-blue-700 border-blue-200',
+  in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
+  awaiting_reply: 'bg-orange-100 text-orange-700 border-orange-200',
+  resolved: 'bg-green-100 text-green-700 border-green-200',
+  closed: 'bg-gray-100 text-gray-600 border-gray-200',
+};
+
 export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error } = useChatMessages(storeId, chatId);
 
@@ -42,6 +61,32 @@ export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Handle status change
+  const handleStatusChange = async (newStatus: string) => {
+    if (!chatId) return;
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/chats/${chatId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update status');
+
+      // Invalidate caches
+      queryClient.invalidateQueries({ queryKey: ['chat-messages', storeId, chatId] });
+      queryClient.invalidateQueries({ queryKey: ['all-chats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-stats', storeId] });
+      queryClient.invalidateQueries({ queryKey: ['chats-infinite', storeId] });
+
+      toast.success(`Статус изменён: ${STATUS_LABELS[newStatus as ChatStatus]}`);
+    } catch (error) {
+      toast.error('Не удалось изменить статус');
+      console.error('Failed to update status:', error);
+    }
+  };
 
   // Empty state - no chat selected
   if (!chatId) {
@@ -86,6 +131,8 @@ export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
     );
   }
 
+  const currentStatus = (chat.status as ChatStatus) || 'inbox';
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Conversation Header */}
@@ -100,25 +147,51 @@ export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
             </div>
           </div>
 
-          {/* Tag Selector */}
-          <Select
-            value={chat.tag}
-            onValueChange={(value) => {
-              // TODO: Update chat tag via API
-              console.log('Update tag to:', value);
-            }}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(TAG_LABELS).map(([key, label]) => (
-                <SelectItem key={key} value={key}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            {/* Status Selector */}
+            <Select
+              value={currentStatus}
+              onValueChange={handleStatusChange}
+            >
+              <SelectTrigger className={`w-40 h-8 text-xs font-medium border ${STATUS_COLORS[currentStatus]}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(STATUS_LABELS).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    <span className={`inline-block w-2 h-2 rounded-full mr-2 ${
+                      key === 'inbox' ? 'bg-blue-500' :
+                      key === 'in_progress' ? 'bg-amber-500' :
+                      key === 'awaiting_reply' ? 'bg-orange-500' :
+                      key === 'resolved' ? 'bg-green-500' :
+                      'bg-gray-400'
+                    }`} />
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Tag Selector */}
+            <Select
+              value={chat.tag}
+              onValueChange={(value) => {
+                // TODO: Update chat tag via API
+                console.log('Update tag to:', value);
+              }}
+            >
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(TAG_LABELS).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Deletion Case Info */}

@@ -39,6 +39,9 @@ export async function GET(
       lastMessageSender: chat.last_message_sender,
       replySign: chat.reply_sign,
       tag: chat.tag,
+      status: chat.status || 'inbox',
+      statusUpdatedAt: chat.status_updated_at,
+      completionReason: chat.completion_reason,
       draftReply: chat.draft_reply,
       draftReplyThreadId: chat.draft_reply_thread_id,
       draftReplyGeneratedAt: chat.draft_reply_generated_at,
@@ -68,6 +71,7 @@ export async function GET(
       sender: msg.sender,
       timestamp: msg.timestamp,
       createdAt: msg.created_at,
+      isAutoReply: msg.is_auto_reply || false,
     }));
 
     return NextResponse.json({

@@ -608,17 +608,18 @@ CREATE INDEX idx_chats_product ON chats(product_nm_id) WHERE product_nm_id IS NO
 
 ```sql
 CREATE TABLE chat_messages (
-  id          TEXT PRIMARY KEY,
-  chat_id     TEXT NOT NULL REFERENCES chats(id),
-  store_id    TEXT NOT NULL REFERENCES stores(id),
-  owner_id    TEXT NOT NULL REFERENCES users(id),
+  id             TEXT PRIMARY KEY,
+  chat_id        TEXT NOT NULL REFERENCES chats(id),
+  store_id       TEXT NOT NULL REFERENCES stores(id),
+  owner_id       TEXT NOT NULL REFERENCES users(id),
 
-  text        TEXT NULL,
-  sender      TEXT NOT NULL,  -- 'client' or 'seller'
-  timestamp   TIMESTAMPTZ NOT NULL,
-  download_id TEXT NULL,
+  text           TEXT NULL,
+  sender         TEXT NOT NULL,           -- 'client' or 'seller'
+  timestamp      TIMESTAMPTZ NOT NULL,
+  download_id    TEXT NULL,
+  is_auto_reply  BOOLEAN NOT NULL DEFAULT FALSE,  -- true = sent by auto-sequence bot (migration 007)
 
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -626,6 +627,7 @@ CREATE TABLE chat_messages (
 ```sql
 CREATE INDEX idx_chat_messages_chat ON chat_messages(chat_id, timestamp DESC);
 CREATE INDEX idx_chat_messages_store ON chat_messages(store_id, timestamp DESC);
+CREATE INDEX idx_chat_messages_auto ON chat_messages(chat_id, is_auto_reply) WHERE is_auto_reply = TRUE;
 ```
 
 ---

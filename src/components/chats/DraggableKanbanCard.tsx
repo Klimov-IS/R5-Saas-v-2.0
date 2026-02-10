@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import ChatKanbanCard from './ChatKanbanCard';
@@ -18,6 +19,7 @@ interface DraggableKanbanCardProps {
   selected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
   completionReason?: CompletionReason | null;
+  onChatClick?: (chatId: string) => void;
 }
 
 export default function DraggableKanbanCard(props: DraggableKanbanCardProps) {
@@ -29,13 +31,34 @@ export default function DraggableKanbanCard(props: DraggableKanbanCardProps) {
     isDragging,
   } = useDraggable({ id: props.id });
 
+  const didDragRef = useRef(false);
+
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Track if a drag happened to distinguish click from drag
+  if (isDragging) {
+    didDragRef.current = true;
+  }
+
+  const handleClick = () => {
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
+    props.onChatClick?.(props.id);
+  };
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={handleClick}
+    >
       <ChatKanbanCard {...props} />
     </div>
   );

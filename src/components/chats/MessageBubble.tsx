@@ -1,5 +1,5 @@
 import type { ChatMessage } from '@/types/chats';
-import { Loader2, Check, AlertCircle } from 'lucide-react';
+import { Loader2, Check, AlertCircle, Bot } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -8,6 +8,7 @@ interface MessageBubbleProps {
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isClient = message.sender === 'client';
   const isSeller = message.sender === 'seller';
+  const isAutoReply = message.isAutoReply === true;
   const status = message.status || 'sent';
 
   // Format time with date if needed
@@ -59,15 +60,25 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           ${
             isClient
               ? 'bg-gradient-to-br from-purple-500 to-purple-700'
-              : 'bg-gradient-to-br from-blue-400 to-blue-600'
+              : isAutoReply
+                ? 'bg-gradient-to-br from-violet-400 to-violet-600'
+                : 'bg-gradient-to-br from-blue-400 to-blue-600'
           }
         `}
       >
-        {isClient ? 'К' : '🏪'}
+        {isClient ? 'К' : isAutoReply ? <Bot className="w-5 h-5" /> : '🏪'}
       </div>
 
       {/* Message Content */}
       <div className={`max-w-[60%] ${isClient ? '' : 'flex flex-col items-end'}`}>
+        {/* Auto-reply label */}
+        {isAutoReply && (
+          <div className="flex items-center gap-1 mb-1 text-[11px] font-medium text-violet-600">
+            <Bot className="w-3 h-3" />
+            <span>Авто-рассылка</span>
+          </div>
+        )}
+
         {/* Message Bubble */}
         <div
           className={`
@@ -75,7 +86,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             ${
               isClient
                 ? 'bg-white border border-slate-200 text-slate-900 rounded-tl-sm'
-                : 'bg-blue-500 text-white rounded-tr-sm'
+                : isAutoReply
+                  ? 'bg-violet-500 text-white rounded-tr-sm'
+                  : 'bg-blue-500 text-white rounded-tr-sm'
             }
           `}
         >

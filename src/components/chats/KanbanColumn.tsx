@@ -24,6 +24,7 @@ interface KanbanColumnProps {
   selectedChatIds: Set<string>;
   onSelectChat: (chatId: string, selected: boolean) => void;
   onSelectAll: (chatIds: string[], selected: boolean) => void;
+  onChatClick?: (chatId: string) => void;
 }
 
 const COLUMN_COLORS: Record<ChatStatus, string> = {
@@ -49,6 +50,7 @@ export default function KanbanColumn({
   selectedChatIds,
   onSelectChat,
   onSelectAll,
+  onChatClick,
 }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: status,
@@ -122,6 +124,7 @@ export default function KanbanColumn({
               selected={selectedChatIds.has(chat.id)}
               onSelect={onSelectChat}
               completionReason={chat.completionReason}
+              onChatClick={onChatClick}
             />
           ))
         )}

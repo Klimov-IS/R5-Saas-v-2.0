@@ -5,6 +5,7 @@ import { DndContext, DragEndEvent, DragOverlay, PointerSensor, useSensor, useSen
 import KanbanColumn from './KanbanColumn';
 import ChatKanbanCard from './ChatKanbanCard';
 import CompletionReasonModal from './CompletionReasonModal';
+import { ChatPreviewModal } from './ChatPreviewModal';
 import { useRouter } from 'next/navigation';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
 import { useChatsStore } from '@/store/chatsStore';
@@ -55,6 +56,7 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
     const [showCompletionModal, setShowCompletionModal] = useState(false);
     const [pendingCloseChatId, setPendingCloseChatId] = useState<string | null>(null);
     const [isBulkClose, setIsBulkClose] = useState(false);
+    const [previewChatId, setPreviewChatId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -388,6 +390,7 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
               selectedChatIds={selectedChatIds}
               onSelectChat={handleSelectChat}
               onSelectAll={handleSelectAll}
+              onChatClick={(chatId) => setPreviewChatId(chatId)}
             />
           ))}
         </div>
@@ -418,6 +421,16 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
         onClose={handleCompletionModalClose}
         onConfirm={handleCompletionReasonConfirm}
         chatCount={isBulkClose ? selectedChatIds.size : 1}
+      />
+
+      {/* Chat Preview Modal */}
+      <ChatPreviewModal
+        storeId={storeId}
+        chatId={previewChatId}
+        open={!!previewChatId}
+        onOpenChange={(open) => {
+          if (!open) setPreviewChatId(null);
+        }}
       />
     </div>
   );

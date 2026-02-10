@@ -56,6 +56,7 @@ export interface ChatMessage {
   text: string;
   createdAt: string;
   status?: MessageStatus; // Optional: для оптимистичных обновлений
+  isAutoReply?: boolean;  // true = отправлено авто-рассылкой (бот)
 }
 
 export interface ChatsResponse {
