@@ -925,6 +925,63 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
   return result.rows;
 }
 
+export interface DialogueSummary {
+  chat_id: string;
+  client_name: string;
+  tag: string;
+  product_name: string | null;
+  messages: { sender: string; text: string }[];
+}
+
+/**
+ * Fetch N most recent dialogues (chats + their messages) for a store.
+ * Used for AI analysis of common patterns in customer conversations.
+ */
+export async function getRecentDialogues(storeId: string, limit = 500): Promise<DialogueSummary[]> {
+  // Step 1: Get recent chats with at least 2 messages
+  const chatsResult = await query<{ id: string; client_name: string; tag: string; product_name: string | null }>(
+    `SELECT c.id, c.client_name, c.tag, c.product_name
+     FROM chats c
+     WHERE c.store_id = $1
+       AND c.last_message_date IS NOT NULL
+       AND (SELECT COUNT(*) FROM chat_messages cm WHERE cm.chat_id = c.id) >= 2
+     ORDER BY c.last_message_date DESC
+     LIMIT $2`,
+    [storeId, limit]
+  );
+
+  if (chatsResult.rows.length === 0) return [];
+
+  const chatIds = chatsResult.rows.map(c => c.id);
+
+  // Step 2: Get all messages for these chats
+  const messagesResult = await query<{ chat_id: string; sender: string; text: string | null }>(
+    `SELECT chat_id, sender, text
+     FROM chat_messages
+     WHERE chat_id = ANY($1)
+     ORDER BY chat_id, timestamp ASC`,
+    [chatIds]
+  );
+
+  // Step 3: Group messages by chat
+  const messagesByChatId = new Map<string, { sender: string; text: string }[]>();
+  for (const msg of messagesResult.rows) {
+    if (!msg.text) continue;
+    if (!messagesByChatId.has(msg.chat_id)) messagesByChatId.set(msg.chat_id, []);
+    messagesByChatId.get(msg.chat_id)!.push({ sender: msg.sender, text: msg.text });
+  }
+
+  return chatsResult.rows
+    .filter(c => messagesByChatId.has(c.id))
+    .map(c => ({
+      chat_id: c.id,
+      client_name: c.client_name,
+      tag: c.tag,
+      product_name: c.product_name,
+      messages: messagesByChatId.get(c.id)!,
+    }));
+}
+
 export async function createChatMessage(message: Omit<ChatMessage, 'created_at'>): Promise<ChatMessage> {
   const result = await query<ChatMessage>(
     `INSERT INTO chat_messages (

@@ -79,6 +79,7 @@ export async function runChatCompletion({
     ownerId,
     entityType,
     entityId,
+    maxTokens,
 }: {
     systemPrompt: string;
     userContent: string;
@@ -88,6 +89,7 @@ export async function runChatCompletion({
     ownerId: string;
     entityType: string;
     entityId: string;
+    maxTokens?: number;
 }): Promise<string> {
     let logId = '';
 
@@ -129,7 +131,7 @@ export async function runChatCompletion({
                 { role: 'user', content: userContent }
             ],
             temperature: 0.7,
-            max_tokens: 2048,
+            max_tokens: maxTokens || 2048,
         };
 
         if (isJsonMode) {

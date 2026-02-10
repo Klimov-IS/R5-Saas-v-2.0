@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen, ChevronDown, ChevronUp, ListChecks, FileText } from 'lucide-react';
+import { Sparkles, Plus, Trash2, Pencil, Check, X, Loader2, Save, BookOpen, ChevronDown, ChevronUp, ListChecks, FileText, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AI_INSTRUCTION_TEMPLATES } from '@/lib/ai-instruction-templates';
 import { FAQ_TEMPLATE_GROUPS } from '@/lib/faq-templates';
@@ -127,6 +127,25 @@ async function deleteGuideEntry(storeId: string, guideId: string) {
   return res.json();
 }
 
+type AnalysisResult = {
+  faq: { question: string; answer: string }[];
+  guides: { title: string; content: string }[];
+  summary: string;
+  dialoguesAnalyzed: number;
+};
+
+async function analyzeDialogues(storeId: string): Promise<AnalysisResult> {
+  const res = await fetch(`/api/stores/${storeId}/analyze-dialogues`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error || 'Failed to analyze dialogues');
+  }
+  return res.json();
+}
+
 // ---- Component ----
 
 export default function AISettingsPage() {
@@ -166,6 +185,14 @@ export default function AISettingsPage() {
   const [selectedGuideTemplates, setSelectedGuideTemplates] = useState<Set<string>>(new Set());
   const [addingGuideTemplates, setAddingGuideTemplates] = useState(false);
   const [addingDefaults, setAddingDefaults] = useState(false);
+
+  // AI Analysis state
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [selectedAnalysisFaq, setSelectedAnalysisFaq] = useState<Set<number>>(new Set());
+  const [selectedAnalysisGuides, setSelectedAnalysisGuides] = useState<Set<number>>(new Set());
+  const [addingAnalysisItems, setAddingAnalysisItems] = useState(false);
 
   // Fetch AI instructions
   const { data: aiData, isLoading: loadingInstructions } = useQuery({
@@ -367,6 +394,61 @@ export default function AISettingsPage() {
     queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
     setAddingDefaults(false);
     toast({ title: `Добавлено ${added} базовых инструкций` });
+  };
+
+  // AI Analysis handlers
+  const runAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const result = await analyzeDialogues(storeId);
+      setAnalysisResult(result);
+      setSelectedAnalysisFaq(new Set(result.faq.map((_, i) => i)));
+      setSelectedAnalysisGuides(new Set(result.guides.map((_, i) => i)));
+      setShowAnalysisModal(true);
+    } catch (error: any) {
+      toast({ title: error.message || 'Ошибка анализа', variant: 'destructive' });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const addAnalysisItems = async () => {
+    if (!analysisResult) return;
+    setAddingAnalysisItems(true);
+
+    let addedFaq = 0;
+    let addedGuides = 0;
+
+    // Add selected FAQ
+    for (const idx of selectedAnalysisFaq) {
+      const item = analysisResult.faq[idx];
+      if (!item) continue;
+      try {
+        await createFaqEntry(storeId, item.question, item.answer);
+        addedFaq++;
+      } catch { /* skip */ }
+    }
+
+    // Add selected guides
+    for (const idx of selectedAnalysisGuides) {
+      const item = analysisResult.guides[idx];
+      if (!item) continue;
+      try {
+        await createGuideEntry(storeId, item.title, item.content);
+        addedGuides++;
+      } catch { /* skip */ }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['store-faq', storeId] });
+    queryClient.invalidateQueries({ queryKey: ['store-guides', storeId] });
+    setAddingAnalysisItems(false);
+    setShowAnalysisModal(false);
+    setAnalysisResult(null);
+
+    const parts: string[] = [];
+    if (addedFaq > 0) parts.push(`${addedFaq} FAQ`);
+    if (addedGuides > 0) parts.push(`${addedGuides} инструкций`);
+    toast({ title: parts.length > 0 ? `Добавлено: ${parts.join(', ')}` : 'Ничего не добавлено' });
   };
 
   const handleTemplateClick = (template: string) => {
@@ -902,6 +984,144 @@ export default function AISettingsPage() {
           </div>
         )}
       </section>
+
+      {/* Section 4: AI Analysis */}
+      <section className="ai-section ai-analysis-section">
+        <div className="ai-section-header">
+          <div className="ai-section-title">
+            <Zap style={{ width: 20, height: 20 }} />
+            <h2>AI-анализ диалогов</h2>
+          </div>
+          <p className="ai-section-desc">
+            Проанализируйте последние 500 диалогов с клиентами. AI найдёт частые вопросы и предложит FAQ + инструкции на основе реальных переписок.
+          </p>
+        </div>
+
+        <button
+          className="ai-analyze-btn"
+          onClick={runAnalysis}
+          disabled={analyzing}
+        >
+          {analyzing ? (
+            <><Loader2 className="animate-spin" style={{ width: 18, height: 18 }} /> Анализ диалогов... (15-30 сек)</>
+          ) : (
+            <><Zap style={{ width: 18, height: 18 }} /> Проанализировать диалоги</>
+          )}
+        </button>
+      </section>
+
+      {/* Analysis Results Modal */}
+      {showAnalysisModal && analysisResult && (
+        <div className="analysis-modal-overlay" onClick={() => setShowAnalysisModal(false)}>
+          <div className="analysis-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="analysis-modal-header">
+              <h3>Результаты анализа</h3>
+              <button className="analysis-modal-close" onClick={() => setShowAnalysisModal(false)}>
+                <X style={{ width: 20, height: 20 }} />
+              </button>
+            </div>
+
+            {analysisResult.summary && (
+              <div className="analysis-summary">
+                <p>{analysisResult.summary}</p>
+                <span className="analysis-meta">Проанализировано диалогов: {analysisResult.dialoguesAnalyzed}</span>
+              </div>
+            )}
+
+            {/* Suggested FAQ */}
+            {analysisResult.faq.length > 0 && (
+              <div className="analysis-group">
+                <div className="analysis-group-header">
+                  <h4>Предложенные FAQ ({analysisResult.faq.length})</h4>
+                  <button
+                    className="faq-template-select-all"
+                    onClick={() => {
+                      const allSelected = analysisResult.faq.every((_, i) => selectedAnalysisFaq.has(i));
+                      setSelectedAnalysisFaq(allSelected ? new Set() : new Set(analysisResult.faq.map((_, i) => i)));
+                    }}
+                  >
+                    {analysisResult.faq.every((_, i) => selectedAnalysisFaq.has(i)) ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                </div>
+                {analysisResult.faq.map((item, idx) => (
+                  <label key={idx} className={`faq-template-item ${selectedAnalysisFaq.has(idx) ? 'selected' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedAnalysisFaq.has(idx)}
+                      onChange={() => {
+                        setSelectedAnalysisFaq(prev => {
+                          const next = new Set(prev);
+                          if (next.has(idx)) next.delete(idx); else next.add(idx);
+                          return next;
+                        });
+                      }}
+                    />
+                    <div className="faq-template-item-content">
+                      <div className="faq-template-item-q">В: {item.question}</div>
+                      <div className="faq-template-item-a">О: {item.answer}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* Suggested Guides */}
+            {analysisResult.guides.length > 0 && (
+              <div className="analysis-group">
+                <div className="analysis-group-header">
+                  <h4>Предложенные инструкции ({analysisResult.guides.length})</h4>
+                  <button
+                    className="faq-template-select-all"
+                    onClick={() => {
+                      const allSelected = analysisResult.guides.every((_, i) => selectedAnalysisGuides.has(i));
+                      setSelectedAnalysisGuides(allSelected ? new Set() : new Set(analysisResult.guides.map((_, i) => i)));
+                    }}
+                  >
+                    {analysisResult.guides.every((_, i) => selectedAnalysisGuides.has(i)) ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                </div>
+                {analysisResult.guides.map((item, idx) => (
+                  <label key={idx} className={`faq-template-item ${selectedAnalysisGuides.has(idx) ? 'selected' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={selectedAnalysisGuides.has(idx)}
+                      onChange={() => {
+                        setSelectedAnalysisGuides(prev => {
+                          const next = new Set(prev);
+                          if (next.has(idx)) next.delete(idx); else next.add(idx);
+                          return next;
+                        });
+                      }}
+                    />
+                    <div className="faq-template-item-content">
+                      <div className="faq-template-item-q">{item.title}</div>
+                      <div className="faq-template-item-a guide-preview">{item.content}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="analysis-modal-actions">
+              <button
+                className="ai-btn-save has-changes"
+                onClick={addAnalysisItems}
+                disabled={addingAnalysisItems || (selectedAnalysisFaq.size === 0 && selectedAnalysisGuides.size === 0)}
+              >
+                {addingAnalysisItems ? (
+                  <><Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> Добавление...</>
+                ) : (
+                  <><Check style={{ width: 16, height: 16 }} /> Добавить выбранные ({selectedAnalysisFaq.size + selectedAnalysisGuides.size})</>
+                )}
+              </button>
+              <button className="ai-btn-cancel" onClick={() => setShowAnalysisModal(false)}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
