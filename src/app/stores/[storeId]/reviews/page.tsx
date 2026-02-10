@@ -6,7 +6,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -118,10 +118,11 @@ export default function ReviewsPageV2() {
   const [selectedReviews, setSelectedReviews] = useState<Set<string>>(new Set());
 
   // Fetch reviews data
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['reviews-v2', storeId, skip, take, filters],
     queryFn: () => fetchReviewsData(storeId, skip, take, filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: keepPreviousData, // Show old data while loading new page/filters
     enabled: !!storeId,
   });
 
@@ -353,6 +354,7 @@ export default function ReviewsPageV2() {
         <div className="results-count">
           Всего: <strong>{(data?.totalCount || 0).toLocaleString('ru-RU')} отзывов</strong> |
           Показано: <strong>{(data?.reviews.length || 0).toLocaleString('ru-RU')}</strong>
+          {isFetching && !isLoading && <span className="refetch-indicator">Обновление...</span>}
         </div>
         <div className="page-size-selector">
           <label>На странице:</label>
@@ -381,7 +383,7 @@ export default function ReviewsPageV2() {
 
       {/* Reviews Table */}
       {!isLoading && !error && data && (
-        <div className="reviews-table-wrapper">
+        <div className="reviews-table-wrapper" style={{ opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           <table className="reviews-table">
             <thead>
               <tr>
@@ -466,6 +468,18 @@ export default function ReviewsPageV2() {
         .results-count strong {
           color: var(--color-foreground);
           font-weight: 600;
+        }
+
+        .refetch-indicator {
+          margin-left: var(--spacing-sm);
+          color: var(--color-primary);
+          font-size: var(--font-size-xs);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
         }
 
         .page-size-selector {
