@@ -586,7 +586,7 @@ CREATE TABLE chats (
 
 **Key Fields:**
 - `tag` - AI classification (12 тегов): `active`, `successful`, `unsuccessful`, `no_reply`, `untagged`, `completed`, `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`, `refund_requested`, `spam`
-- `status` - Kanban position (5 статусов): `inbox`, `in_progress`, `awaiting_reply`, `resolved`, `closed`
+- `status` - Kanban position (4 статуса): `inbox`, `awaiting_reply`, `in_progress`, `closed` (resolved removed in migration 008)
 - `completion_reason` - причина закрытия: `review_deleted`, `review_upgraded`, `no_reply`, `old_dialog`, `not_our_issue`, `spam`, `negative`, `other`
 - `sent_no_reply_messages` - история отправленных авто-сообщений (набор 1)
 - `sent_no_reply_messages2` - история отправленных авто-сообщений (набор 2)
