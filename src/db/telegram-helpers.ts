@@ -209,10 +209,13 @@ export async function getUnifiedChatQueue(
        c.draft_reply, c.status, c.tag
      FROM chats c
      JOIN stores s ON c.store_id = s.id
+     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
+     LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE c.owner_id = $1
        AND c.last_message_sender = 'client'
        AND c.status != 'closed'
        AND s.status = 'active'
+       AND pr.work_in_chats = TRUE
      ORDER BY c.last_message_date DESC NULLS LAST
      LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
@@ -228,10 +231,13 @@ export async function getUnifiedChatQueueCount(userId: string): Promise<number> 
     `SELECT COUNT(*) as count
      FROM chats c
      JOIN stores s ON c.store_id = s.id
+     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
+     LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE c.owner_id = $1
        AND c.last_message_sender = 'client'
        AND c.status != 'closed'
-       AND s.status = 'active'`,
+       AND s.status = 'active'
+       AND pr.work_in_chats = TRUE`,
     [userId]
   );
   return parseInt(result.rows[0]?.count || '0', 10);

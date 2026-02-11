@@ -50,21 +50,56 @@ export async function POST(
       [chatId]
     );
 
-    // Build context
-    const storeInstructions = await buildStoreInstructions(chat.store_id, chat.product_nm_id);
+    // Build chat history (filter out null/empty messages)
+    const chatHistory = messagesResult.rows
+      .filter((m: any) => m.text && m.text.trim())
+      .map((m: any) => `[${m.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${m.text}`)
+      .join('\n');
+
+    // Load product rules for enriched context
+    let productRulesContext = '';
+    if (chat.product_nm_id) {
+      const rules = await dbHelpers.getProductRulesByNmId(chat.store_id, chat.product_nm_id);
+      if (rules) {
+        productRulesContext = `\n**Правила товара:**\nРабота в чатах: ${rules.work_in_chats ? 'включена' : 'отключена'}`;
+        if (rules.offer_compensation) {
+          productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
+        } else {
+          productRulesContext += `\nКомпенсация: не предлагать`;
+        }
+        if (rules.chat_strategy) {
+          productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
+        }
+      }
+    }
+
+    // Build context string (matching web API format)
+    const context = `
+**Магазин:**
+Название: ${chat.store_name}
+
+**Товар:**
+Название: ${chat.product_name || 'Неизвестно'}
+Артикул WB: ${chat.product_nm_id || 'Неизвестно'}
+Вендор код: ${chat.product_vendor_code || 'Неизвестно'}
+${productRulesContext}
+
+**Клиент:**
+Имя: ${chat.client_name || 'Клиент'}
+
+**История переписки:**
+${chatHistory}
+    `.trim();
+
+    // Build store instructions (pass ai_instructions, not product_nm_id)
+    const storeInstructions = await buildStoreInstructions(chat.store_id, chat.ai_instructions);
 
     // Generate AI reply
     const result = await generateChatReply({
+      context,
       chatId,
       storeId: chat.store_id,
       ownerId: auth.userId,
-      clientName: chat.client_name || 'Клиент',
-      productName: chat.product_name || null,
-      messages: messagesResult.rows.map((m: any) => ({
-        text: m.text,
-        sender: m.sender,
-        timestamp: m.timestamp,
-      })),
       storeInstructions: storeInstructions || undefined,
     });
 

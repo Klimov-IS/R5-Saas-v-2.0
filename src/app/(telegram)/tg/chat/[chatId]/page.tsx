@@ -91,13 +91,6 @@ export default function TgChatPage() {
     fetchChat();
   }, [fetchChat]);
 
-  // Auto-generate draft if none exists
-  useEffect(() => {
-    if (chat && !chat.draftReply && !isGenerating && !draftText) {
-      handleGenerate();
-    }
-  }, [chat]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Send message
   const handleSend = async () => {
     if (!draftText.trim() || isSending) return;
