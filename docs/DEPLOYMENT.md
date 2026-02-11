@@ -1,6 +1,6 @@
 # Deployment Guide - WB Reputation Manager
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-02-10
 
 ---
 
@@ -9,16 +9,28 @@
 ### Server Details
 - **Provider:** Yandex Cloud Compute
 - **IP Address:** 158.160.217.236
+- **Domain:** `rating5.ru` (через Cloudflare)
 - **Region:** ru-central1-d
 - **OS:** Ubuntu 24.04 LTS
 - **Resources:** 2 vCPU, 4GB RAM, 20GB SSD
 - **SSH Key:** `~/.ssh/yandex-cloud-wb-reputation`
+- **SSH User:** `ubuntu` (NEVER use `sudo pm2` — creates separate root daemon)
+
+### Network Architecture
+```
+User → HTTPS → Cloudflare (edge SSL, CDN, proxy) → HTTPS → Nginx → Next.js :3000
+```
+
+- **Domain:** `rating5.ru` (registrar: nic.ru, DNS: Cloudflare)
+- **Cloudflare:** SSL mode "Full (Strict)", Proxied ON, Bot Fight Mode OFF
+- **SSL Certificate:** GlobalSign DV (origin), stored at `/etc/ssl/rating5/`
+- **Cloudflare NS:** `lisa.ns.cloudflare.com`, `pedro.ns.cloudflare.com`
 
 ### Application Configuration
-- **Process Manager:** PM2 (3 processes: app cluster x2, cron fork, tg-bot fork)
-- **Web Server:** Nginx (reverse proxy)
+- **Process Manager:** PM2 (4 processes: app cluster x2, cron fork, tg-bot fork)
+- **Web Server:** Nginx (reverse proxy, SSL termination)
 - **Node.js:** v22.21.0
-- **Port:** 3000 (internal), 80 (external via Nginx)
+- **Port:** 3000 (internal), 80/443 (external via Nginx)
 
 ---
 
@@ -117,20 +129,27 @@ Before deploying to production:
 After deployment, verify these endpoints:
 
 ```bash
-# Health check
+# Health check (via domain)
+curl https://rating5.ru/health
+
+# Health check (direct IP)
 curl http://158.160.217.236/health
 
 # API authentication
-curl -X GET "http://158.160.217.236/api/stores" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+curl -X GET "https://rating5.ru/api/stores" \
+  -H "Authorization: Bearer wbrm_<your-api-key>"
+
+# Telegram Mini App
+curl -sI https://rating5.ru/tg
 
 # Check response time
-time curl -s http://158.160.217.236 > /dev/null
+time curl -s https://rating5.ru > /dev/null
 ```
 
 **Expected results:**
 - Health endpoint returns 200 OK
 - API returns store list (not 401/403)
+- `/tg` returns 200 (Mini App page)
 - Response time < 2 seconds
 
 ---
@@ -211,22 +230,67 @@ module.exports = {
 Located at `/etc/nginx/sites-available/wb-reputation`:
 
 ```nginx
+# HTTP: redirect rating5.ru to HTTPS
 server {
     listen 80;
-    server_name 158.160.217.236;
+    server_name rating5.ru www.rating5.ru;
+    return 301 https://rating5.ru$request_uri;
+}
+
+# HTTPS: rating5.ru with SSL
+server {
+    listen 443 ssl http2;
+    server_name rating5.ru www.rating5.ru;
+
+    ssl_certificate /etc/ssl/rating5/fullchain.crt;
+    ssl_certificate_key /etc/ssl/rating5/private.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # www → non-www redirect
+    if ($host = www.rating5.ru) {
+        return 301 https://rating5.ru$request_uri;
+    }
 
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
     }
 }
+
+# IP-based access (legacy, backward compatibility)
+server {
+    listen 80;
+    server_name 158.160.217.236;
+    # ... (existing proxy + flower market config)
+}
 ```
+
+### SSL Certificate
+
+- **Type:** GlobalSign DomainSSL DV
+- **Domain:** `rating5.ru` + `www.rating5.ru`
+- **Expires:** 2026-09-12
+- **Files:**
+  - `/etc/ssl/rating5/fullchain.crt` (domain + intermediate cert)
+  - `/etc/ssl/rating5/private.key` (permissions: 600, owner: root)
+- **Renewal:** Manual (buy new cert from nic.ru before expiry)
+
+### Cloudflare Configuration
+
+- **DNS:** A records `rating5.ru` + `www` → `158.160.217.236` (Proxied ON)
+- **SSL/TLS:** Full (Strict) — Cloudflare validates origin cert
+- **Security:** Bot Fight Mode OFF (required for Telegram Mini App WebView)
+- **Cloudflare panel:** [dash.cloudflare.com](https://dash.cloudflare.com) → rating5.ru
 
 ### Nginx Commands
 
@@ -260,9 +324,10 @@ Production environment variables are in `/var/www/wb-reputation/.env.production`
 
 ```bash
 # Database (Yandex Managed PostgreSQL)
+# IMPORTANT: var name is POSTGRES_DB (not POSTGRES_DATABASE!)
 POSTGRES_HOST=rc1a-xxx.mdb.yandexcloud.net
 POSTGRES_PORT=6432
-POSTGRES_DATABASE=wb_reputation
+POSTGRES_DB=wb_reputation
 POSTGRES_USER=admin_R5
 POSTGRES_PASSWORD=***
 
@@ -271,7 +336,8 @@ DEEPSEEK_API_KEY=sk-***
 
 # Telegram Mini App
 TELEGRAM_BOT_TOKEN=<token from @BotFather>
-TELEGRAM_MINI_APP_URL=https://<your-domain>/tg
+TELEGRAM_MINI_APP_URL=https://rating5.ru/tg
+# TELEGRAM_DEV_MODE=true  # Enable for dev mode (?dev_user=<userId>)
 
 # Application
 NODE_ENV=production
@@ -293,7 +359,7 @@ pm2 reload wb-reputation
 
 ## Database Migrations
 
-If you added new database migrations:
+**NOTE:** `psql` is NOT installed on the server. Use Node.js `pg` Pool to run migrations.
 
 ```bash
 # SSH into server
@@ -302,17 +368,25 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
 # Navigate to project
 cd /var/www/wb-reputation
 
-# Apply migrations manually via psql
-# (migrations are in supabase/migrations/)
-
-# Example:
-PGPASSWORD="$POSTGRES_PASSWORD" psql \
-  -h rc1a-xxx.mdb.yandexcloud.net \
-  -p 6432 \
-  -U admin_R5 \
-  -d wb_reputation \
-  -f supabase/migrations/XXX_migration_name.sql
+# Run migration via Node.js (one-liner)
+node -e "
+  const { Pool } = require('pg');
+  const fs = require('fs');
+  const pool = new Pool({
+    host: process.env.POSTGRES_HOST,
+    port: process.env.POSTGRES_PORT,
+    database: process.env.POSTGRES_DB,
+    user: process.env.POSTGRES_USER,
+    password: process.env.POSTGRES_PASSWORD,
+    ssl: { rejectUnauthorized: false }
+  });
+  const sql = fs.readFileSync('migrations/009_telegram_integration.sql', 'utf8');
+  pool.query(sql).then(() => { console.log('OK'); pool.end(); })
+    .catch(e => { console.error(e.message); pool.end(); });
+"
 ```
+
+Migration files are in `migrations/` folder (001-009+).
 
 ---
 
@@ -481,8 +555,10 @@ pm2 logs wb-reputation --err --lines 100
 
 ## Emergency Contacts
 
-- **Production URL:** http://158.160.217.236
+- **Production URL:** https://rating5.ru (primary), http://158.160.217.236 (direct IP)
+- **Cloudflare:** [dash.cloudflare.com](https://dash.cloudflare.com) → rating5.ru
 - **GitHub Repo:** https://github.com/Klimov-IS/R5-Saas-v-2.0
+- **Telegram Bot:** [@R5_chat_bot](https://t.me/R5_chat_bot)
 - **Documentation:** See `/docs` folder
 
 ---
@@ -495,8 +571,11 @@ pm2 logs wb-reputation --err --lines 100
 | Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 status"` |
 | View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation --lines 50 --nostream"` |
 | Restart app | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation"` |
+| Restart all | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart all"` |
 | TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
 | Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart wb-reputation-tg-bot"` |
+| Test SSL | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "curl -sI https://rating5.ru/health"` |
+| Check nginx | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "sudo nginx -t"` |
 
 ---
 

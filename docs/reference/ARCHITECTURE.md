@@ -23,11 +23,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│                     Edge / CDN Layer                          │
+│          Cloudflare (SSL, CDN, Proxy) │ rating5.ru           │
+├─────────────────────────────────────────────────────────────┤
 │                      Presentation Layer                      │
 │  Next.js App Router │ React 18 │ Tailwind CSS │ React Query │
+│  + Telegram Mini App (src/app/(telegram)/tg/)                │
 ├─────────────────────────────────────────────────────────────┤
 │                        API Layer                             │
-│         Next.js API Routes │ REST │ Bearer Auth              │
+│    Next.js API Routes │ REST │ Bearer Auth │ TG initData     │
 ├─────────────────────────────────────────────────────────────┤
 │                      Business Logic                          │
 │    AI Flows │ Sync Services │ Cron Jobs │ Backfill Worker   │
@@ -36,7 +40,7 @@
 │      PostgreSQL (Yandex Managed) │ pg library │ Raw SQL      │
 ├─────────────────────────────────────────────────────────────┤
 │                   External Services                          │
-│        Wildberries API │ Deepseek AI │ Chrome Extension      │
+│   Wildberries API │ Deepseek AI │ Chrome Extension │ TG API │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -379,14 +383,25 @@ Telegram Mini App для управления чатами с покупател
 
 **Инфраструктура:**
 
+- **Domain:** `rating5.ru` (registrar: nic.ru, DNS: Cloudflare)
+- **CDN/Proxy:** Cloudflare (SSL Full Strict, Proxied ON)
 - **Cloud:** Yandex Cloud Compute
-- **Server:** 2 vCPU, 4GB RAM, 20GB SSD
+- **Server:** 2 vCPU, 4GB RAM, 20GB SSD (IP: 158.160.217.236)
 - **OS:** Ubuntu 24.04 LTS
-- **Process Manager:** PM2 (3 processes: app cluster x2, cron fork, tg-bot fork)
-- **Web Server:** Nginx (reverse proxy)
+- **Process Manager:** PM2 (4 processes: app cluster x2, cron fork, tg-bot fork)
+- **Web Server:** Nginx (reverse proxy + SSL termination, ports 80/443)
+- **SSL:** GlobalSign DV certificate (`/etc/ssl/rating5/`)
 - **Database:** Yandex Managed PostgreSQL 15
 
-**Подробнее:** [docs/DEPLOYMENT.md](./DEPLOYMENT.md)
+**Процессы PM2 (независимы друг от друга):**
+
+| Процесс | Тип | Назначение | Зависимости |
+|---------|-----|-----------|------------|
+| `wb-reputation` x2 | cluster | Next.js (UI + API) | Nginx → :3000 |
+| `wb-reputation-cron` | fork | Cron задачи | Самостоятельный |
+| `wb-reputation-tg-bot` | fork | Telegram бот | Самостоятельный |
+
+**Подробнее:** [docs/DEPLOYMENT.md](../DEPLOYMENT.md)
 
 ---
 
