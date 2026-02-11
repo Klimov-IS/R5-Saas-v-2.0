@@ -465,7 +465,7 @@ CREATE TABLE review_complaints (
   reason_name             TEXT NOT NULL,     -- WB category name
 
   -- Complaint lifecycle
-  status                  TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'approved', 'rejected', 'pending')),
+  status                  TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'approved', 'rejected', 'pending', 'reconsidered')),
 
   -- Draft stage
   generated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),

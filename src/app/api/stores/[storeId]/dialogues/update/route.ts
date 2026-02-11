@@ -79,6 +79,12 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
 
         console.log(`[DIALOGUES] Updated/Created ${activeChats.length} chat documents.`);
 
+        // Build set of all known chat IDs (existing in DB + just upserted from WB active list)
+        const knownChatIds = new Set<string>([
+            ...existingChatMap.keys(),
+            ...activeChats.map((c: any) => c.chatID).filter(Boolean),
+        ]);
+
         // --- Step 4: Fetch new message events from WB API ---
         let allEvents: any[] = [];
         let next = store.last_chat_update_next || null;
@@ -126,6 +132,12 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
             for (const event of allEvents) {
                 if (event.eventType === 'message' && event.chatID) {
                     const chatId = event.chatID;
+
+                    // Skip messages for chats not in our database (WB events can reference inactive/closed chats)
+                    if (!knownChatIds.has(chatId)) {
+                        continue;
+                    }
+
                     chatsToClassify.add(chatId); // Mark chat for re-classification (Sprint 3)
 
                     // Save message

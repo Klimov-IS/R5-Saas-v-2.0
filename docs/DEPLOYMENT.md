@@ -1,6 +1,6 @@
 # Deployment Guide - WB Reputation Manager
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-11
 
 ---
 
@@ -27,7 +27,7 @@ User → HTTPS → Cloudflare (edge SSL, CDN, proxy) → HTTPS → Nginx → Nex
 - **Cloudflare NS:** `lisa.ns.cloudflare.com`, `pedro.ns.cloudflare.com`
 
 ### Application Configuration
-- **Process Manager:** PM2 (4 processes: app cluster x2, cron fork, tg-bot fork)
+- **Process Manager:** PM2 (4 processes: app cluster ×2, cron trigger fork, tg-bot fork)
 - **Web Server:** Nginx (reverse proxy, SSL termination)
 - **Node.js:** v22.21.0
 - **Port:** 3000 (internal), 80/443 (external via Nginx)
@@ -72,12 +72,14 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
 
 **What it does:**
 1. Pulls latest code from GitHub (`main` branch)
-2. Installs/updates dependencies (`npm ci`)
+2. Installs/updates dependencies (`npm ci --production=false`)
 3. Rebuilds Next.js application (`npm run build`)
-4. Reloads PM2 with zero-downtime (`pm2 reload`)
+4. Restarts ALL PM2 processes (`pm2 restart all`) — includes app, cron, tg-bot
 5. Shows application status
 
 **Duration:** ~2-3 minutes
+
+**Note:** Script uses `pm2 restart all` (brief downtime). For zero-downtime, use manual method with `pm2 reload wb-reputation`.
 
 ---
 
@@ -194,6 +196,16 @@ pm2 info wb-reputation
 
 Located at `/var/www/wb-reputation/ecosystem.config.js`:
 
+**4 processes (3 apps):**
+
+| Process | Mode | Instances | What It Does |
+|---------|------|-----------|-------------|
+| `wb-reputation` | cluster | 2 | Main Next.js app (API + UI + CRON via instrumentation.ts) |
+| `wb-reputation-cron` | fork | 1 | Cron trigger (calls `/api/cron/trigger`, then heartbeat) |
+| `wb-reputation-tg-bot` | fork | 1 | Telegram bot (long-polling, standalone Node.js) |
+
+**Note:** CRON jobs run **inside** the Next.js process via `instrumentation.ts`. The `wb-reputation-cron` process is a fallback trigger that ensures CRON init after server is ready. No duplication — `initializeServer()` has an `initialized` flag.
+
 ```javascript
 module.exports = {
   apps: [
@@ -201,19 +213,23 @@ module.exports = {
       name: 'wb-reputation',
       script: 'node_modules/next/dist/bin/next',
       args: 'start',
+      cwd: '/var/www/wb-reputation',
       instances: 2,
       exec_mode: 'cluster',
-      env: { NODE_ENV: 'production', PORT: 3000 }
+      env: { NODE_ENV: 'production', PORT: 3000 },
+      max_memory_restart: '1G'
     },
     {
       name: 'wb-reputation-cron',
       script: 'scripts/start-cron.js',
+      cwd: '/var/www/wb-reputation',
       instances: 1,
       exec_mode: 'fork'
     },
     {
       name: 'wb-reputation-tg-bot',
       script: 'scripts/start-telegram-bot.js',
+      cwd: '/var/www/wb-reputation',
       instances: 1,
       exec_mode: 'fork'
     }
@@ -334,6 +350,9 @@ POSTGRES_PASSWORD=***
 # AI Service
 DEEPSEEK_API_KEY=sk-***
 
+# Authentication (added 2026-02-11)
+JWT_SECRET=<random-secret-string>
+
 # Telegram Mini App
 TELEGRAM_BOT_TOKEN=<token from @BotFather>
 TELEGRAM_MINI_APP_URL=https://rating5.ru/tg
@@ -386,7 +405,11 @@ node -e "
 "
 ```
 
-Migration files are in `migrations/` folder (001-009+).
+Migration files are in `migrations/` folder (001-010).
+
+**Latest migrations:**
+- `009_telegram_integration.sql` — Telegram Mini App tables
+- `010_auth_and_roles.sql` — Auth system (organizations, members, invites)
 
 ---
 
@@ -474,6 +497,7 @@ pm2 logs wb-reputation
 
 - **No manual intervention required** after deployment
 - CRON jobs start when PM2 reloads the application
+- **9 active jobs:** hourly review sync, rolling full review sync (3:00 MSK), adaptive dialogue sync (5min/15min/60min), daily product sync, backfill worker, stores cache, Google Sheets, client directory, auto-sequence processor
 - See [CRON_JOBS.md](./CRON_JOBS.md) for details
 
 ---
@@ -579,4 +603,4 @@ pm2 logs wb-reputation --err --lines 100
 
 ---
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-11
