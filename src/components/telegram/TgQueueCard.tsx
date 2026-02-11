@@ -3,6 +3,17 @@
 import { formatDistanceToNow } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
+const COMPLETION_REASONS: Record<string, string> = {
+  review_deleted: 'Отзыв удален',
+  review_upgraded: 'Отзыв дополнен',
+  no_reply: 'Нет ответа',
+  old_dialog: 'Старый диалог',
+  not_our_issue: 'Не наш вопрос',
+  spam: 'Спам',
+  negative: 'Негатив',
+  other: 'Другое',
+};
+
 interface TgQueueCardProps {
   id: string;
   storeId: string;
@@ -11,8 +22,11 @@ interface TgQueueCardProps {
   productName: string | null;
   lastMessageText: string | null;
   lastMessageDate: string | null;
+  lastMessageSender?: 'client' | 'seller' | null;
   hasDraft: boolean;
   draftPreview: string | null;
+  status?: string;
+  completionReason?: string | null;
   isSkipped?: boolean;
   isSelected?: boolean;
   selectionMode?: boolean;
@@ -26,7 +40,10 @@ export default function TgQueueCard({
   productName,
   lastMessageText,
   lastMessageDate,
+  lastMessageSender,
   hasDraft,
+  status,
+  completionReason,
   isSkipped,
   isSelected,
   selectionMode,
@@ -36,6 +53,9 @@ export default function TgQueueCard({
   const timeAgo = lastMessageDate
     ? formatDistanceToNow(new Date(lastMessageDate), { locale: ru, addSuffix: false })
     : '';
+
+  const senderPrefix = lastMessageSender === 'seller' ? 'Вы: ' : lastMessageSender === 'client' ? 'Покупатель: ' : '';
+  const isClosed = status === 'closed';
 
   return (
     <div
@@ -105,7 +125,7 @@ export default function TgQueueCard({
         </div>
       )}
 
-      {/* Message preview */}
+      {/* Message preview with sender prefix */}
       {lastMessageText && (
         <div style={{
           fontSize: '13px',
@@ -118,13 +138,22 @@ export default function TgQueueCard({
           overflow: 'hidden',
           marginTop: '4px',
         }}>
+          {senderPrefix && (
+            <span style={{ fontWeight: 600, color: lastMessageSender === 'seller' ? '#3b82f6' : '#f97316' }}>
+              {senderPrefix}
+            </span>
+          )}
           {lastMessageText}
         </div>
       )}
 
-      {/* Draft indicator */}
+      {/* Footer: draft indicator OR completion reason */}
       <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-        {hasDraft ? (
+        {isClosed && completionReason ? (
+          <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>
+            {COMPLETION_REASONS[completionReason] || completionReason}
+          </span>
+        ) : hasDraft ? (
           <span style={{ fontSize: '11px', color: '#22c55e', fontWeight: 600 }}>
             ✓ Черновик готов
           </span>

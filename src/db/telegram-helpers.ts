@@ -46,6 +46,7 @@ export interface QueueChat {
   draft_reply: string | null;
   status: string;
   tag: string | null;
+  completion_reason: string | null;
 }
 
 // ============================================================================
@@ -232,7 +233,7 @@ export async function getUnifiedChatQueue(
        c.id, c.store_id, s.name as store_name,
        c.client_name, c.product_name, c.product_nm_id,
        c.last_message_text, c.last_message_date, c.last_message_sender,
-       c.draft_reply, c.status, c.tag
+       c.draft_reply, c.status, c.tag, c.completion_reason
      FROM chats c
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id

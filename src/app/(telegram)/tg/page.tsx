@@ -14,10 +14,12 @@ interface QueueItem {
   productName: string | null;
   lastMessageText: string | null;
   lastMessageDate: string | null;
+  lastMessageSender: 'client' | 'seller' | null;
   hasDraft: boolean;
   draftPreview: string | null;
   status: string;
   tag: string | null;
+  completionReason: string | null;
 }
 
 const STATUS_TABS = [
@@ -60,6 +62,7 @@ export default function TgQueuePage() {
     } catch { return []; }
   });
   const [showStoreFilter, setShowStoreFilter] = useState(false);
+  const [storeSearch, setStoreSearch] = useState('');
 
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
@@ -425,8 +428,32 @@ export default function TgQueuePage() {
               Все магазины
             </button>
           </div>
+          {stores.length > 5 && (
+            <input
+              type="text"
+              placeholder="Поиск магазина..."
+              value={storeSearch}
+              onChange={(e) => setStoreSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                borderRadius: '8px',
+                border: '1px solid rgba(0,0,0,0.1)',
+                fontSize: '13px',
+                backgroundColor: 'var(--tg-bg)',
+                color: 'var(--tg-text)',
+                marginBottom: '6px',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          )}
           <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-            {stores.map((store: { id: string; name: string }) => {
+            {stores
+              .filter((store: { id: string; name: string }) =>
+                !storeSearch || store.name.toLowerCase().includes(storeSearch.toLowerCase())
+              )
+              .map((store: { id: string; name: string }) => {
               const isChecked = selectedStoreIds.includes(store.id);
               return (
                 <label key={store.id} style={{
