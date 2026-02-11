@@ -31,6 +31,23 @@ export default function TgQueuePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Read skipped chat IDs from sessionStorage
+  const skippedIds = useMemo(() => {
+    try {
+      if (typeof window === 'undefined') return [];
+      return JSON.parse(sessionStorage.getItem('tg_skipped_chats') || '[]') as string[];
+    } catch { return []; }
+  }, []);
+
+  // Sort queue: non-skipped first, then skipped
+  const sortedQueue = useMemo(() => {
+    if (skippedIds.length === 0) return queue;
+    const skippedSet = new Set(skippedIds);
+    const normal = queue.filter(item => !skippedSet.has(item.id));
+    const skipped = queue.filter(item => skippedSet.has(item.id));
+    return [...normal, ...skipped];
+  }, [queue, skippedIds]);
+
   const fetchQueue = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -131,7 +148,7 @@ export default function TgQueuePage() {
   }
 
   // Empty queue
-  if (queue.length === 0) {
+  if (sortedQueue.length === 0) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh', padding: '20px' }}>
         <div style={{ textAlign: 'center' }}>
@@ -188,10 +205,11 @@ export default function TgQueuePage() {
       </div>
 
       {/* Cards */}
-      {queue.map(item => (
+      {sortedQueue.map(item => (
         <TgQueueCard
           key={item.id}
           {...item}
+          isSkipped={skippedIds.includes(item.id)}
           onClick={() => router.push(`/tg/chat/${item.id}?storeId=${item.storeId}${devUser ? `&dev_user=${devUser}` : ''}`)}
         />
       ))}

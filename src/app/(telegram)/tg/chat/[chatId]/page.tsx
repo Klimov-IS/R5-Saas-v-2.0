@@ -232,6 +232,17 @@ export default function TgChatPage() {
             }}
           >
             {msg.text}
+            <div style={{
+              fontSize: '10px',
+              opacity: 0.6,
+              marginTop: '4px',
+              textAlign: msg.sender === 'seller' ? 'right' : 'left',
+            }}>
+              {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ru-RU', {
+                day: '2-digit', month: '2-digit',
+                hour: '2-digit', minute: '2-digit',
+              }) : ''}
+            </div>
           </div>
         ))}
       </div>
@@ -352,7 +363,15 @@ export default function TgChatPage() {
 
         {/* Skip */}
         <button
-          onClick={() => router.back()}
+          onClick={() => {
+            // Save to sessionStorage so queue page sorts this chat to the bottom
+            try {
+              const skipped = JSON.parse(sessionStorage.getItem('tg_skipped_chats') || '[]');
+              if (!skipped.includes(chatId)) skipped.push(chatId);
+              sessionStorage.setItem('tg_skipped_chats', JSON.stringify(skipped));
+            } catch {}
+            router.back();
+          }}
           style={{
             padding: '12px',
             borderRadius: '10px',

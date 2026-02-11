@@ -13,6 +13,7 @@ interface TgQueueCardProps {
   lastMessageDate: string | null;
   hasDraft: boolean;
   draftPreview: string | null;
+  isSkipped?: boolean;
   onClick: () => void;
 }
 
@@ -40,6 +41,7 @@ export default function TgQueueCard({
   lastMessageText,
   lastMessageDate,
   hasDraft,
+  isSkipped,
   onClick,
 }: TgQueueCardProps) {
   const timeAgo = lastMessageDate
@@ -56,6 +58,7 @@ export default function TgQueueCard({
         marginBottom: '8px',
         cursor: 'pointer',
         transition: 'opacity 0.15s',
+        opacity: isSkipped ? 0.5 : 1,
       }}
     >
       {/* Top row: store badge + time */}
