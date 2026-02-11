@@ -3,7 +3,7 @@
 **Database:** PostgreSQL 15 (Yandex Managed)
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-11
 
 ---
 
@@ -29,9 +29,14 @@
    - [product_rules](#product_rules)
 6. [Analytics Tables](#analytics-tables)
    - [ai_logs](#ai_logs)
-7. [Entity Relationships](#entity-relationships)
-8. [Indexes Strategy](#indexes-strategy)
-9. [Triggers & Functions](#triggers--functions)
+7. [Auth & Organizations Tables](#auth--organizations-tables)
+   - [organizations](#organizations)
+   - [org_members](#org_members)
+   - [member_store_access](#member_store_access)
+   - [invites](#invites)
+8. [Entity Relationships](#entity-relationships)
+9. [Indexes Strategy](#indexes-strategy)
+10. [Triggers & Functions](#triggers--functions)
 
 ---
 
@@ -1239,7 +1244,83 @@ LIMIT 20;
 
 ---
 
-**Last Updated:** 2026-02-10
+## Auth & Organizations Tables
+
+> **Migration 010** (2026-02-11): Invite-only registration, role-based access, per-store manager permissions.
+
+### `organizations`
+
+**Purpose:** Group users and stores into a single entity.
+
+```sql
+CREATE TABLE organizations (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  name       TEXT NOT NULL,                    -- e.g. "R5 Team"
+  owner_id   TEXT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### `org_members`
+
+**Purpose:** Assign users to organizations with roles.
+
+| Role | Access |
+|------|--------|
+| `owner` | Full access, can't be removed |
+| `admin` | Full access, can manage team |
+| `manager` | Only assigned stores |
+
+```sql
+CREATE TABLE org_members (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  org_id     TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role       TEXT NOT NULL CHECK (role IN ('owner', 'admin', 'manager')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(org_id, user_id)
+);
+```
+
+### `member_store_access`
+
+**Purpose:** Which stores a manager can access. Owner/admin see all org stores automatically.
+
+```sql
+CREATE TABLE member_store_access (
+  id        TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  member_id TEXT NOT NULL REFERENCES org_members(id) ON DELETE CASCADE,
+  store_id  TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  UNIQUE(member_id, store_id)
+);
+```
+
+### `invites`
+
+**Purpose:** Invite-only registration tokens. Valid for 7 days.
+
+```sql
+CREATE TABLE invites (
+  id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  org_id     TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  email      TEXT NOT NULL,
+  role       TEXT NOT NULL CHECK (role IN ('admin', 'manager')),
+  token      TEXT NOT NULL UNIQUE,
+  invited_by TEXT NOT NULL REFERENCES users(id),
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at    TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+### Modified Tables (Migration 010)
+
+- **`users`**: Added `password_hash TEXT NULL`, `display_name TEXT NULL`
+- **`stores`**: Added `org_id TEXT REFERENCES organizations(id)`
+
+---
+
+**Last Updated:** 2026-02-11
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials
