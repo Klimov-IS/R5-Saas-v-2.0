@@ -81,7 +81,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
 
         // Build set of all known chat IDs (existing in DB + just upserted from WB active list)
         const knownChatIds = new Set<string>([
-            ...existingChatMap.keys(),
+            ...Array.from(existingChatMap.keys()),
             ...activeChats.map((c: any) => c.chatID).filter(Boolean),
         ]);
 
@@ -180,8 +180,19 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                     draft_reply_edited: null,
                 });
 
-                // Stop auto-sequence if client replied
+                // Auto-reopen closed chats when client replies
                 if (latestMsg.sender === 'client') {
+                    const existingChat = existingChatMap.get(chatId);
+                    if (existingChat && existingChat.status === 'closed') {
+                        await dbHelpers.updateChat(chatId, {
+                            status: 'inbox',
+                            status_updated_at: new Date().toISOString(),
+                            completion_reason: null,
+                        });
+                        console.log(`[DIALOGUES] Reopened closed chat ${chatId} → inbox (client replied)`);
+                    }
+
+                    // Stop auto-sequence if client replied
                     try {
                         const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
                         if (activeSeq) {

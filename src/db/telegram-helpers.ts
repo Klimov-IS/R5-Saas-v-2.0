@@ -194,15 +194,39 @@ export async function wasNotificationSentRecently(
 
 /**
  * Get unified chat queue across accessible stores.
- * Shows chats where client replied and chat is not closed.
- * Accepts storeIds array (from getAccessibleStoreIds) for org-based access.
+ * Supports filtering by status and store IDs.
  */
 export async function getUnifiedChatQueue(
   storeIds: string[],
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
+  status?: string,
+  filterStoreIds?: string[]
 ): Promise<QueueChat[]> {
   if (storeIds.length === 0) return [];
+
+  const effectiveStoreIds = filterStoreIds && filterStoreIds.length > 0
+    ? storeIds.filter(id => filterStoreIds.includes(id))
+    : storeIds;
+  if (effectiveStoreIds.length === 0) return [];
+
+  const conditions: string[] = [
+    'c.store_id = ANY($1::text[])',
+    "s.status = 'active'",
+    'pr.work_in_chats = TRUE',
+  ];
+  const params: any[] = [effectiveStoreIds];
+
+  if (status && status !== 'all') {
+    params.push(status);
+    conditions.push(`c.status = $${params.length}`);
+  }
+
+  params.push(limit);
+  const limitIdx = params.length;
+  params.push(offset);
+  const offsetIdx = params.length;
+
   const result = await query<QueueChat>(
     `SELECT
        c.id, c.store_id, s.name as store_name,
@@ -213,38 +237,91 @@ export async function getUnifiedChatQueue(
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
      LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE c.store_id = ANY($1::text[])
-       AND c.last_message_sender = 'client'
-       AND c.status != 'closed'
-       AND s.status = 'active'
-       AND pr.work_in_chats = TRUE
+     WHERE ${conditions.join(' AND ')}
      ORDER BY c.last_message_date DESC NULLS LAST
-     LIMIT $2 OFFSET $3`,
-    [storeIds, limit, offset]
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    params
   );
   return result.rows;
 }
 
 /**
- * Count total chats in queue (for pagination).
- * Accepts storeIds array for org-based access.
+ * Count total chats in queue for a given status filter.
  */
-export async function getUnifiedChatQueueCount(storeIds: string[]): Promise<number> {
+export async function getUnifiedChatQueueCount(
+  storeIds: string[],
+  status?: string,
+  filterStoreIds?: string[]
+): Promise<number> {
   if (storeIds.length === 0) return 0;
+
+  const effectiveStoreIds = filterStoreIds && filterStoreIds.length > 0
+    ? storeIds.filter(id => filterStoreIds.includes(id))
+    : storeIds;
+  if (effectiveStoreIds.length === 0) return 0;
+
+  const conditions: string[] = [
+    'c.store_id = ANY($1::text[])',
+    "s.status = 'active'",
+    'pr.work_in_chats = TRUE',
+  ];
+  const params: any[] = [effectiveStoreIds];
+
+  if (status && status !== 'all') {
+    params.push(status);
+    conditions.push(`c.status = $${params.length}`);
+  }
+
   const result = await query<{ count: string }>(
     `SELECT COUNT(*) as count
      FROM chats c
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
      LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE c.store_id = ANY($1::text[])
-       AND c.last_message_sender = 'client'
-       AND c.status != 'closed'
-       AND s.status = 'active'
-       AND pr.work_in_chats = TRUE`,
-    [storeIds]
+     WHERE ${conditions.join(' AND ')}`,
+    params
   );
   return parseInt(result.rows[0]?.count || '0', 10);
+}
+
+/**
+ * Get chat counts grouped by status (for tab badges).
+ * Single query instead of 4 separate count queries.
+ */
+export async function getUnifiedChatQueueCountsByStatus(
+  storeIds: string[],
+  filterStoreIds?: string[]
+): Promise<Record<string, number>> {
+  if (storeIds.length === 0) return { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 };
+
+  const effectiveStoreIds = filterStoreIds && filterStoreIds.length > 0
+    ? storeIds.filter(id => filterStoreIds.includes(id))
+    : storeIds;
+  if (effectiveStoreIds.length === 0) return { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 };
+
+  const result = await query<{ status: string; count: string }>(
+    `SELECT c.status, COUNT(*) as count
+     FROM chats c
+     JOIN stores s ON c.store_id = s.id
+     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
+     LEFT JOIN product_rules pr ON p.id = pr.product_id
+     WHERE c.store_id = ANY($1::text[])
+       AND s.status = 'active'
+       AND pr.work_in_chats = TRUE
+     GROUP BY c.status`,
+    [effectiveStoreIds]
+  );
+
+  const counts: Record<string, number> = {
+    inbox: 0,
+    in_progress: 0,
+    awaiting_reply: 0,
+    closed: 0,
+  };
+  result.rows.forEach(row => {
+    counts[row.status] = parseInt(row.count, 10);
+  });
+  return counts;
 }
 
 /**

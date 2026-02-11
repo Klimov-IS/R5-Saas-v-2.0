@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
-import { getUnifiedChatQueue, getUnifiedChatQueueCount } from '@/db/telegram-helpers';
+import { getUnifiedChatQueue, getUnifiedChatQueueCount, getUnifiedChatQueueCountsByStatus } from '@/db/telegram-helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
 
 /**
  * GET /api/telegram/queue
  *
- * Returns unified cross-store chat queue (chats where client replied, not closed).
- * Uses org-based access: shows chats for all stores accessible to the user.
+ * Returns unified cross-store chat queue with status and store filtering.
+ * Query params:
+ *   - status: chat status filter (default: 'inbox'). Use 'all' for no filter.
+ *   - storeIds: comma-separated store IDs to filter (intersected with accessible).
+ *   - limit: max items (default 50, max 100).
+ *   - offset: pagination offset.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,16 +23,22 @@ export async function GET(request: NextRequest) {
 
     const storeIds = await getAccessibleStoreIds(auth.userId);
     if (storeIds.length === 0) {
-      return NextResponse.json({ data: [], totalCount: 0 });
+      return NextResponse.json({ data: [], totalCount: 0, statusCounts: {} });
     }
 
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
+    const status = searchParams.get('status') || 'inbox';
+    const filterStoreIdsParam = searchParams.get('storeIds');
+    const filterStoreIds = filterStoreIdsParam
+      ? filterStoreIdsParam.split(',').filter(Boolean)
+      : undefined;
 
-    const [chats, totalCount] = await Promise.all([
-      getUnifiedChatQueue(storeIds, limit, offset),
-      getUnifiedChatQueueCount(storeIds),
+    const [chats, totalCount, statusCounts] = await Promise.all([
+      getUnifiedChatQueue(storeIds, limit, offset, status, filterStoreIds),
+      getUnifiedChatQueueCount(storeIds, status, filterStoreIds),
+      getUnifiedChatQueueCountsByStatus(storeIds, filterStoreIds),
     ]);
 
     return NextResponse.json({
@@ -46,6 +56,7 @@ export async function GET(request: NextRequest) {
         tag: c.tag,
       })),
       totalCount,
+      statusCounts,
     });
   } catch (error: any) {
     console.error('[TG-QUEUE] Error:', error.message);

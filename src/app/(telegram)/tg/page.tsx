@@ -20,24 +20,53 @@ interface QueueItem {
   tag: string | null;
 }
 
+const STATUS_TABS = [
+  { key: 'inbox', label: 'Входящие', color: '#3b82f6' },
+  { key: 'awaiting_reply', label: 'Ожидание', color: '#f97316' },
+  { key: 'in_progress', label: 'В работе', color: '#f59e0b' },
+  { key: 'closed', label: 'Закрытые', color: '#9ca3af' },
+] as const;
+
+const EMPTY_MESSAGES: Record<string, { icon: string; title: string; subtitle: string }> = {
+  inbox: { icon: '✅', title: 'Все чаты обработаны', subtitle: 'Новые ответы клиентов появятся здесь' },
+  awaiting_reply: { icon: '⏳', title: 'Нет чатов в ожидании', subtitle: 'Здесь появятся чаты после отправки ответа' },
+  in_progress: { icon: '📋', title: 'Нет чатов в работе', subtitle: 'Переместите чаты сюда из входящих' },
+  closed: { icon: '📦', title: 'Нет закрытых чатов', subtitle: 'Закрытые чаты с причиной будут здесь' },
+};
+
 export default function TgQueuePage() {
   const router = useRouter();
   const devUser = useMemo(() => {
     if (typeof window === 'undefined') return null;
     return new URLSearchParams(window.location.search).get('dev_user');
   }, []);
-  const { isLoading: authLoading, isAuthenticated, isLinked, error: authError, apiFetch } = useTelegramAuth();
+  const { isLoading: authLoading, isAuthenticated, isLinked, error: authError, apiFetch, stores } = useTelegramAuth();
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Status tabs
+  const [activeStatus, setActiveStatus] = useState<string>(() => {
+    try { return sessionStorage.getItem('tg_active_status') || 'inbox'; } catch { return 'inbox'; }
+  });
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+
+  // Store filter
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('tg_store_filter');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [showStoreFilter, setShowStoreFilter] = useState(false);
 
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Bulk action state
-  const [bulkAction, setBulkAction] = useState<string | null>(null); // 'generate' | 'send' | null
+  const [bulkAction, setBulkAction] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0, errors: 0 });
 
   // Read skipped chat IDs from sessionStorage
@@ -68,21 +97,44 @@ export default function TgQueuePage() {
     }
   }, [sortedQueue]);
 
+  // Persist activeStatus
+  useEffect(() => {
+    try { sessionStorage.setItem('tg_active_status', activeStatus); } catch {}
+  }, [activeStatus]);
+
+  // Persist store filter
+  useEffect(() => {
+    try {
+      if (selectedStoreIds.length > 0) {
+        sessionStorage.setItem('tg_store_filter', JSON.stringify(selectedStoreIds));
+      } else {
+        sessionStorage.removeItem('tg_store_filter');
+      }
+    } catch {}
+  }, [selectedStoreIds]);
+
   const fetchQueue = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await apiFetch('/api/telegram/queue?limit=50');
+      const params = new URLSearchParams();
+      params.set('limit', '50');
+      params.set('status', activeStatus);
+      if (selectedStoreIds.length > 0) {
+        params.set('storeIds', selectedStoreIds.join(','));
+      }
+      const response = await apiFetch(`/api/telegram/queue?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to load queue');
       const data = await response.json();
       setQueue(data.data || []);
       setTotalCount(data.totalCount || 0);
+      setStatusCounts(data.statusCounts || {});
     } catch (err: any) {
       setError(err.message);
     } finally {
       setIsLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, activeStatus, selectedStoreIds]);
 
   useEffect(() => {
     if (isAuthenticated && isLinked) {
@@ -98,6 +150,13 @@ export default function TgQueuePage() {
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [isAuthenticated, isLinked, fetchQueue]);
+
+  // Reset selection mode when tab or store filter changes
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    setBulkAction(null);
+  }, [activeStatus, selectedStoreIds]);
 
   // Haptic feedback helper
   const haptic = useCallback((type: 'success' | 'error' | 'warning') => {
@@ -159,7 +218,6 @@ export default function TgQueuePage() {
     }
 
     haptic(errors === 0 ? 'success' : 'warning');
-    // Refresh queue to get updated draft states
     await fetchQueue();
     setBulkAction(null);
     exitSelectionMode();
@@ -182,14 +240,12 @@ export default function TgQueuePage() {
 
     for (let i = 0; i < withDrafts.length; i++) {
       try {
-        // Get draft text first
         const chatRes = await apiFetch(`/api/telegram/chats/${withDrafts[i]}`);
         if (!chatRes.ok) { errors++; setBulkProgress({ done: i + 1, total: withDrafts.length, errors }); continue; }
         const chatData = await chatRes.json();
         const draftText = chatData.chat?.draftReply;
         if (!draftText) { errors++; setBulkProgress({ done: i + 1, total: withDrafts.length, errors }); continue; }
 
-        // Send it
         const sendRes = await apiFetch(`/api/telegram/chats/${withDrafts[i]}/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -213,6 +269,18 @@ export default function TgQueuePage() {
     return Array.from(selectedIds).filter(id => queue.find(q => q.id === id)?.hasDraft).length;
   }, [selectedIds, queue]);
 
+  // Store filter handlers
+  const toggleStoreFilter = useCallback((storeId: string) => {
+    setSelectedStoreIds(prev => {
+      if (prev.includes(storeId)) return prev.filter(id => id !== storeId);
+      return [...prev, storeId];
+    });
+  }, []);
+
+  const clearStoreFilter = useCallback(() => {
+    setSelectedStoreIds([]);
+  }, []);
+
   // Auth loading state
   if (authLoading) {
     return (
@@ -230,90 +298,11 @@ export default function TgQueuePage() {
     return <TgLoginForm />;
   }
 
-  // Loading queue
-  if (isLoading) {
-    return (
-      <div style={{ padding: '16px' }}>
-        <div style={{ fontSize: '18px', fontWeight: 700, marginBottom: '16px', color: 'var(--tg-text)' }}>
-          Очередь чатов
-        </div>
-        {[1, 2, 3].map(i => (
-          <div key={i} style={{
-            backgroundColor: 'var(--tg-secondary-bg)',
-            borderRadius: '12px',
-            height: '100px',
-            marginBottom: '8px',
-            opacity: 0.5,
-            animation: 'pulse 1.5s ease-in-out infinite',
-          }} />
-        ))}
-        <style>{`@keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.3; } }`}</style>
-      </div>
-    );
-  }
-
-  // Error
-  if (error) {
-    return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
-        <div style={{ fontSize: '48px', marginBottom: '16px' }}>😕</div>
-        <div style={{ fontSize: '16px', color: 'var(--tg-text)', marginBottom: '12px' }}>{error}</div>
-        <button
-          onClick={fetchQueue}
-          style={{
-            backgroundColor: 'var(--tg-button)',
-            color: 'var(--tg-button-text)',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '10px 20px',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          Повторить
-        </button>
-      </div>
-    );
-  }
-
-  // Empty queue
-  if (sortedQueue.length === 0) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh', padding: '20px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
-          <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--tg-text)', marginBottom: '8px' }}>
-            Все чаты обработаны
-          </div>
-          <div style={{ fontSize: '14px', color: 'var(--tg-hint)' }}>
-            Новые ответы клиентов появятся здесь
-          </div>
-          <button
-            onClick={fetchQueue}
-            style={{
-              marginTop: '20px',
-              backgroundColor: 'var(--tg-secondary-bg)',
-              color: 'var(--tg-text)',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '10px 20px',
-              fontSize: '14px',
-              cursor: 'pointer',
-            }}
-          >
-            Обновить
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Queue list
+  // Queue list (with loading/error/empty inline)
   return (
     <div style={{ padding: '12px 12px 80px' }} className="tg-safe-area">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 2px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', padding: '0 2px' }}>
         <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--tg-text)' }}>
           {selectionMode ? (
             <>
@@ -331,7 +320,7 @@ export default function TgQueuePage() {
             </>
           )}
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {selectionMode ? (
             <>
               <button
@@ -365,6 +354,22 @@ export default function TgQueuePage() {
             </>
           ) : (
             <>
+              {/* Store filter button */}
+              <button
+                onClick={() => setShowStoreFilter(!showStoreFilter)}
+                style={{
+                  backgroundColor: selectedStoreIds.length > 0 ? 'rgba(59,130,246,0.12)' : 'transparent',
+                  border: selectedStoreIds.length > 0 ? '1px solid #3b82f6' : 'none',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  color: selectedStoreIds.length > 0 ? '#3b82f6' : 'var(--tg-hint)',
+                  fontWeight: 500,
+                }}
+              >
+                {selectedStoreIds.length > 0 ? `☰ ${selectedStoreIds.length}` : '☰'}
+              </button>
               <button
                 onClick={() => setSelectionMode(true)}
                 style={{
@@ -396,8 +401,178 @@ export default function TgQueuePage() {
         </div>
       </div>
 
+      {/* Store filter panel */}
+      {showStoreFilter && stores && stores.length > 0 && (
+        <div style={{
+          backgroundColor: 'var(--tg-secondary-bg)',
+          borderRadius: '12px',
+          padding: '10px 12px',
+          marginBottom: '10px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--tg-text)' }}>Магазины</span>
+            <button
+              onClick={clearStoreFilter}
+              style={{
+                fontSize: '12px',
+                color: selectedStoreIds.length > 0 ? '#3b82f6' : 'var(--tg-hint)',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontWeight: 500,
+              }}
+            >
+              Все магазины
+            </button>
+          </div>
+          <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {stores.map((store: { id: string; name: string }) => {
+              const isChecked = selectedStoreIds.includes(store.id);
+              return (
+                <label key={store.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '6px 4px', cursor: 'pointer', fontSize: '13px', color: 'var(--tg-text)',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleStoreFilter(store.id)}
+                    style={{ width: '16px', height: '16px', accentColor: '#3b82f6' }}
+                  />
+                  {store.name}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Status tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '6px',
+        marginBottom: '12px',
+        overflowX: 'auto',
+        padding: '0 2px 4px',
+        WebkitOverflowScrolling: 'touch' as any,
+        msOverflowStyle: 'none',
+        scrollbarWidth: 'none',
+      }}>
+        {STATUS_TABS.map(tab => {
+          const count = statusCounts[tab.key] || 0;
+          const isActive = activeStatus === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveStatus(tab.key)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 12px',
+                borderRadius: '16px',
+                border: 'none',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                backgroundColor: isActive ? tab.color : 'var(--tg-secondary-bg)',
+                color: isActive ? '#fff' : 'var(--tg-hint)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {tab.label}
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '0 5px',
+                borderRadius: '8px',
+                backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.08)',
+                minWidth: '18px',
+                textAlign: 'center',
+              }}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Loading state */}
+      {isLoading && (
+        <div>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{
+              backgroundColor: 'var(--tg-secondary-bg)',
+              borderRadius: '12px',
+              height: '100px',
+              marginBottom: '8px',
+              opacity: 0.5,
+              animation: 'pulse 1.5s ease-in-out infinite',
+            }} />
+          ))}
+          <style>{`@keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.3; } }`}</style>
+        </div>
+      )}
+
+      {/* Error state */}
+      {!isLoading && error && (
+        <div style={{ padding: '20px', textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>😕</div>
+          <div style={{ fontSize: '16px', color: 'var(--tg-text)', marginBottom: '12px' }}>{error}</div>
+          <button
+            onClick={fetchQueue}
+            style={{
+              backgroundColor: 'var(--tg-button)',
+              color: 'var(--tg-button-text)',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 20px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Повторить
+          </button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && !error && sortedQueue.length === 0 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh', padding: '20px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>
+              {EMPTY_MESSAGES[activeStatus]?.icon || '📋'}
+            </div>
+            <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--tg-text)', marginBottom: '8px' }}>
+              {EMPTY_MESSAGES[activeStatus]?.title || 'Нет чатов'}
+            </div>
+            <div style={{ fontSize: '14px', color: 'var(--tg-hint)' }}>
+              {EMPTY_MESSAGES[activeStatus]?.subtitle || ''}
+            </div>
+            <button
+              onClick={fetchQueue}
+              style={{
+                marginTop: '20px',
+                backgroundColor: 'var(--tg-secondary-bg)',
+                color: 'var(--tg-text)',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px 20px',
+                fontSize: '14px',
+                cursor: 'pointer',
+              }}
+            >
+              Обновить
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Cards */}
-      {sortedQueue.map(item => (
+      {!isLoading && !error && sortedQueue.map(item => (
         <TgQueueCard
           key={item.id}
           {...item}
@@ -424,7 +599,6 @@ export default function TgQueuePage() {
           gap: '8px',
           zIndex: 50,
         }}>
-          {/* Generate AI */}
           <button
             onClick={bulkGenerate}
             style={{
@@ -439,10 +613,8 @@ export default function TgQueuePage() {
               color: 'var(--tg-button-text)',
             }}
           >
-            🤖 AI ({selectedIds.size})
+            AI ({selectedIds.size})
           </button>
-
-          {/* Send */}
           <button
             onClick={bulkSend}
             disabled={selectedWithDrafts === 0}
@@ -458,10 +630,8 @@ export default function TgQueuePage() {
               color: '#fff',
             }}
           >
-            ✅ Отправить ({selectedWithDrafts})
+            Отправить ({selectedWithDrafts})
           </button>
-
-          {/* Refresh */}
           <button
             onClick={async () => {
               await fetchQueue();
@@ -498,7 +668,7 @@ export default function TgQueuePage() {
           textAlign: 'center',
         }}>
           <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--tg-text)', marginBottom: '8px' }}>
-            {bulkAction === 'generate' ? '🤖 Генерация AI...' : '✅ Отправка...'}
+            {bulkAction === 'generate' ? 'Генерация AI...' : 'Отправка...'}
             {' '}{bulkProgress.done} / {bulkProgress.total}
             {bulkProgress.errors > 0 && (
               <span style={{ color: '#ef4444', marginLeft: '8px' }}>
@@ -506,7 +676,6 @@ export default function TgQueuePage() {
               </span>
             )}
           </div>
-          {/* Progress bar */}
           <div style={{
             height: '4px',
             backgroundColor: 'rgba(0,0,0,0.1)',
