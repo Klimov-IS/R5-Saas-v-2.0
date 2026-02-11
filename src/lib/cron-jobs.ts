@@ -826,82 +826,92 @@ export function startRollingReviewFullSync() {
     const startTime = Date.now();
 
     try {
-      // Determine which chunk to process today (0-11)
       const now = new Date();
+      const CHUNK_DAYS = 90;
+
+      // Determine rotational chunk (1-11) for today — chunk 0 is ALWAYS processed
       const startOfYear = new Date(now.getFullYear(), 0, 0);
       const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
-      const chunkIndex = dayOfYear % 12;
+      const rotationalChunk = (dayOfYear % 11) + 1; // 1-11 (never 0, because 0 runs every day)
 
-      // Calculate date range for this chunk (90 days each)
-      const CHUNK_DAYS = 90;
-      const daysAgoStart = chunkIndex * CHUNK_DAYS; // e.g., chunk 0 = 0 days ago
-      const daysAgoEnd = daysAgoStart + CHUNK_DAYS;   // e.g., chunk 0 = 90 days ago
-
-      const dateTo = new Date();
-      dateTo.setDate(dateTo.getDate() - daysAgoStart);
-      dateTo.setHours(23, 59, 59, 999);
-
-      const dateFrom = new Date();
-      dateFrom.setDate(dateFrom.getDate() - daysAgoEnd);
-      dateFrom.setHours(0, 0, 0, 0);
-
-      const dateFromUnix = Math.floor(dateFrom.getTime() / 1000);
-      const dateToUnix = Math.floor(dateTo.getTime() / 1000);
-
-      console.log('\n========================================');
-      console.log(`[CRON] 🔄 Starting rolling review full sync at ${now.toISOString()}`);
-      console.log(`[CRON] Chunk ${chunkIndex + 1}/12: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]} (${daysAgoStart}-${daysAgoEnd} days ago)`);
-      console.log('========================================\n');
+      // Build list of chunks to process: always chunk 0 + today's rotational chunk
+      const chunksToProcess = [0, rotationalChunk];
 
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
 
       const stores = await dbHelpers.getAllStores();
-      console.log(`[CRON] Found ${stores.length} stores for rolling sync`);
 
-      let successCount = 0;
-      let errorCount = 0;
+      console.log('\n========================================');
+      console.log(`[CRON] 🔄 Starting rolling review full sync at ${now.toISOString()}`);
+      console.log(`[CRON] Chunks to process: [0 (recent 90d), ${rotationalChunk}]`);
+      console.log(`[CRON] Found ${stores.length} stores`);
+      console.log('========================================\n');
 
-      for (const store of stores) {
-        try {
-          console.log(`[CRON] Rolling sync for: ${store.name} (chunk ${chunkIndex + 1})`);
+      let totalSuccess = 0;
+      let totalErrors = 0;
 
-          const response = await fetch(
-            `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full&dateFrom=${dateFromUnix}&dateTo=${dateToUnix}`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
+      for (const chunkIndex of chunksToProcess) {
+        const daysAgoStart = chunkIndex * CHUNK_DAYS;
+        const daysAgoEnd = daysAgoStart + CHUNK_DAYS;
+
+        const dateTo = new Date();
+        dateTo.setDate(dateTo.getDate() - daysAgoStart);
+        dateTo.setHours(23, 59, 59, 999);
+
+        const dateFrom = new Date();
+        dateFrom.setDate(dateFrom.getDate() - daysAgoEnd);
+        dateFrom.setHours(0, 0, 0, 0);
+
+        const dateFromUnix = Math.floor(dateFrom.getTime() / 1000);
+        const dateToUnix = Math.floor(dateTo.getTime() / 1000);
+
+        console.log(`[CRON] --- Chunk ${chunkIndex}${chunkIndex === 0 ? ' (daily recent)' : ' (rotational)'}: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]} ---`);
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const store of stores) {
+          try {
+            const response = await fetch(
+              `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full&dateFrom=${dateFromUnix}&dateTo=${dateToUnix}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${apiKey}`,
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
             }
-          );
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
+            const result = await response.json();
+            console.log(`[CRON] ✅ ${store.name} (chunk ${chunkIndex}): ${result.message}`);
+            successCount++;
+
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          } catch (error: any) {
+            errorCount++;
+            console.error(`[CRON] ❌ ${store.name} (chunk ${chunkIndex}): ${error.message}`);
           }
-
-          const result = await response.json();
-          console.log(`[CRON] ✅ ${store.name}: ${result.message}`);
-          successCount++;
-
-          // Wait 3 seconds between stores (full sync is heavier)
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        } catch (error: any) {
-          errorCount++;
-          console.error(`[CRON] ❌ Rolling sync failed for ${store.name}:`, error.message);
         }
+
+        totalSuccess += successCount;
+        totalErrors += errorCount;
+        console.log(`[CRON] Chunk ${chunkIndex} done: ${successCount}/${stores.length} success, ${errorCount} errors`);
       }
 
       const duration = Math.round((Date.now() - startTime) / 1000);
 
       console.log('\n========================================');
       console.log(`[CRON] ✅ Rolling review full sync completed`);
-      console.log(`[CRON] Chunk ${chunkIndex + 1}/12: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]}`);
+      console.log(`[CRON] Chunks: [0, ${rotationalChunk}]`);
       console.log(`[CRON] Duration: ${duration}s`);
-      console.log(`[CRON] Stores synced: ${successCount}/${stores.length}`);
-      console.log(`[CRON] Errors: ${errorCount}`);
+      console.log(`[CRON] Total: ${totalSuccess} success, ${totalErrors} errors`);
       console.log('========================================\n');
 
     } catch (error: any) {
