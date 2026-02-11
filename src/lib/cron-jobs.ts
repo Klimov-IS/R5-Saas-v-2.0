@@ -639,7 +639,7 @@ export function startAutoSequenceProcessor() {
 
           // Check stop condition 2: chat status still valid?
           const chat = await dbHelpers.getChatById(seq.chat_id);
-          if (!chat || (chat.status !== 'awaiting_reply' && chat.status !== 'inbox')) {
+          if (!chat || (chat.status !== 'awaiting_reply' && chat.status !== 'in_progress' && chat.status !== 'inbox')) {
             if (!dryRun) await dbHelpers.stopSequence(seq.id, 'status_changed');
             stopped++;
             console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (chat status=${chat?.status || 'not found'})${dryRun ? ' [DRY RUN]' : ''}`);
@@ -915,6 +915,44 @@ export function startRollingReviewFullSync() {
 
   job.start();
   console.log('[CRON] ✅ Rolling review full sync job started successfully');
+
+  return job;
+}
+
+/**
+ * Chat status transition: in_progress → awaiting_reply after 2 days
+ * Runs every 30 minutes. Moves chats where:
+ *   - status = 'in_progress'
+ *   - last_message_sender = 'seller'
+ *   - last_message_date < NOW() - 2 days
+ */
+export function startChatStatusTransition() {
+  const job = cron.schedule('*/30 * * * *', async () => {
+    const jobName = 'chat-status-transition';
+
+    if (runningJobs[jobName]) {
+      return;
+    }
+
+    runningJobs[jobName] = true;
+
+    try {
+      const result = await dbHelpers.transitionStaleInProgressChats(2);
+
+      if (result > 0) {
+        console.log(`[CRON] 📋 Chat status transition: ${result} chats moved in_progress → awaiting_reply (>2 days)`);
+      }
+    } catch (error: any) {
+      console.error('[CRON] ❌ Chat status transition error:', error.message);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Chat status transition job started (every 30 min)');
 
   return job;
 }

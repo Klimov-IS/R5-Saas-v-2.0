@@ -180,16 +180,20 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                     draft_reply_edited: null,
                 });
 
-                // Auto-reopen closed chats when client replies
+                // Auto-set status based on who sent the last message
+                const existingChat = existingChatMap.get(chatId);
                 if (latestMsg.sender === 'client') {
-                    const existingChat = existingChatMap.get(chatId);
-                    if (existingChat && existingChat.status === 'closed') {
-                        await dbHelpers.updateChat(chatId, {
+                    // Client replied → always move to inbox
+                    if (existingChat && existingChat.status !== 'inbox') {
+                        const updates: any = {
                             status: 'inbox',
                             status_updated_at: new Date().toISOString(),
-                            completion_reason: null,
-                        });
-                        console.log(`[DIALOGUES] Reopened closed chat ${chatId} → inbox (client replied)`);
+                        };
+                        if (existingChat.status === 'closed') {
+                            updates.completion_reason = null;
+                        }
+                        await dbHelpers.updateChat(chatId, updates);
+                        console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → inbox (client replied)`);
                     }
 
                     // Stop auto-sequence if client replied
@@ -201,6 +205,24 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         }
                     } catch (seqErr: any) {
                         console.error(`[DIALOGUES] Failed to stop auto-sequence for chat ${chatId}:`, seqErr.message);
+                    }
+                } else if (latestMsg.sender === 'seller') {
+                    // Seller replied → move to in_progress (unless closed)
+                    if (existingChat && existingChat.status !== 'in_progress' && existingChat.status !== 'closed') {
+                        await dbHelpers.updateChat(chatId, {
+                            status: 'in_progress' as ChatStatus,
+                            status_updated_at: new Date().toISOString(),
+                        });
+                        console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → in_progress (seller replied)`);
+                    }
+                    // Reopen closed chats when seller sends a new message
+                    if (existingChat && existingChat.status === 'closed') {
+                        await dbHelpers.updateChat(chatId, {
+                            status: 'in_progress' as ChatStatus,
+                            status_updated_at: new Date().toISOString(),
+                            completion_reason: null,
+                        });
+                        console.log(`[DIALOGUES] Chat ${chatId}: closed → in_progress (seller replied)`);
                     }
                 }
             }
@@ -257,10 +279,10 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                     const is4Star = matchedSet2 && !matchedSet1; // Prefer set 1 if both match
                     const sequenceType = is4Star ? 'no_reply_followup_4star' : 'no_reply_followup';
 
-                    // Tag as deletion_candidate + set awaiting_reply
+                    // Tag as deletion_candidate + set in_progress (cron will move to awaiting_reply after 2 days)
                     await dbHelpers.updateChat(chatId, {
                         tag: 'deletion_candidate' as ChatTag,
-                        status: 'awaiting_reply' as ChatStatus,
+                        status: 'in_progress' as ChatStatus,
                         status_updated_at: new Date().toISOString(),
                     });
 
@@ -278,9 +300,9 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                                 : DEFAULT_FOLLOWUP_TEMPLATES;
                         }
                         await dbHelpers.createAutoSequence(chatId, chat.store_id, chat.owner_id, templates, sequenceType);
-                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + awaiting_reply + sequence [${sequenceType}] (${templates.length} msgs)`);
+                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + in_progress + sequence [${sequenceType}] (${templates.length} msgs)`);
                     } else {
-                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + awaiting_reply (sequence already active)`);
+                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + in_progress (sequence already active)`);
                     }
                 } catch (triggerErr: any) {
                     console.error(`[DIALOGUES] Trigger detection error for chat ${chatId}:`, triggerErr.message);

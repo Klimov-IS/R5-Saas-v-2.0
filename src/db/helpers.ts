@@ -1811,6 +1811,24 @@ export async function updateChatStatus(
   });
 }
 
+/**
+ * Transition stale in_progress chats to awaiting_reply.
+ * Moves chats where seller was last to reply and it's been > N days.
+ * Returns number of chats transitioned.
+ */
+export async function transitionStaleInProgressChats(days: number = 2): Promise<number> {
+  const result = await query(
+    `UPDATE chats
+     SET status = 'awaiting_reply', status_updated_at = NOW(), updated_at = NOW()
+     WHERE status = 'in_progress'
+       AND last_message_sender = 'seller'
+       AND last_message_date < NOW() - INTERVAL '1 day' * $1
+     RETURNING id`,
+    [days]
+  );
+  return result.rowCount || 0;
+}
+
 // ============================================================================
 // Product Rules
 // ============================================================================
