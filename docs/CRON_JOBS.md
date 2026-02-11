@@ -9,11 +9,13 @@
 WB Reputation Manager uses **automated background jobs** (CRON) to sync data from Wildberries API and generate complaints daily with **100% automation**.
 
 **Key Features:**
-- Daily review synchronization at 8:00 AM MSK
+- Hourly incremental review synchronization
+- **Rolling full review sync** (3:00 AM MSK, Mon-Sat) — 90-day chunks, 3-year coverage in 2-week cycle
 - **Automatic complaint generation** immediately after sync (zero delay)
 - **Template-based optimization** for empty reviews (zero AI cost)
 - **AI-powered complaints** for reviews with content
 - **Active products filter** - only generates complaints for active products
+- **3-tier adaptive dialogue sync** — 5min (work hours), 15min (morning/evening), 60min (night)
 
 Jobs are managed using the `node-cron` library and initialize automatically when the Next.js server starts.
 
@@ -47,11 +49,11 @@ graph TD
 
 ## CRON Jobs
 
-### 1. Daily Review Sync + Auto-Complaint Generation (100% Automation)
+### 1. Hourly Review Sync + Auto-Complaint Generation (100% Automation)
 
-**Job Name:** `daily-review-sync`
+**Job Name:** `hourly-review-sync`
 **Schedule:**
-- **Production:** `0 5 * * *` (8:00 AM MSK / 5:00 AM UTC)
+- **Production:** `0 * * * *` (every hour, on the hour)
 - **Development:** `*/5 * * * *` (every 5 minutes)
 
 **What It Does:**
@@ -183,7 +185,7 @@ Configured in [src/lib/cron-jobs.ts:54-56](../src/lib/cron-jobs.ts#L54-L56):
 
 ```typescript
 const cronSchedule = process.env.NODE_ENV === 'production'
-  ? '0 5 * * *'      // 8:00 AM MSK daily
+  ? '0 * * * *'      // Every hour (incremental)
   : '*/5 * * * *';   // Every 5 minutes for testing
 ```
 
@@ -759,13 +761,14 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-11
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
 |-----|----------------|----------------|-------------|
-| Review Sync + Complaints | 8:00 AM | 0 5 * * * | Sync reviews + auto-generate complaints |
-| Dialogue Sync | Adaptive | 15min day/60min night | Sync chat dialogues |
+| Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync + auto-generate complaints |
+| **Rolling Review Full Sync** | **3:00 AM Mon-Sat** | **0 0 * * 1-6** | **Full review sync by 90-day chunks (12 chunks, 3-year coverage, 2-week cycle)** |
+| Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue |
 | Stores Cache | Every 5 min | */5 * * * * | Pre-warm stores cache for Extension API |
@@ -937,3 +940,83 @@ curl -X GET "http://localhost:9002/api/admin/google-sheets/sync-clients"
 # Trigger sync
 curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 ```
+
+---
+
+## 9. Rolling Review Full Sync (Полный синк отзывов)
+
+**Job Name:** `rolling-review-full-sync`
+**Schedule:**
+- **Production:** `0 0 * * 1-6` (3:00 AM MSK / 0:00 UTC, Mon-Sat)
+- **Development:** `*/30 * * * *` (every 30 minutes)
+
+**Purpose:** Guarantee complete review coverage across all stores. Incremental sync can miss reviews if server was down, WB API returned errors, or reviews were backdated.
+
+**Strategy:** Each day syncs a different 90-day date chunk, rotating through 12 chunks to cover 3 years (1080 days). Full cycle completes in 2 weeks (6 working days × 2 weeks = 12 chunks).
+
+**Chunk Schedule (by dayOfYear % 12):**
+
+| Chunk # | Date Range (days ago) | Description |
+|---------|----------------------|-------------|
+| 1 | 0–90 | Most recent reviews |
+| 2 | 91–180 | |
+| 3 | 181–270 | |
+| 4 | 271–360 | ~1 year |
+| 5 | 361–450 | |
+| 6 | 451–540 | |
+| 7 | 541–630 | |
+| 8 | 631–720 | ~2 years |
+| 9 | 721–810 | |
+| 10 | 811–900 | |
+| 11 | 901–990 | |
+| 12 | 991–1080 | ~3 years |
+
+**What It Does:**
+1. Determines current chunk index from `dayOfYear % 12`
+2. Calculates `dateFrom` and `dateTo` for the 90-day window
+3. For each active store: calls `POST /api/stores/{storeId}/reviews/update?mode=full&dateFrom=X&dateTo=Y`
+4. Auto-complaint generation triggers automatically after sync (built into API route)
+5. Waits 3 seconds between stores
+
+**Key Properties:**
+- Does NOT interfere with hourly incremental sync (separate job name, separate concurrency lock)
+- Uses existing adaptive chunking logic (splits further if >19k reviews per sub-chunk)
+- Runs at 3:00 AM MSK — minimal load on WB API and server
+- Estimated duration: 5-20 minutes per run
+
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts)
+
+**Manual Trigger for Specific Date Range:**
+```bash
+# Sync specific date range for one store (unix timestamps)
+curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=full&dateFrom=1700000000&dateTo=1708000000" \
+  -H "Authorization: Bearer $API_KEY"
+```
+
+---
+
+## 10. Adaptive Dialogue Sync (3-Tier Schedule)
+
+**Job Name:** `adaptive-dialogue-sync`
+**Schedule:** Dynamic (setTimeout-based, not node-cron)
+
+**3-Tier Adaptive Intervals:**
+
+| Time (MSK) | Interval | Purpose |
+|-----------|----------|---------|
+| 09:00–18:00 | **5 min** | Work hours — high frequency for fast response |
+| 06:00–09:00, 18:00–21:00 | 15 min | Morning/evening — moderate frequency |
+| 21:00–06:00 | 60 min | Night — low frequency |
+
+**What It Does:**
+1. Fetches active chats from WB API for each store
+2. Gets new message events (cursor-based pagination)
+3. Saves messages, sends Telegram notifications, triggers auto-sequences
+4. AI re-classification of updated chats
+5. Recalculates interval for next run based on current MSK time
+
+**Load:**
+- 43 stores × 2 sec delay = ~90 seconds per cycle
+- At 5-min intervals: ~3.5 min headroom (sufficient)
+
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startAdaptiveDialogueSync()`

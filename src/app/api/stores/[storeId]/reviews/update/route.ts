@@ -64,7 +64,7 @@ function splitChunk(chunk: { from: number; to: number; days: number }, parts: nu
  * @param storeId Store ID
  * @param mode 'full' = full sync (ALL reviews using date chunking), 'incremental' = only new reviews since last sync
  */
-async function refreshReviewsForStore(storeId: string, mode: 'full' | 'incremental') {
+async function refreshReviewsForStore(storeId: string, mode: 'full' | 'incremental', dateRange?: { from: Date; to: Date }) {
     console.log(`[API REVIEWS] Starting refresh for store ${storeId}, mode: ${mode}`);
 
     // Immediately update status to 'pending'
@@ -110,12 +110,13 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
             console.log(`[API REVIEWS] Incremental mode: fetching from ${fromDate.toISOString()}`);
         } else {
             // Full mode: Fetch ALL reviews using adaptive chunking
-            // Start from January 1, 2020 (WB reviews unlikely to be older)
-            const startDate = new Date('2020-01-01T00:00:00Z');
-            const endDate = new Date();
+            // Use custom dateRange if provided (for rolling sync), otherwise default to 2020-01-01
+            const startDate = dateRange?.from || new Date('2020-01-01T00:00:00Z');
+            const endDate = dateRange?.to || new Date();
 
             dateChunks = generateInitialDateChunks(startDate, endDate);
-            console.log(`[API REVIEWS] Full mode: starting with ${dateChunks.length} initial chunks (90 days each, adaptive)`);
+            console.log(`[API REVIEWS] Full mode: ${dateRange ? 'rolling chunk' : 'full history'} — ${dateChunks.length} initial chunks (90 days each, adaptive)`);
+            console.log(`[API REVIEWS] Date range: ${startDate.toISOString().split('T')[0]} → ${endDate.toISOString().split('T')[0]}`);
         }
 
         // Process chunks with adaptive splitting
@@ -407,6 +408,13 @@ export async function POST(request: NextRequest, { params }: { params: { storeId
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get('mode') === 'full' ? 'full' : 'incremental';
 
+    // Optional date range for rolling full sync (unix timestamps in seconds)
+    const dateFromParam = searchParams.get('dateFrom');
+    const dateToParam = searchParams.get('dateTo');
+    const dateRange = (dateFromParam && dateToParam)
+        ? { from: new Date(parseInt(dateFromParam) * 1000), to: new Date(parseInt(dateToParam) * 1000) }
+        : undefined;
+
     try {
         // Verify API key
         const authResult = await verifyApiKey(request);
@@ -421,7 +429,7 @@ export async function POST(request: NextRequest, { params }: { params: { storeId
         }
 
         // Run sync
-        const message = await refreshReviewsForStore(storeId, mode);
+        const message = await refreshReviewsForStore(storeId, mode, dateRange);
 
         return NextResponse.json({
             message: message || `Процесс обновления отзывов для магазина ${storeId} в режиме '${mode}' успешно завершен.`

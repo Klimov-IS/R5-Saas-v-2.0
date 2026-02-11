@@ -339,14 +339,17 @@ async function syncStoreDialogues(storeId: string, storeName: string): Promise<v
  * MSK = UTC+3
  */
 export function startAdaptiveDialogueSync() {
-  // Calculate current interval based on MSK time
+  // Calculate current interval based on MSK time (3-tier schedule)
   const getInterval = () => {
     const now = new Date();
     const mskHour = (now.getUTCHours() + 3) % 24; // Convert UTC to MSK (UTC+3)
 
-    // Day: 06:00-21:00 MSK → every 15 minutes
+    // Work hours: 09:00-18:00 MSK → every 5 minutes (high frequency)
+    // Morning/evening: 06:00-09:00 and 18:00-21:00 MSK → every 15 minutes
     // Night: 21:00-06:00 MSK → every 60 minutes
-    return (mskHour >= 6 && mskHour < 21) ? 15 : 60;
+    if (mskHour >= 9 && mskHour < 18) return 5;
+    if (mskHour >= 6 && mskHour < 21) return 15;
+    return 60;
   };
 
   const runSync = async () => {
@@ -418,7 +421,7 @@ export function startAdaptiveDialogueSync() {
 
   // Start first sync 5 seconds after server start
   console.log('[CRON] 🚀 Starting adaptive dialogue sync job...');
-  console.log('[CRON] Mode: 15min (day) / 60min (night) based on MSK timezone');
+  console.log('[CRON] Mode: 5min (work 09-18) / 15min (morning/evening) / 60min (night) MSK');
   setTimeout(runSync, 5000); // 5 second delay to let server fully initialize
   console.log('[CRON] ✅ Adaptive dialogue sync scheduled (first run in 5 seconds)');
 }
@@ -787,6 +790,131 @@ export function startAutoSequenceProcessor() {
 
   job.start();
   console.log('[CRON] ✅ Auto-sequence processor started (every 30 min)');
+
+  return job;
+}
+
+/**
+ * Rolling full sync of reviews — runs daily at 3:00 MSK (0:00 UTC), Mon-Sat
+ * Each day syncs a different 90-day chunk, cycling through 12 chunks (3 years total)
+ * Full cycle completes in 2 weeks (6 days/week, 12 chunks)
+ *
+ * Chunk schedule (by dayOfYear % 12):
+ * 0: 0-90 days ago (most recent)
+ * 1: 91-180 days ago
+ * ...
+ * 11: 991-1080 days ago
+ */
+export function startRollingReviewFullSync() {
+  // 0:00 UTC = 3:00 MSK, Monday-Saturday only
+  const cronSchedule = process.env.NODE_ENV === 'production'
+    ? '0 0 * * 1-6'
+    : '*/30 * * * *'; // Every 30 min for testing
+
+  console.log(`[CRON] Scheduling rolling review full sync: ${cronSchedule}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (3:00 MSK, Mon-Sat)' : 'TESTING (every 30 min)'}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'rolling-review-full-sync';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  Job ${jobName} is already running, skipping this trigger`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+    const startTime = Date.now();
+
+    try {
+      // Determine which chunk to process today (0-11)
+      const now = new Date();
+      const startOfYear = new Date(now.getFullYear(), 0, 0);
+      const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
+      const chunkIndex = dayOfYear % 12;
+
+      // Calculate date range for this chunk (90 days each)
+      const CHUNK_DAYS = 90;
+      const daysAgoStart = chunkIndex * CHUNK_DAYS; // e.g., chunk 0 = 0 days ago
+      const daysAgoEnd = daysAgoStart + CHUNK_DAYS;   // e.g., chunk 0 = 90 days ago
+
+      const dateTo = new Date();
+      dateTo.setDate(dateTo.getDate() - daysAgoStart);
+      dateTo.setHours(23, 59, 59, 999);
+
+      const dateFrom = new Date();
+      dateFrom.setDate(dateFrom.getDate() - daysAgoEnd);
+      dateFrom.setHours(0, 0, 0, 0);
+
+      const dateFromUnix = Math.floor(dateFrom.getTime() / 1000);
+      const dateToUnix = Math.floor(dateTo.getTime() / 1000);
+
+      console.log('\n========================================');
+      console.log(`[CRON] 🔄 Starting rolling review full sync at ${now.toISOString()}`);
+      console.log(`[CRON] Chunk ${chunkIndex + 1}/12: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]} (${daysAgoStart}-${daysAgoEnd} days ago)`);
+      console.log('========================================\n');
+
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
+
+      const stores = await dbHelpers.getAllStores();
+      console.log(`[CRON] Found ${stores.length} stores for rolling sync`);
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const store of stores) {
+        try {
+          console.log(`[CRON] Rolling sync for: ${store.name} (chunk ${chunkIndex + 1})`);
+
+          const response = await fetch(
+            `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full&dateFrom=${dateFromUnix}&dateTo=${dateToUnix}`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
+          }
+
+          const result = await response.json();
+          console.log(`[CRON] ✅ ${store.name}: ${result.message}`);
+          successCount++;
+
+          // Wait 3 seconds between stores (full sync is heavier)
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (error: any) {
+          errorCount++;
+          console.error(`[CRON] ❌ Rolling sync failed for ${store.name}:`, error.message);
+        }
+      }
+
+      const duration = Math.round((Date.now() - startTime) / 1000);
+
+      console.log('\n========================================');
+      console.log(`[CRON] ✅ Rolling review full sync completed`);
+      console.log(`[CRON] Chunk ${chunkIndex + 1}/12: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]}`);
+      console.log(`[CRON] Duration: ${duration}s`);
+      console.log(`[CRON] Stores synced: ${successCount}/${stores.length}`);
+      console.log(`[CRON] Errors: ${errorCount}`);
+      console.log('========================================\n');
+
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in rolling review full sync:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Rolling review full sync job started successfully');
 
   return job;
 }
