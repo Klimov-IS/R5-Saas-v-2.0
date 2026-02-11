@@ -9,6 +9,8 @@
 
 import { createHmac } from 'crypto';
 import { getTelegramUserByTelegramId } from '@/db/telegram-helpers';
+import { verifyToken } from '@/lib/auth';
+import type { NextRequest } from 'next/server';
 
 interface TelegramUserData {
   id: number;
@@ -136,4 +138,35 @@ export async function authenticateTelegramRequest(
     userId: telegramUser.user_id,
     telegramUser: validated.user,
   };
+}
+
+/**
+ * Unified auth for TG API routes: supports both JWT (email+password) and TG initData.
+ *
+ * Checks in order:
+ * 1. Authorization: Bearer <jwt> header (email+password login)
+ * 2. X-Telegram-Init-Data header (Telegram Mini App native auth)
+ *
+ * All TG API routes should use this instead of manual header extraction.
+ */
+export async function authenticateTgApiRequest(request: NextRequest): Promise<AuthResult> {
+  // 1. Try JWT auth (from email+password login in TG Mini App)
+  const authHeader = request.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const payload = verifyToken(token);
+    if (payload) {
+      return { valid: true, userId: payload.userId };
+    }
+    // Invalid JWT — don't fall through, return error
+    return { valid: false, error: 'Invalid token' };
+  }
+
+  // 2. Try TG initData auth
+  const initData = request.headers.get('X-Telegram-Init-Data');
+  if (!initData) {
+    return { valid: false, error: 'No auth provided' };
+  }
+
+  return authenticateTelegramRequest(initData);
 }

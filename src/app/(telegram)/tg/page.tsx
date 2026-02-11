@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/lib/telegram-auth-context';
 import TgQueueCard from '@/components/telegram/TgQueueCard';
+import TgLoginForm from '@/components/telegram/TgLoginForm';
 
 interface QueueItem {
   id: string;
@@ -55,6 +56,17 @@ export default function TgQueuePage() {
     const skipped = queue.filter(item => skippedSet.has(item.id));
     return [...normal, ...skipped];
   }, [queue, skippedIds]);
+
+  // Save queue order to sessionStorage so chat detail page can navigate to next
+  useEffect(() => {
+    if (sortedQueue.length > 0) {
+      try {
+        sessionStorage.setItem('tg_queue_order', JSON.stringify(
+          sortedQueue.map(item => ({ id: item.id, storeId: item.storeId }))
+        ));
+      } catch {}
+    }
+  }, [sortedQueue]);
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -204,22 +216,9 @@ export default function TgQueuePage() {
     );
   }
 
-  // Not linked
+  // Not linked — show login form
   if (!isLinked) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', padding: '20px' }}>
-        <div style={{ textAlign: 'center', color: 'var(--tg-text)' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔗</div>
-          <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Аккаунт не привязан</div>
-          <div style={{ fontSize: '14px', color: 'var(--tg-hint)', lineHeight: 1.5 }}>
-            Отправьте боту команду:<br />
-            <code style={{ backgroundColor: 'var(--tg-secondary-bg)', padding: '2px 6px', borderRadius: '4px' }}>
-              /link ваш_api_ключ
-            </code>
-          </div>
-        </div>
-      </div>
-    );
+    return <TgLoginForm />;
   }
 
   // Loading queue

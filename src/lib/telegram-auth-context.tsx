@@ -15,11 +15,19 @@ interface TelegramAuthState {
   stores: TelegramStore[];
   error: string | null;
   initData: string | null;
+  /** JWT token from email+password login */
+  jwtToken: string | null;
+  /** Display name (from email login) */
+  displayName: string | null;
 }
 
 interface TelegramAuthContextType extends TelegramAuthState {
-  /** Fetch wrapper that includes TG auth header */
+  /** Fetch wrapper that includes TG auth header or JWT */
   apiFetch: (url: string, options?: RequestInit) => Promise<Response>;
+  /** Login with email+password (for TG Mini App users not linked via /link) */
+  loginWithEmail: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  /** Logout (clear JWT session) */
+  logout: () => void;
 }
 
 const TelegramAuthContext = createContext<TelegramAuthContextType | null>(null);
@@ -30,6 +38,9 @@ export function useTelegramAuth(): TelegramAuthContextType {
   return ctx;
 }
 
+const TG_JWT_KEY = 'tg_auth_jwt';
+const TG_USER_KEY = 'tg_auth_user';
+
 export function TelegramAuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TelegramAuthState>({
     isLoading: true,
@@ -39,6 +50,8 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
     stores: [],
     error: null,
     initData: null,
+    jwtToken: null,
+    displayName: null,
   });
 
   useEffect(() => {
@@ -66,6 +79,8 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
               stores: data.stores || [],
               error: null,
               initData: `dev_user:${devUserId}`,
+              jwtToken: null,
+              displayName: null,
             });
           } else {
             setState(s => ({ ...s, isLoading: false, error: data.error || 'Dev auth failed' }));
@@ -73,9 +88,43 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // Check for saved JWT session (from previous email+password login)
+        const savedJwt = sessionStorage.getItem(TG_JWT_KEY);
+        const savedUser = sessionStorage.getItem(TG_USER_KEY);
+        if (savedJwt && savedUser) {
+          try {
+            const userData = JSON.parse(savedUser);
+            // Verify token is still valid by making a test request
+            const testRes = await fetch('/api/telegram/queue?limit=1', {
+              headers: { 'Authorization': `Bearer ${savedJwt}` },
+            });
+            if (testRes.ok) {
+              setState({
+                isLoading: false,
+                isAuthenticated: true,
+                isLinked: true,
+                userId: userData.userId,
+                stores: userData.stores || [],
+                error: null,
+                initData: null,
+                jwtToken: savedJwt,
+                displayName: userData.displayName || null,
+              });
+              return;
+            }
+            // Token expired — clear and continue to TG auth
+            sessionStorage.removeItem(TG_JWT_KEY);
+            sessionStorage.removeItem(TG_USER_KEY);
+          } catch {
+            sessionStorage.removeItem(TG_JWT_KEY);
+            sessionStorage.removeItem(TG_USER_KEY);
+          }
+        }
+
         // Get initData from Telegram WebApp
         const tg = (window as any).Telegram?.WebApp;
         if (!tg) {
+          // Not inside Telegram — show login form
           setState(s => ({ ...s, isLoading: false, error: 'Not running inside Telegram' }));
           return;
         }
@@ -118,6 +167,8 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
           stores: data.stores || [],
           error: data.userId ? null : 'Account not linked',
           initData,
+          jwtToken: null,
+          displayName: null,
         });
       } catch (err: any) {
         setState(s => ({ ...s, isLoading: false, error: err.message }));
@@ -127,16 +178,79 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
     authenticate();
   }, []);
 
+  // Login with email+password
+  const loginWithEmail = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/telegram/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Ошибка входа' };
+      }
+
+      // Save JWT to sessionStorage
+      sessionStorage.setItem(TG_JWT_KEY, data.token);
+      sessionStorage.setItem(TG_USER_KEY, JSON.stringify({
+        userId: data.userId,
+        displayName: data.displayName,
+        stores: data.stores,
+      }));
+
+      setState({
+        isLoading: false,
+        isAuthenticated: true,
+        isLinked: true,
+        userId: data.userId,
+        stores: data.stores || [],
+        error: null,
+        initData: null,
+        jwtToken: data.token,
+        displayName: data.displayName || null,
+      });
+
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Ошибка сети' };
+    }
+  }, []);
+
+  // Logout
+  const logout = useCallback(() => {
+    sessionStorage.removeItem(TG_JWT_KEY);
+    sessionStorage.removeItem(TG_USER_KEY);
+    setState({
+      isLoading: false,
+      isAuthenticated: false,
+      isLinked: false,
+      userId: null,
+      stores: [],
+      error: 'Account not linked',
+      initData: null,
+      jwtToken: null,
+      displayName: null,
+    });
+  }, []);
+
   const apiFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(options.headers);
-    if (state.initData) {
+
+    // Prefer JWT if available (email+password auth), otherwise use TG initData
+    if (state.jwtToken) {
+      headers.set('Authorization', `Bearer ${state.jwtToken}`);
+    } else if (state.initData) {
       headers.set('X-Telegram-Init-Data', state.initData);
     }
+
     return fetch(url, { ...options, headers });
-  }, [state.initData]);
+  }, [state.initData, state.jwtToken]);
 
   return (
-    <TelegramAuthContext.Provider value={{ ...state, apiFetch }}>
+    <TelegramAuthContext.Provider value={{ ...state, apiFetch, loginWithEmail, logout }}>
       {children}
     </TelegramAuthContext.Provider>
   );

@@ -60,6 +60,47 @@ export default function TgChatPage() {
     } catch {}
   }, []);
 
+  // Navigate to next chat in queue (or back to queue if none)
+  const goToNextChat = useCallback(() => {
+    try {
+      const queueOrder = JSON.parse(sessionStorage.getItem('tg_queue_order') || '[]') as Array<{ id: string; storeId: string }>;
+      const currentIndex = queueOrder.findIndex(item => item.id === chatId);
+
+      // Add current to skipped so it sorts to end
+      const skipped = JSON.parse(sessionStorage.getItem('tg_skipped_chats') || '[]');
+      if (!skipped.includes(chatId)) skipped.push(chatId);
+      sessionStorage.setItem('tg_skipped_chats', JSON.stringify(skipped));
+
+      // Find next non-skipped chat
+      const skippedSet = new Set(skipped);
+      let nextItem = null;
+      for (let i = currentIndex + 1; i < queueOrder.length; i++) {
+        if (!skippedSet.has(queueOrder[i].id)) {
+          nextItem = queueOrder[i];
+          break;
+        }
+      }
+      // If nothing found after current, wrap around from start
+      if (!nextItem) {
+        for (let i = 0; i < currentIndex; i++) {
+          if (!skippedSet.has(queueOrder[i].id)) {
+            nextItem = queueOrder[i];
+            break;
+          }
+        }
+      }
+
+      if (nextItem) {
+        const devUser = new URLSearchParams(window.location.search).get('dev_user');
+        router.replace(`/tg/chat/${nextItem.id}?storeId=${nextItem.storeId}${devUser ? `&dev_user=${devUser}` : ''}`);
+      } else {
+        router.back();
+      }
+    } catch {
+      router.back();
+    }
+  }, [chatId, router]);
+
   // Back button
   useEffect(() => {
     const tg = (window as any).Telegram?.WebApp;
@@ -91,6 +132,8 @@ export default function TgChatPage() {
     fetchChat();
   }, [fetchChat]);
 
+  const [messageSent, setMessageSent] = useState(false);
+
   // Send message
   const handleSend = async () => {
     if (!draftText.trim() || isSending) return;
@@ -104,8 +147,9 @@ export default function TgChatPage() {
       });
       if (!response.ok) throw new Error('Failed to send');
       haptic('success');
-      setFeedback('✅ Отправлено!');
-      setTimeout(() => router.back(), 800);
+      setFeedback('✅ Отправлено');
+      setMessageSent(true);
+      setDraftText('');
     } catch {
       haptic('error');
       setFeedback('❌ Ошибка отправки');
@@ -297,7 +341,7 @@ export default function TgChatPage() {
       {/* Action buttons */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        gridTemplateColumns: messageSent ? '1fr 1fr' : '1fr 1fr',
         gap: '8px',
         padding: '10px 14px',
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
@@ -305,86 +349,117 @@ export default function TgChatPage() {
         borderTop: '1px solid rgba(0,0,0,0.08)',
         flexShrink: 0,
       }}>
-        {/* Send */}
-        <button
-          onClick={handleSend}
-          disabled={!draftText.trim() || isSending || isGenerating}
-          style={{
-            padding: '12px',
-            borderRadius: '10px',
-            border: 'none',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            backgroundColor: (!draftText.trim() || isSending || isGenerating) ? '#ccc' : '#22c55e',
-            color: '#fff',
-            opacity: isSending ? 0.7 : 1,
-          }}
-        >
-          {isSending ? '⏳...' : '✅ Отправить'}
-        </button>
+        {!messageSent ? (
+          <>
+            {/* Send */}
+            <button
+              onClick={handleSend}
+              disabled={!draftText.trim() || isSending || isGenerating}
+              style={{
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: (!draftText.trim() || isSending || isGenerating) ? '#ccc' : '#22c55e',
+                color: '#fff',
+                opacity: isSending ? 0.7 : 1,
+              }}
+            >
+              {isSending ? '⏳...' : '✅ Отправить'}
+            </button>
 
-        {/* Regenerate */}
-        <button
-          onClick={handleGenerate}
-          disabled={isGenerating || isSending}
-          style={{
-            padding: '12px',
-            borderRadius: '10px',
-            border: 'none',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            backgroundColor: 'var(--tg-button)',
-            color: 'var(--tg-button-text)',
-            opacity: isGenerating ? 0.7 : 1,
-          }}
-        >
-          {isGenerating ? '⏳...' : '🤖 AI ответ'}
-        </button>
+            {/* Regenerate */}
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || isSending}
+              style={{
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: 'var(--tg-button)',
+                color: 'var(--tg-button-text)',
+                opacity: isGenerating ? 0.7 : 1,
+              }}
+            >
+              {isGenerating ? '⏳...' : '🤖 AI ответ'}
+            </button>
 
-        {/* Close */}
-        <button
-          onClick={() => setShowReasons(true)}
-          disabled={isSending || isGenerating}
-          style={{
-            padding: '12px',
-            borderRadius: '10px',
-            border: 'none',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            backgroundColor: '#ef4444',
-            color: '#fff',
-          }}
-        >
-          ❌ Закрыть
-        </button>
+            {/* Close */}
+            <button
+              onClick={() => setShowReasons(true)}
+              disabled={isSending || isGenerating}
+              style={{
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: '#ef4444',
+                color: '#fff',
+              }}
+            >
+              ❌ Закрыть
+            </button>
 
-        {/* Skip */}
-        <button
-          onClick={() => {
-            // Save to sessionStorage so queue page sorts this chat to the bottom
-            try {
-              const skipped = JSON.parse(sessionStorage.getItem('tg_skipped_chats') || '[]');
-              if (!skipped.includes(chatId)) skipped.push(chatId);
-              sessionStorage.setItem('tg_skipped_chats', JSON.stringify(skipped));
-            } catch {}
-            router.back();
-          }}
-          style={{
-            padding: '12px',
-            borderRadius: '10px',
-            border: '1px solid rgba(0,0,0,0.12)',
-            fontSize: '14px',
-            fontWeight: 700,
-            cursor: 'pointer',
-            backgroundColor: 'transparent',
-            color: 'var(--tg-hint)',
-          }}
-        >
-          ⏭️ Пропустить
-        </button>
+            {/* Next dialog */}
+            <button
+              onClick={goToNextChat}
+              style={{
+                padding: '12px',
+                borderRadius: '10px',
+                border: '1px solid rgba(0,0,0,0.12)',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: 'transparent',
+                color: 'var(--tg-hint)',
+              }}
+            >
+              ⏭️ След. диалог
+            </button>
+          </>
+        ) : (
+          <>
+            {/* After send: close or next */}
+            <button
+              onClick={() => setShowReasons(true)}
+              style={{
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: '#ef4444',
+                color: '#fff',
+              }}
+            >
+              ❌ Закрыть диалог
+            </button>
+
+            <button
+              onClick={goToNextChat}
+              style={{
+                padding: '12px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: 'var(--tg-button)',
+                color: 'var(--tg-button-text)',
+              }}
+            >
+              ⏭️ След. диалог
+            </button>
+          </>
+        )}
       </div>
 
       {/* Completion reason bottom sheet */}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { authenticateTelegramRequest } from '@/lib/telegram-auth';
+import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
@@ -22,12 +22,9 @@ export async function PATCH(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    const initData = request.headers.get('X-Telegram-Init-Data');
-    if (!initData) return NextResponse.json({ error: 'Missing auth' }, { status: 401 });
-
-    const auth = await authenticateTelegramRequest(initData);
+    const auth = await authenticateTgApiRequest(request);
     if (!auth.valid || !auth.userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
 
     const { chatId } = params;
