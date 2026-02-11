@@ -72,12 +72,15 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to send message to WB' }, { status: 502 });
     }
 
-    // Clear draft and update status
+    // Clear draft, update status, and mark as seller-replied (removes from queue)
     await dbHelpers.updateChat(chatId, {
       draft_reply: null,
       draft_reply_generated_at: null,
       draft_reply_edited: null,
       status: 'awaiting_reply',
+      last_message_sender: 'seller',
+      last_message_text: message.trim(),
+      last_message_date: new Date().toISOString(),
     });
 
     return NextResponse.json({ success: true });

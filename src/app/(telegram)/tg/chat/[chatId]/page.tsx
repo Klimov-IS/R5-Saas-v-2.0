@@ -329,7 +329,7 @@ export default function TgChatPage() {
             opacity: isGenerating ? 0.7 : 1,
           }}
         >
-          {isGenerating ? '⏳...' : '🔄 Заново'}
+          {isGenerating ? '⏳...' : '🤖 AI ответ'}
         </button>
 
         {/* Close */}
