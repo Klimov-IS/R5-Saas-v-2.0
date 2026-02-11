@@ -14,24 +14,10 @@ interface TgQueueCardProps {
   hasDraft: boolean;
   draftPreview: string | null;
   isSkipped?: boolean;
+  isSelected?: boolean;
+  selectionMode?: boolean;
+  onToggleSelect?: () => void;
   onClick: () => void;
-}
-
-const STORE_COLORS = [
-  'bg-blue-100 text-blue-700',
-  'bg-green-100 text-green-700',
-  'bg-purple-100 text-purple-700',
-  'bg-orange-100 text-orange-700',
-  'bg-pink-100 text-pink-700',
-];
-
-function getStoreColor(storeName: string): string {
-  let hash = 0;
-  for (let i = 0; i < storeName.length; i++) {
-    hash = ((hash << 5) - hash) + storeName.charCodeAt(i);
-    hash |= 0;
-  }
-  return STORE_COLORS[Math.abs(hash) % STORE_COLORS.length];
 }
 
 export default function TgQueueCard({
@@ -42,6 +28,9 @@ export default function TgQueueCard({
   lastMessageDate,
   hasDraft,
   isSkipped,
+  isSelected,
+  selectionMode,
+  onToggleSelect,
   onClick,
 }: TgQueueCardProps) {
   const timeAgo = lastMessageDate
@@ -50,31 +39,55 @@ export default function TgQueueCard({
 
   return (
     <div
-      onClick={onClick}
+      onClick={selectionMode ? onToggleSelect : onClick}
       style={{
-        backgroundColor: 'var(--tg-secondary-bg)',
+        backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--tg-secondary-bg)',
         borderRadius: '12px',
         padding: '12px 14px',
         marginBottom: '8px',
         cursor: 'pointer',
-        transition: 'opacity 0.15s',
+        transition: 'all 0.15s',
         opacity: isSkipped ? 0.5 : 1,
+        border: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
       }}
     >
-      {/* Top row: store badge + time */}
+      {/* Top row: checkbox (if selection mode) + store badge + time */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: '10px',
-            backgroundColor: 'var(--tg-button)',
-            color: 'var(--tg-button-text)',
-          }}
-        >
-          {storeName}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {selectionMode && (
+            <div
+              onClick={(e) => { e.stopPropagation(); onToggleSelect?.(); }}
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '4px',
+                border: isSelected ? 'none' : '2px solid var(--tg-hint)',
+                backgroundColor: isSelected ? '#3b82f6' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all 0.15s',
+              }}
+            >
+              {isSelected && (
+                <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>✓</span>
+              )}
+            </div>
+          )}
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              padding: '2px 8px',
+              borderRadius: '10px',
+              backgroundColor: 'var(--tg-button)',
+              color: 'var(--tg-button-text)',
+            }}
+          >
+            {storeName}
+          </span>
+        </div>
         <span style={{ fontSize: '11px', color: 'var(--tg-hint)' }}>
           {timeAgo}
         </span>
