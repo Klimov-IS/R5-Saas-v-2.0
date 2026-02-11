@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
+import { getAccessibleStoreIds } from '@/db/auth-helpers';
 
 /**
  * GET /api/telegram/chats/[chatId]
  *
  * Returns chat detail + messages for Mini App.
- * Validates ownership via TG auth.
+ * Validates access via org-based store permissions.
  */
 export async function GET(
   request: NextRequest,
@@ -20,14 +21,15 @@ export async function GET(
     }
 
     const { chatId } = params;
+    const storeIds = await getAccessibleStoreIds(auth.userId);
 
-    // Get chat with ownership check
+    // Get chat with org-based access check
     const chatResult = await query(
       `SELECT c.*, s.name as store_name
        FROM chats c
        JOIN stores s ON c.store_id = s.id
-       WHERE c.id = $1 AND c.owner_id = $2`,
-      [chatId, auth.userId]
+       WHERE c.id = $1 AND c.store_id = ANY($2::text[])`,
+      [chatId, storeIds]
     );
 
     if (!chatResult.rows[0]) {

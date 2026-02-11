@@ -4,6 +4,7 @@ import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
+import { getAccessibleStoreIds } from '@/db/auth-helpers';
 
 const validStatuses: ChatStatus[] = ['inbox', 'in_progress', 'awaiting_reply', 'closed'];
 const validReasons: CompletionReason[] = [
@@ -42,10 +43,11 @@ export async function PATCH(
       }
     }
 
-    // Ownership check
+    // Org-based access check
+    const storeIds = await getAccessibleStoreIds(auth.userId);
     const chatResult = await query(
-      'SELECT id FROM chats WHERE id = $1 AND owner_id = $2',
-      [chatId, auth.userId]
+      'SELECT id FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
+      [chatId, storeIds]
     );
 
     if (!chatResult.rows[0]) {

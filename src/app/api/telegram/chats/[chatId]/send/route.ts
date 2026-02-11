@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
+import { getAccessibleStoreIds } from '@/db/auth-helpers';
 
 /**
  * POST /api/telegram/chats/[chatId]/send
@@ -27,12 +28,13 @@ export async function POST(
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Get chat with ownership check
+    // Get chat with org-based access check
+    const storeIds = await getAccessibleStoreIds(auth.userId);
     const chatResult = await query(
       `SELECT c.id, c.store_id, c.reply_sign, c.owner_id
        FROM chats c
-       WHERE c.id = $1 AND c.owner_id = $2`,
-      [chatId, auth.userId]
+       WHERE c.id = $1 AND c.store_id = ANY($2::text[])`,
+      [chatId, storeIds]
     );
 
     if (!chatResult.rows[0]) {

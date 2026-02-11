@@ -193,14 +193,16 @@ export async function wasNotificationSentRecently(
 // ============================================================================
 
 /**
- * Get unified chat queue across all user's stores
- * Shows chats where client replied and chat is not closed
+ * Get unified chat queue across accessible stores.
+ * Shows chats where client replied and chat is not closed.
+ * Accepts storeIds array (from getAccessibleStoreIds) for org-based access.
  */
 export async function getUnifiedChatQueue(
-  userId: string,
+  storeIds: string[],
   limit: number = 50,
   offset: number = 0
 ): Promise<QueueChat[]> {
+  if (storeIds.length === 0) return [];
   const result = await query<QueueChat>(
     `SELECT
        c.id, c.store_id, s.name as store_name,
@@ -211,34 +213,36 @@ export async function getUnifiedChatQueue(
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
      LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE c.owner_id = $1
+     WHERE c.store_id = ANY($1::text[])
        AND c.last_message_sender = 'client'
        AND c.status != 'closed'
        AND s.status = 'active'
        AND pr.work_in_chats = TRUE
      ORDER BY c.last_message_date DESC NULLS LAST
      LIMIT $2 OFFSET $3`,
-    [userId, limit, offset]
+    [storeIds, limit, offset]
   );
   return result.rows;
 }
 
 /**
- * Count total chats in queue (for pagination)
+ * Count total chats in queue (for pagination).
+ * Accepts storeIds array for org-based access.
  */
-export async function getUnifiedChatQueueCount(userId: string): Promise<number> {
+export async function getUnifiedChatQueueCount(storeIds: string[]): Promise<number> {
+  if (storeIds.length === 0) return 0;
   const result = await query<{ count: string }>(
     `SELECT COUNT(*) as count
      FROM chats c
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
      LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE c.owner_id = $1
+     WHERE c.store_id = ANY($1::text[])
        AND c.last_message_sender = 'client'
        AND c.status != 'closed'
        AND s.status = 'active'
        AND pr.work_in_chats = TRUE`,
-    [userId]
+    [storeIds]
   );
   return parseInt(result.rows[0]?.count || '0', 10);
 }

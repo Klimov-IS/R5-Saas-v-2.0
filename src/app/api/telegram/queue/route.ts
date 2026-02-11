@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { getUnifiedChatQueue, getUnifiedChatQueueCount } from '@/db/telegram-helpers';
+import { getAccessibleStoreIds } from '@/db/auth-helpers';
 
 /**
  * GET /api/telegram/queue
  *
  * Returns unified cross-store chat queue (chats where client replied, not closed).
- * Auth: X-Telegram-Init-Data header
+ * Uses org-based access: shows chats for all stores accessible to the user.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,13 +17,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
 
+    const storeIds = await getAccessibleStoreIds(auth.userId);
+    if (storeIds.length === 0) {
+      return NextResponse.json({ data: [], totalCount: 0 });
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
 
     const [chats, totalCount] = await Promise.all([
-      getUnifiedChatQueue(auth.userId, limit, offset),
-      getUnifiedChatQueueCount(auth.userId),
+      getUnifiedChatQueue(storeIds, limit, offset),
+      getUnifiedChatQueueCount(storeIds),
     ]);
 
     return NextResponse.json({

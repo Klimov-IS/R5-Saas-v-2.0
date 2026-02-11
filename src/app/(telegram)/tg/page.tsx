@@ -90,6 +90,15 @@ export default function TgQueuePage() {
     }
   }, [isAuthenticated, isLinked, fetchQueue]);
 
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    if (!isAuthenticated || !isLinked) return;
+    const interval = setInterval(() => {
+      fetchQueue();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, isLinked, fetchQueue]);
+
   // Haptic feedback helper
   const haptic = useCallback((type: 'success' | 'error' | 'warning') => {
     try {

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
+import { getAccessibleStoreIds } from '@/db/auth-helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 import { buildStoreInstructions } from '@/lib/ai-context';
 
@@ -23,13 +24,14 @@ export async function POST(
 
     const { chatId } = params;
 
-    // Get chat with ownership check
+    // Get chat with org-based access check
+    const storeIds = await getAccessibleStoreIds(auth.userId);
     const chatResult = await query(
       `SELECT c.*, s.name as store_name, s.ai_instructions
        FROM chats c
        JOIN stores s ON c.store_id = s.id
-       WHERE c.id = $1 AND c.owner_id = $2`,
-      [chatId, auth.userId]
+       WHERE c.id = $1 AND c.store_id = ANY($2::text[])`,
+      [chatId, storeIds]
     );
 
     if (!chatResult.rows[0]) {

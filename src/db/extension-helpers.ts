@@ -457,16 +457,33 @@ export async function getUserByApiToken(token: string) {
 }
 
 /**
- * Get user's stores by user ID
- *
- * @param userId User ID
- * @returns Array of store objects with id, name, and stats
+ * Get user's stores by user ID.
+ * Uses org-based access: finds user's organization, returns all org stores
+ * (for owner/admin) or assigned stores (for manager).
+ * Falls back to legacy owner_id filter if user has no org membership.
  */
 export async function getUserStores(userId: string): Promise<Array<{
   id: string;
   name: string;
   total_reviews: number;
 }>> {
+  // Try org-based access first
+  const { getAccessibleStoreIds } = await import('@/db/auth-helpers');
+  const storeIds = await getAccessibleStoreIds(userId);
+
+  if (storeIds.length > 0) {
+    const result = await query<{
+      id: string;
+      name: string;
+      total_reviews: number;
+    }>(
+      'SELECT id, name, total_reviews FROM stores WHERE id = ANY($1::text[]) ORDER BY name ASC',
+      [storeIds]
+    );
+    return result.rows;
+  }
+
+  // Fallback: legacy owner_id (for users not in any org)
   const result = await query<{
     id: string;
     name: string;
