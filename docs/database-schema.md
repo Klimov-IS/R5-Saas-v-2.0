@@ -1,9 +1,10 @@
-# WB Reputation Manager - Database Schema
+# R5 Reputation Manager - Database Schema
 
 **Database:** PostgreSQL 15 (Yandex Managed)
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
-**Last Updated:** 2026-02-11
+**Marketplaces:** Wildberries, OZON
+**Last Updated:** 2026-02-12
 
 ---
 
@@ -205,7 +206,7 @@ CREATE INDEX idx_users_approved ON users(is_approved);
 
 ### `stores`
 
-**Purpose:** Wildberries seller accounts (кабинеты)
+**Purpose:** Marketplace seller accounts (WB and OZON кабинеты)
 
 ```sql
 CREATE TABLE stores (
@@ -213,11 +214,19 @@ CREATE TABLE stores (
   name                       TEXT NOT NULL,
   owner_id                   TEXT NOT NULL REFERENCES users(id),
 
-  -- WB API Tokens
+  -- Marketplace discriminator (added in migration 012)
+  marketplace                TEXT NOT NULL DEFAULT 'wb',  -- 'wb' | 'ozon'
+
+  -- WB API Tokens (only for marketplace='wb')
   api_token                  TEXT NOT NULL,  -- Main API token
   content_api_token          TEXT NULL,
   feedbacks_api_token        TEXT NULL,
   chat_api_token             TEXT NULL,
+
+  -- OZON API Credentials (only for marketplace='ozon', added in migration 012)
+  ozon_client_id             TEXT NULL,      -- OZON Client-Id (numeric)
+  ozon_api_key               TEXT NULL,      -- OZON Api-Key (UUID)
+  ozon_subscription          TEXT NULL,      -- PREMIUM | PREMIUM_PLUS | PREMIUM_PRO
 
   -- Auto-reply settings
   is_auto_no_reply_enabled   BOOLEAN DEFAULT FALSE,
@@ -251,14 +260,21 @@ CREATE TABLE stores (
   -- Status
   status                     VARCHAR(20) DEFAULT 'active',
 
+  -- Organization
+  org_id                     TEXT NULL REFERENCES organizations(id),
+
   created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT stores_marketplace_check CHECK (marketplace IN ('wb', 'ozon'))
 );
 ```
 
 **Key Fields:**
-- `status` - 'active' or 'inactive' (controls visibility)
+- `marketplace` - 'wb' or 'ozon' (discriminator for multi-marketplace support)
+- `status` - 'active', 'paused', 'stopped', 'trial', 'archived' (controls visibility and sync)
 - `ai_instructions` - Free-form text with AI instructions for this store (injected into system prompt)
+- `ozon_client_id` / `ozon_api_key` - OZON API credentials (only for OZON stores)
 - `total_reviews` - cached count (updated during sync)
 - `last_*_update_*` - sync status tracking for monitoring
 
@@ -267,6 +283,7 @@ CREATE TABLE stores (
 CREATE INDEX idx_stores_owner ON stores(owner_id);
 CREATE INDEX idx_stores_name ON stores(name);
 CREATE INDEX idx_stores_status ON stores(status);
+CREATE INDEX idx_stores_marketplace ON stores(marketplace);
 ```
 
 **Sync Status Values:**
@@ -279,7 +296,7 @@ CREATE INDEX idx_stores_status ON stores(status);
 
 ### `products`
 
-**Purpose:** Products from WB catalog
+**Purpose:** Products from WB and OZON catalogs
 
 ```sql
 CREATE TABLE products (
@@ -287,12 +304,22 @@ CREATE TABLE products (
   store_id                 TEXT NOT NULL REFERENCES stores(id),
   owner_id                 TEXT NOT NULL REFERENCES users(id),
 
-  -- WB product data
+  -- Marketplace discriminator (added in migration 012)
+  marketplace              TEXT NOT NULL DEFAULT 'wb',  -- 'wb' | 'ozon'
+
+  -- Common product data
   name                     TEXT NOT NULL,
-  wb_product_id            TEXT NOT NULL,  -- nmId from WB
-  vendor_code              TEXT NOT NULL,
+  wb_product_id            TEXT NOT NULL,  -- WB: nmId; OZON: product_id as TEXT
+  vendor_code              TEXT NOT NULL,  -- WB: vendorCode; OZON: offer_id
   price                    INTEGER NULL,
   image_url                TEXT NULL,
+  description              TEXT NULL,       -- Product description (added in migration 012)
+
+  -- OZON-specific identifiers (added in migration 012)
+  ozon_product_id          BIGINT NULL,    -- OZON internal product_id
+  ozon_offer_id            TEXT NULL,      -- OZON seller's article (offer_id)
+  ozon_sku                 TEXT NULL,      -- Primary SKU (FBO, source="sds")
+  ozon_fbs_sku             TEXT NULL,      -- FBS SKU (if available)
 
   -- Cached review count
   review_count             INTEGER DEFAULT 0,
@@ -304,22 +331,26 @@ CREATE TABLE products (
   -- Compensation settings
   compensation_method      TEXT NULL,
 
-  -- Raw WB API response (for reference)
+  -- Raw WB API response (for reference, WB only)
   wb_api_data              JSONB NULL,
 
   -- Last review sync for this product
   last_review_update_date  TIMESTAMPTZ NULL,
 
   created_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT products_marketplace_check CHECK (marketplace IN ('wb', 'ozon'))
 );
 ```
 
 **Key Fields:**
-- `wb_product_id` - WB internal ID (nmId)
+- `marketplace` - 'wb' or 'ozon' (matches parent store)
+- `wb_product_id` - WB: nmId; OZON: product_id as string (universal linking field)
+- `ozon_product_id` / `ozon_offer_id` / `ozon_sku` / `ozon_fbs_sku` - OZON triple-ID system
+- `description` - HTML description (mainly for OZON products)
 - `is_active` - manually controlled visibility
 - `work_status` - complaint workflow participation
-- `review_count` - cached count (updated during sync)
 
 **Indexes:**
 ```sql
@@ -330,11 +361,15 @@ CREATE INDEX idx_products_active ON products(is_active);
 CREATE INDEX idx_products_work_status ON products(work_status);
 CREATE INDEX idx_products_store_active ON products(store_id, is_active, work_status);
 CREATE UNIQUE INDEX idx_products_unique_wb_id ON products(store_id, wb_product_id);
+CREATE INDEX idx_products_marketplace ON products(marketplace);
+CREATE INDEX idx_products_ozon_product_id ON products(ozon_product_id);
+CREATE INDEX idx_products_ozon_offer_id ON products(ozon_offer_id);
 ```
 
 **Important:**
 - `idx_products_unique_wb_id` prevents duplicate products per store
 - `idx_products_store_active` optimizes "active products" queries
+- OZON products have composite ID format: `{storeId}_ozon_{ozon_product_id}`
 
 ---
 

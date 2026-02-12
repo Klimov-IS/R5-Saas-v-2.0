@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
         const storesResponse = stores.map(store => ({
             id: store.id,
             name: store.name,
+            marketplace: store.marketplace || 'wb',
             status: store.status,
             product_count: typeof store.product_count === 'string'
                 ? parseInt(store.product_count, 10) || 0
@@ -127,10 +128,11 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
-        // Create store
+        // Create store (WB by default via this endpoint)
         const newStore = await dbHelpers.createStore({
             id,
             name,
+            marketplace: 'wb',
             api_token: apiToken,
             content_api_token: contentApiToken || null,
             feedbacks_api_token: feedbacksApiToken || null,

@@ -22,6 +22,7 @@ export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'n
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
+export type Marketplace = 'wb' | 'ozon';
 
 export interface User {
   id: string;
@@ -60,12 +61,17 @@ export interface UserSettings {
 export interface Store {
   id: string;
   name: string;
+  marketplace: Marketplace;
   api_token: string;
   content_api_token?: string | null;
   feedbacks_api_token?: string | null;
   chat_api_token?: string | null;
+  // OZON credentials (only for marketplace='ozon')
+  ozon_client_id?: string | null;
+  ozon_api_key?: string | null;
+  ozon_subscription?: string | null;
   owner_id: string;
-  status: StoreStatus; // NEW: Store lifecycle status
+  status: StoreStatus;
   product_count?: number; // NEW: Computed product count
   last_product_update_status?: UpdateStatus | null;
   last_product_update_date?: string | null;
@@ -93,10 +99,17 @@ export type WorkStatus = 'not_working' | 'active' | 'paused' | 'completed';
 export interface Product {
   id: string;
   name: string;
+  marketplace: Marketplace;
   wb_product_id: string;
   vendor_code: string;
   price?: number | null;
   image_url?: string | null;
+  description?: string | null;
+  // OZON identifiers (only for marketplace='ozon')
+  ozon_product_id?: number | null;
+  ozon_offer_id?: string | null;
+  ozon_sku?: string | null;
+  ozon_fbs_sku?: string | null;
   store_id: string;
   owner_id: string;
   review_count?: number;
@@ -352,7 +365,8 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
   // Include status and compute product_count from products table
   const selectQuery = `
     SELECT
-      s.id, s.name, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
+      s.id, s.name, s.marketplace, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
+      s.ozon_client_id, s.ozon_api_key, s.ozon_subscription,
       s.owner_id, s.status,
       s.last_product_update_status, s.last_product_update_date, s.last_product_update_error,
       s.last_review_update_status, s.last_review_update_date, s.last_review_update_error,
@@ -392,8 +406,15 @@ export async function getStoreById(id: string): Promise<Store | null> {
   return result.rows[0] || null;
 }
 
-export async function getAllStores(): Promise<Store[]> {
+export async function getAllStores(marketplace?: Marketplace): Promise<Store[]> {
   // Only return active stores for CRON jobs and automated operations
+  if (marketplace) {
+    const result = await query<Store>(
+      "SELECT * FROM stores WHERE status = 'active' AND marketplace = $1 ORDER BY name",
+      [marketplace]
+    );
+    return result.rows;
+  }
   const result = await query<Store>(
     "SELECT * FROM stores WHERE status = 'active' ORDER BY name"
   );
@@ -403,17 +424,22 @@ export async function getAllStores(): Promise<Store[]> {
 export async function createStore(store: Omit<Store, 'created_at' | 'updated_at' | 'product_count'>): Promise<Store> {
   const result = await query<Store>(
     `INSERT INTO stores (
-      id, name, api_token, content_api_token, feedbacks_api_token, chat_api_token,
+      id, name, marketplace, api_token, content_api_token, feedbacks_api_token, chat_api_token,
+      ozon_client_id, ozon_api_key, ozon_subscription,
       owner_id, status, total_reviews, total_chats, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
     RETURNING *`,
     [
       store.id,
       store.name,
+      store.marketplace || 'wb',
       store.api_token,
       store.content_api_token || null,
       store.feedbacks_api_token || null,
       store.chat_api_token || null,
+      store.ozon_client_id || null,
+      store.ozon_api_key || null,
+      store.ozon_subscription || null,
       store.owner_id,
       store.status || 'active',
       store.total_reviews || 0,
@@ -456,6 +482,10 @@ export async function updateStore(
     ['total_chats', 'total_chats'],
     ['chat_tag_counts', 'chat_tag_counts'],
     ['ai_instructions', 'ai_instructions'],
+    ['marketplace', 'marketplace'],
+    ['ozon_client_id', 'ozon_client_id'],
+    ['ozon_api_key', 'ozon_api_key'],
+    ['ozon_subscription', 'ozon_subscription'],
   ];
 
   for (const [key, dbField] of fieldMappings) {
@@ -488,8 +518,10 @@ export async function deleteStore(id: string): Promise<boolean> {
 
 export async function getProducts(storeId: string): Promise<Product[]> {
   const result = await query<Product>(
-    `SELECT id, name, wb_product_id, vendor_code, price, image_url, store_id, owner_id,
-            review_count, wb_api_data, last_review_update_date, is_active, created_at, updated_at
+    `SELECT id, name, marketplace, wb_product_id, vendor_code, price, image_url, description,
+            ozon_product_id, ozon_offer_id, ozon_sku, ozon_fbs_sku,
+            store_id, owner_id, review_count, wb_api_data, last_review_update_date,
+            is_active, created_at, updated_at
      FROM products WHERE store_id = $1 ORDER BY created_at DESC`,
     [storeId]
   );
@@ -527,17 +559,24 @@ export async function getProductsByIds(productIds: string[]): Promise<Product[]>
 export async function createProduct(product: Omit<Product, 'created_at' | 'updated_at'>): Promise<Product> {
   const result = await query<Product>(
     `INSERT INTO products (
-      id, name, wb_product_id, vendor_code, price, image_url, store_id, owner_id,
-      review_count, wb_api_data, is_active, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+      id, name, marketplace, wb_product_id, vendor_code, price, image_url, description,
+      ozon_product_id, ozon_offer_id, ozon_sku, ozon_fbs_sku,
+      store_id, owner_id, review_count, wb_api_data, is_active, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
     RETURNING *`,
     [
       product.id,
       product.name,
+      product.marketplace || 'wb',
       product.wb_product_id,
       product.vendor_code,
       product.price || null,
       product.image_url || null,
+      product.description || null,
+      product.ozon_product_id || null,
+      product.ozon_offer_id || null,
+      product.ozon_sku || null,
+      product.ozon_fbs_sku || null,
       product.store_id,
       product.owner_id,
       product.review_count || 0,
@@ -558,10 +597,16 @@ export async function updateProduct(
 
   const fieldMappings: [keyof typeof updates, string][] = [
     ['name', 'name'],
+    ['marketplace', 'marketplace'],
     ['wb_product_id', 'wb_product_id'],
     ['vendor_code', 'vendor_code'],
     ['price', 'price'],
     ['image_url', 'image_url'],
+    ['description', 'description'],
+    ['ozon_product_id', 'ozon_product_id'],
+    ['ozon_offer_id', 'ozon_offer_id'],
+    ['ozon_sku', 'ozon_sku'],
+    ['ozon_fbs_sku', 'ozon_fbs_sku'],
     ['store_id', 'store_id'],
     ['owner_id', 'owner_id'],
     ['review_count', 'review_count'],
@@ -592,15 +637,21 @@ export async function updateProduct(
 export async function upsertProduct(product: Omit<Product, 'created_at' | 'updated_at'>): Promise<Product> {
   const result = await query<Product>(
     `INSERT INTO products (
-      id, name, wb_product_id, vendor_code, price, image_url, store_id, owner_id,
-      review_count, wb_api_data, is_active, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+      id, name, marketplace, wb_product_id, vendor_code, price, image_url, description,
+      ozon_product_id, ozon_offer_id, ozon_sku, ozon_fbs_sku,
+      store_id, owner_id, review_count, wb_api_data, is_active, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       wb_product_id = EXCLUDED.wb_product_id,
       vendor_code = EXCLUDED.vendor_code,
       price = EXCLUDED.price,
       image_url = EXCLUDED.image_url,
+      description = EXCLUDED.description,
+      ozon_product_id = EXCLUDED.ozon_product_id,
+      ozon_offer_id = EXCLUDED.ozon_offer_id,
+      ozon_sku = EXCLUDED.ozon_sku,
+      ozon_fbs_sku = EXCLUDED.ozon_fbs_sku,
       review_count = EXCLUDED.review_count,
       wb_api_data = EXCLUDED.wb_api_data,
       is_active = EXCLUDED.is_active,
@@ -609,10 +660,16 @@ export async function upsertProduct(product: Omit<Product, 'created_at' | 'updat
     [
       product.id,
       product.name,
+      product.marketplace || 'wb',
       product.wb_product_id,
       product.vendor_code,
       product.price || null,
       product.image_url || null,
+      product.description || null,
+      product.ozon_product_id || null,
+      product.ozon_offer_id || null,
+      product.ozon_sku || null,
+      product.ozon_fbs_sku || null,
       product.store_id,
       product.owner_id,
       product.review_count || 0,
@@ -1971,7 +2028,8 @@ export async function deleteProductRule(productId: string): Promise<boolean> {
 export async function getProductsWithRules(storeId: string): Promise<Array<Product & { rule: ProductRule | null }>> {
   const result = await query<Product & { rule: string }>(
     `SELECT
-      p.id, p.name, p.wb_product_id, p.vendor_code, p.price, p.image_url,
+      p.id, p.name, p.marketplace, p.wb_product_id, p.vendor_code, p.price, p.image_url,
+      p.description, p.ozon_product_id, p.ozon_offer_id, p.ozon_sku, p.ozon_fbs_sku,
       p.store_id, p.owner_id, p.review_count, p.wb_api_data,
       p.last_review_update_date, p.is_active, p.work_status,
       p.created_at, p.updated_at,

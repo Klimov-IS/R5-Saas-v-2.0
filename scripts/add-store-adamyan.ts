@@ -33,6 +33,7 @@ async function addStoreAdamyan() {
     const storeData = {
       id: storeId,
       name: 'ИП Адамян',
+      marketplace: 'wb' as const,
       api_token: 'eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwOTA0djEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjEsImVudCI6MSwiZXhwIjoxNzgzODk5NDM2LCJpZCI6IjAxOWJhY2Q4LWEwZjYtN2ViZC04YTdjLWE2MWRlMDE1ZGEwMCIsImlpZCI6NTg5Nzg1MzksIm9pZCI6MzI2MzYwLCJzIjo2NDIsInNpZCI6ImE1YzgzNzc5LWVhZTMtNGM1ZC1hOTA2LTg5ODczN2I1ZWU5YiIsInQiOmZhbHNlLCJ1aWQiOjU4OTc4NTM5fQ.OstvGdmgi_GSK-jAMXbLDPns6PFW-6YJrsLJXnFc9bBUYRWOG1q4w5kS7eVn3oaZ-lg_T0a_egLCtJcDlGPpAw',
       owner_id: userSettings.id,
       status: 'active' as const,

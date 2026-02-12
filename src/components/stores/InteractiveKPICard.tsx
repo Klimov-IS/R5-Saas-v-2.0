@@ -14,6 +14,11 @@ export interface InteractiveKPICardProps {
   iconColor: string;
   isLoading?: boolean;
   isSyncing?: boolean;
+  extraAction?: {
+    label: string;
+    tooltip: string;
+    onClick: () => void;
+  };
 }
 
 export function InteractiveKPICard({
@@ -27,6 +32,7 @@ export function InteractiveKPICard({
   iconColor,
   isLoading = false,
   isSyncing = false,
+  extraAction,
 }: InteractiveKPICardProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -115,6 +121,38 @@ export function InteractiveKPICard({
         <h3>{label}</h3>
         <p>{typeof value === 'number' ? value.toLocaleString('ru-RU') : value}</p>
       </div>
+
+      {/* Extra action button (e.g. OZON) */}
+      {extraAction && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            extraAction.onClick();
+          }}
+          title={extraAction.tooltip}
+          style={{
+            position: 'absolute',
+            top: '6px',
+            right: '6px',
+            padding: '2px 6px',
+            fontSize: '10px',
+            fontWeight: 700,
+            color: 'white',
+            background: 'linear-gradient(135deg, #005BFF, #003399)',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            opacity: 0.9,
+            transition: 'opacity 0.2s',
+            zIndex: 5,
+            lineHeight: '16px',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.9'; }}
+        >
+          {extraAction.label}
+        </button>
+      )}
 
       {/* Tooltip */}
       {isHovered && !isLoading && (

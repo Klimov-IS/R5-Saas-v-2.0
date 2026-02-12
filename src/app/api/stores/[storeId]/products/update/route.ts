@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { verifyApiKey } from '@/lib/server-utils';
+import { refreshOzonProducts } from '@/lib/ozon-product-sync';
 
 /**
  * Refresh products for a store from WB Content API
@@ -104,6 +105,7 @@ async function refreshProductsForStore(storeId: string) {
                     const payload: Omit<dbHelpers.Product, 'created_at' | 'updated_at'> = {
                         id: productId,
                         name: productName,
+                        marketplace: 'wb',
                         wb_product_id: String(nmId),
                         vendor_code: vendorCode || '',
                         price: null, // Price not available in this API
@@ -228,8 +230,13 @@ export async function POST(request: NextRequest, { params }: { params: { storeId
             return NextResponse.json({ error: 'Store not found.' }, { status: 404 });
         }
 
-        // Run sync
-        const message = await refreshProductsForStore(storeId);
+        // Dispatch to marketplace-specific sync
+        let message: string;
+        if (store.marketplace === 'ozon') {
+            message = await refreshOzonProducts(storeId);
+        } else {
+            message = await refreshProductsForStore(storeId);
+        }
 
         return NextResponse.json({
             message: message || `Процесс обновления товаров для магазина ${storeId} успешно завершен.`

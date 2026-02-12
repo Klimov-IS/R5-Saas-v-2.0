@@ -761,7 +761,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-02-11
+**Last Updated:** 2026-02-12
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -769,7 +769,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync + auto-generate complaints |
 | **Rolling Review Full Sync** | **3:00 AM Mon-Sat** | **0 0 * * 1-6** | **Full review sync by 90-day chunks (12 chunks, 3-year coverage, 2-week cycle)** |
 | Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues |
-| Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog |
+| Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue |
 | Stores Cache | Every 5 min | */5 * * * * | Pre-warm stores cache for Extension API |
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |

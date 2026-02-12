@@ -8,6 +8,7 @@ import { StatusMultiSelect } from '@/components/stores/StatusMultiSelect';
 import { StatusDropdown } from '@/components/stores/StatusDropdown';
 import { ActionIcon } from '@/components/stores/ActionIcon';
 import { AddStoreModal } from '@/components/stores/AddStoreModal';
+import { AddOzonStoreModal } from '@/components/stores/AddOzonStoreModal';
 import { EditStoreModal } from '@/components/stores/EditStoreModal';
 import { ProgressModal } from '@/components/sync/ProgressModal';
 import type { Store, StoreStatus } from '@/db/helpers';
@@ -65,6 +66,7 @@ export default function Home() {
   const [syncingChats, setSyncingChats] = useState<Record<string, boolean>>({});
   const [syncingFull, setSyncingFull] = useState<Record<string, boolean>>({});
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddOzonModal, setShowAddOzonModal] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -463,10 +465,15 @@ export default function Home() {
             label="Всего магазинов"
             value={stores.length}
             actionIcon={Plus}
-            actionTooltip="Добавить магазин"
+            actionTooltip="Добавить WB магазин"
             onClick={() => setShowAddModal(true)}
             bgColor="var(--category-chats-bg)"
             iconColor="var(--category-chats-text)"
+            extraAction={{
+              label: 'OZ',
+              tooltip: 'Подключить OZON магазин',
+              onClick: () => setShowAddOzonModal(true),
+            }}
           />
 
           <div className="kpi-divider"></div>
@@ -614,6 +621,20 @@ export default function Home() {
                         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-foreground)'; }}
                         >
                           {store.name}
+                          {store.marketplace === 'ozon' && (
+                            <span style={{
+                              display: 'inline-block',
+                              marginLeft: '8px',
+                              padding: '1px 6px',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              color: 'white',
+                              background: 'linear-gradient(135deg, #005BFF, #003399)',
+                              borderRadius: '4px',
+                              verticalAlign: 'middle',
+                              lineHeight: '16px',
+                            }}>OZON</span>
+                          )}
                         </div>
                         <div style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
                           Обновлён: {formatRelativeDate(store.updated_at)}
@@ -714,6 +735,11 @@ export default function Home() {
       <AddStoreModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
+      />
+
+      <AddOzonStoreModal
+        isOpen={showAddOzonModal}
+        onClose={() => setShowAddOzonModal(false)}
       />
 
       <EditStoreModal
