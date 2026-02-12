@@ -9,6 +9,7 @@ import { StatusDropdown } from '@/components/stores/StatusDropdown';
 import { ActionIcon } from '@/components/stores/ActionIcon';
 import { AddStoreModal } from '@/components/stores/AddStoreModal';
 import { AddOzonStoreModal } from '@/components/stores/AddOzonStoreModal';
+import { MarketplaceSelector } from '@/components/stores/MarketplaceSelector';
 import { EditStoreModal } from '@/components/stores/EditStoreModal';
 import { ProgressModal } from '@/components/sync/ProgressModal';
 import type { Store, StoreStatus } from '@/db/helpers';
@@ -65,6 +66,7 @@ export default function Home() {
   const [syncingReviews, setSyncingReviews] = useState<Record<string, boolean>>({});
   const [syncingChats, setSyncingChats] = useState<Record<string, boolean>>({});
   const [syncingFull, setSyncingFull] = useState<Record<string, boolean>>({});
+  const [showMarketplaceSelector, setShowMarketplaceSelector] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAddOzonModal, setShowAddOzonModal] = useState(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
@@ -465,15 +467,10 @@ export default function Home() {
             label="Всего магазинов"
             value={stores.length}
             actionIcon={Plus}
-            actionTooltip="Добавить WB магазин"
-            onClick={() => setShowAddModal(true)}
+            actionTooltip="Подключить магазин"
+            onClick={() => setShowMarketplaceSelector(true)}
             bgColor="var(--category-chats-bg)"
             iconColor="var(--category-chats-text)"
-            extraAction={{
-              label: 'OZ',
-              tooltip: 'Подключить OZON магазин',
-              onClick: () => setShowAddOzonModal(true),
-            }}
           />
 
           <div className="kpi-divider"></div>
@@ -732,6 +729,13 @@ export default function Home() {
       </section>
 
       {/* Modals */}
+      <MarketplaceSelector
+        isOpen={showMarketplaceSelector}
+        onClose={() => setShowMarketplaceSelector(false)}
+        onSelectWB={() => setShowAddModal(true)}
+        onSelectOzon={() => setShowAddOzonModal(true)}
+      />
+
       <AddStoreModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
