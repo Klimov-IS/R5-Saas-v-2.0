@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       subscription,
       hasChatAccess: hasPremiumPlus,
       hasReviewAccess: hasPremiumPlus,
-      roles: roles.map((r) => r.name),
+      roles: (roles || []).map((r) => r.name),
       ratings: (ratingSummary || []).map((r) => ({
         name: r.rating_name,
         group: r.group_name,

@@ -224,8 +224,8 @@ export class OzonApiClient {
    * Returns array of roles (e.g. [{id: 1, name: "Admin"}]).
    */
   async getRoles(): Promise<OzonRole[]> {
-    const data = await this.post<{ result: OzonRole[] }>('/v1/roles');
-    return data.result;
+    const data = await this.post<{ result?: OzonRole[] }>('/v1/roles');
+    return data.result || [];
   }
 
   // ========================================================================
