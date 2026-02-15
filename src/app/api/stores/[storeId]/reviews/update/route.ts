@@ -96,9 +96,9 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         let dateChunks: Array<{ from: number; to: number; days: number }>;
 
         if (mode === 'incremental') {
-            // Incremental: Only fetch reviews since last update (go back 1 hour to be safe)
+            // Incremental: Only fetch reviews since last update (go back 3 hours to catch WB API indexing delays)
             const fromDate = store.last_review_update_date
-                ? new Date(new Date(store.last_review_update_date).getTime() - 3600 * 1000)
+                ? new Date(new Date(store.last_review_update_date).getTime() - 3 * 3600 * 1000)
                 : new Date(Date.now() - 7 * 24 * 3600 * 1000); // Last 7 days as fallback
 
             dateChunks = [{

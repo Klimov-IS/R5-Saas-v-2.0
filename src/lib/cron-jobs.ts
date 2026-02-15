@@ -89,6 +89,7 @@ export function startDailyReviewSync() {
       let totalComplaintsGenerated = 0;
       let totalTemplated = 0;
       let totalComplaintsFailed = 0;
+      const failedStores: typeof stores = [];
 
       // Sync each store sequentially (to avoid rate limiting)
       for (const store of stores) {
@@ -107,7 +108,31 @@ export function startDailyReviewSync() {
           await new Promise(resolve => setTimeout(resolve, 2000));
         } catch (error) {
           errorCount++;
+          failedStores.push(store);
           console.error(`[CRON] Error syncing store ${store.name}:`, error);
+        }
+      }
+
+      // Retry failed stores once (handles transient WB API rate limits / timeouts)
+      if (failedStores.length > 0) {
+        console.log(`[CRON] ♻️  Retrying ${failedStores.length} failed stores...`);
+        for (const store of failedStores) {
+          try {
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Extra delay before retry
+            await syncStoreReviews(store.id, store.name);
+            successCount++;
+            errorCount--;
+
+            // Also generate complaints for retried stores
+            const complaintStats = await generateComplaintsForStore(store.id, store.name);
+            totalComplaintsGenerated += complaintStats.generated;
+            totalTemplated += complaintStats.templated;
+            totalComplaintsFailed += complaintStats.failed;
+
+            console.log(`[CRON] ♻️  Retry succeeded for ${store.name}`);
+          } catch (retryError: any) {
+            console.error(`[CRON] ♻️  Retry also failed for ${store.name}: ${retryError.message}`);
+          }
         }
       }
 
@@ -746,7 +771,7 @@ export function startAutoSequenceProcessor() {
 }
 
 /**
- * Rolling full sync of reviews — runs daily at 3:00 MSK (0:00 UTC), Mon-Sat
+ * Rolling full sync of reviews — runs daily at 3:00 MSK (0:00 UTC), every day
  * Each day syncs a different 90-day chunk, cycling through 12 chunks (3 years total)
  * Full cycle completes in 2 weeks (6 days/week, 12 chunks)
  *
@@ -757,13 +782,13 @@ export function startAutoSequenceProcessor() {
  * 11: 991-1080 days ago
  */
 export function startRollingReviewFullSync() {
-  // 0:00 UTC = 3:00 MSK, Monday-Saturday only
+  // 0:00 UTC = 3:00 MSK, every day (including Sunday)
   const cronSchedule = process.env.NODE_ENV === 'production'
-    ? '0 0 * * 1-6'
+    ? '0 0 * * *'
     : '*/30 * * * *'; // Every 30 min for testing
 
   console.log(`[CRON] Scheduling rolling review full sync: ${cronSchedule}`);
-  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (3:00 MSK, Mon-Sat)' : 'TESTING (every 30 min)'}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (3:00 MSK, every day)' : 'TESTING (every 30 min)'}`);
 
   const job = cron.schedule(cronSchedule, async () => {
     const jobName = 'rolling-review-full-sync';
@@ -876,6 +901,112 @@ export function startRollingReviewFullSync() {
 
   job.start();
   console.log('[CRON] ✅ Rolling review full sync job started successfully');
+
+  return job;
+}
+
+/**
+ * Midday review catchup — runs daily at 13:00 MSK (10:00 UTC)
+ * Processes only chunk 0 (last 90 days) as a second pass to catch
+ * reviews missed by the incremental sync due to WB API indexing delays.
+ * Uses upsert so no duplicates are created.
+ */
+export function startMiddayReviewCatchup() {
+  // 10:00 UTC = 13:00 MSK, every day
+  const cronSchedule = process.env.NODE_ENV === 'production'
+    ? '0 10 * * *'
+    : '*/45 * * * *'; // Every 45 min for testing
+
+  console.log(`[CRON] Scheduling midday review catchup: ${cronSchedule}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (13:00 MSK daily, chunk 0 only)' : 'TESTING (every 45 min)'}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'midday-review-catchup';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  Job ${jobName} is already running, skipping this trigger`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+    const startTime = Date.now();
+
+    try {
+      const CHUNK_DAYS = 90;
+      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
+
+      const stores = await dbHelpers.getAllStores();
+
+      console.log('\n========================================');
+      console.log(`[CRON] 🔄 Starting midday review catchup at ${new Date().toISOString()}`);
+      console.log(`[CRON] Processing chunk 0 (last ${CHUNK_DAYS} days) for ${stores.length} stores`);
+      console.log('========================================\n');
+
+      // Chunk 0: last 90 days
+      const dateTo = new Date();
+      dateTo.setHours(23, 59, 59, 999);
+
+      const dateFrom = new Date();
+      dateFrom.setDate(dateFrom.getDate() - CHUNK_DAYS);
+      dateFrom.setHours(0, 0, 0, 0);
+
+      const dateFromUnix = Math.floor(dateFrom.getTime() / 1000);
+      const dateToUnix = Math.floor(dateTo.getTime() / 1000);
+
+      console.log(`[CRON] Date range: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]}`);
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const store of stores) {
+        try {
+          const response = await fetch(
+            `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full&dateFrom=${dateFromUnix}&dateTo=${dateToUnix}`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
+          }
+
+          const result = await response.json();
+          console.log(`[CRON] ✅ ${store.name} (midday catchup): ${result.message}`);
+          successCount++;
+
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (error: any) {
+          errorCount++;
+          console.error(`[CRON] ❌ ${store.name} (midday catchup): ${error.message}`);
+        }
+      }
+
+      const duration = Math.round((Date.now() - startTime) / 1000);
+
+      console.log('\n========================================');
+      console.log(`[CRON] ✅ Midday review catchup completed`);
+      console.log(`[CRON] Duration: ${duration}s`);
+      console.log(`[CRON] Stores: ${successCount}/${stores.length} success, ${errorCount} errors`);
+      console.log('========================================\n');
+
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in midday review catchup:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Midday review catchup job started successfully');
 
   return job;
 }

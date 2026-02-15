@@ -10,7 +10,8 @@ WB Reputation Manager uses **automated background jobs** (CRON) to sync data fro
 
 **Key Features:**
 - Hourly incremental review synchronization
-- **Rolling full review sync** (3:00 AM MSK, Mon-Sat) — 90-day chunks, 3-year coverage in 2-week cycle
+- **Rolling full review sync** (3:00 AM MSK, every day) — 90-day chunks, 3-year coverage in ~12-day cycle
+- **Midday review catchup** (13:00 MSK, every day) — chunk 0 only, catches WB API indexing delays
 - **Automatic complaint generation** immediately after sync (zero delay)
 - **Template-based optimization** for empty reviews (zero AI cost)
 - **AI-powered complaints** for reviews with content
@@ -59,12 +60,13 @@ graph TD
 **What It Does:**
 1. Fetches all **active** stores from database
 2. For each store:
-   - Calls incremental review sync API
+   - Calls incremental review sync API (3-hour overlap window to catch WB indexing delays)
    - **Immediately generates complaints for new reviews** (only for active products)
    - Uses template-based complaints for empty reviews (zero AI cost)
    - Uses AI for reviews with text content
 3. Waits 2 seconds between stores (rate limiting)
-4. Logs success/error counts + complaint generation stats
+4. **Retries failed stores once** after main loop (handles transient WB API 429/timeouts)
+5. Logs success/error counts + complaint generation stats
 
 **Source:** [src/lib/cron-jobs.ts:51-121](../src/lib/cron-jobs.ts#L51-L121)
 
@@ -766,8 +768,9 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
 |-----|----------------|----------------|-------------|
-| Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync + auto-generate complaints |
-| **Rolling Review Full Sync** | **3:00 AM Mon-Sat** | **0 0 * * 1-6** | **Full review sync by 90-day chunks (12 chunks, 3-year coverage, 2-week cycle)** |
+| Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync (3h overlap) + auto-generate complaints + retry failed stores |
+| **Rolling Review Full Sync** | **3:00 AM daily** | **0 0 * * *** | **Full review sync by 90-day chunks (chunk 0 + 1 rotational, 3-year coverage)** |
+| **Midday Review Catchup** | **13:00 daily** | **0 10 * * *** | **Chunk 0 only (last 90 days) — second daily pass to catch WB API delays** |
 | Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue (BATCH=200, DAILY_LIMIT=6000) |
@@ -946,12 +949,12 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 
 **Job Name:** `rolling-review-full-sync`
 **Schedule:**
-- **Production:** `0 0 * * 1-6` (3:00 AM MSK / 0:00 UTC, Mon-Sat)
+- **Production:** `0 0 * * *` (3:00 AM MSK / 0:00 UTC, every day including Sunday)
 - **Development:** `*/30 * * * *` (every 30 minutes)
 
 **Purpose:** Guarantee complete review coverage across all stores. Incremental sync can miss reviews if server was down, WB API returned errors, or reviews were backdated.
 
-**Strategy:** Each day syncs a different 90-day date chunk, rotating through 12 chunks to cover 3 years (1080 days). Full cycle completes in 2 weeks (6 working days × 2 weeks = 12 chunks).
+**Strategy:** Each day syncs chunk 0 (last 90 days, ALWAYS) + a rotational chunk (1-11). Full cycle of all 12 chunks completes in ~12 days.
 
 **Chunk Schedule (by dayOfYear % 12):**
 
@@ -991,6 +994,31 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=full&dateFrom=1700000000&dateTo=1708000000" \
   -H "Authorization: Bearer $API_KEY"
 ```
+
+---
+
+## 9a. Midday Review Catchup (Дневной досинк отзывов)
+
+**Job Name:** `midday-review-catchup`
+**Schedule:**
+- **Production:** `0 10 * * *` (13:00 MSK / 10:00 UTC, every day)
+- **Development:** `*/45 * * * *` (every 45 minutes)
+
+**Purpose:** Second daily full sync pass for chunk 0 (last 90 days) to catch reviews missed by incremental sync due to WB API indexing delays. Combined with the 3:00 MSK rolling sync, this gives **double coverage** for recent reviews.
+
+**What It Does:**
+1. Calculates chunk 0 date range (last 90 days)
+2. For each active store: calls full sync API with chunk 0 date range
+3. Uses upsert — no duplicates created
+4. Waits 3 seconds between stores
+
+**Key Properties:**
+- Only processes chunk 0 (no rotational chunks)
+- Idempotent via upsert — safe to run alongside other syncs
+- Estimated duration: 3-5 minutes for 65 stores
+- Auto-complaint generation triggers automatically for new reviews found
+
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startMiddayReviewCatchup()`
 
 ---
 
