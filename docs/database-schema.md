@@ -568,12 +568,15 @@ CREATE INDEX idx_complaints_status_moderated ON review_complaints(status, modera
 CREATE INDEX idx_complaints_reason ON review_complaints(reason_id, reason_name);
 CREATE INDEX idx_complaints_product ON review_complaints(product_id, status);
 CREATE INDEX idx_complaints_cost_date ON review_complaints(generated_at DESC, ai_cost_usd) WHERE ai_cost_usd IS NOT NULL;
+-- Migration 013: Optimized index for extension stores API draft count query
+CREATE INDEX idx_complaints_draft_store_product ON review_complaints(store_id, product_id) WHERE status = 'draft';
 ```
 
 **Partial Indexes:**
 - `idx_complaints_store_sent` - only sent complaints
 - `idx_complaints_status_moderated` - only moderated complaints
 - `idx_complaints_cost_date` - only complaints with cost data
+- `idx_complaints_draft_store_product` - draft complaints by store+product (extension API)
 
 ---
 
@@ -1174,6 +1177,7 @@ Key migrations:
 6. `20260209_007_create_store_faq.sql` - Created `store_faq` table
 7. `20260209_008_create_store_guides.sql` - Created `store_guides` table
 8. `20260210_009_telegram_integration.sql` - Created `telegram_users` and `telegram_notifications_log` tables
+9. `013_optimize_draft_complaints_index.sql` - Partial index for extension stores API draft count optimization
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 

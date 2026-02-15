@@ -76,17 +76,16 @@ export async function refreshCacheForUser(userId: string): Promise<StoreResponse
       s.name,
       s.owner_id,
       s.status,
-      COALESCE(
-        (SELECT COUNT(*)
-         FROM reviews r
-         JOIN review_complaints rc ON r.id = rc.review_id
-         JOIN products p ON r.product_id = p.id
-         WHERE r.store_id = s.id
-           AND rc.status = 'draft'
-           AND p.work_status = 'active'
-        ), 0
-      )::text as draft_complaints_count
+      COALESCE(cnt.draft_count, 0)::text as draft_complaints_count
     FROM stores s
+    LEFT JOIN (
+      SELECT rc.store_id, COUNT(*) as draft_count
+      FROM review_complaints rc
+      JOIN products p ON rc.product_id = p.id
+      WHERE rc.status = 'draft'
+        AND p.work_status = 'active'
+      GROUP BY rc.store_id
+    ) cnt ON cnt.store_id = s.id
     WHERE s.owner_id = $1
     ORDER BY s.name ASC
     `,
