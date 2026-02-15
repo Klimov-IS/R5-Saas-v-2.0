@@ -497,7 +497,7 @@ pm2 logs wb-reputation
 
 - **No manual intervention required** after deployment
 - CRON jobs start when PM2 reloads the application
-- **9 active jobs:** hourly review sync, rolling full review sync (3:00 MSK), adaptive dialogue sync (5min/15min/60min), daily product sync, backfill worker, stores cache, Google Sheets, client directory, auto-sequence processor
+- **9 active jobs:** hourly review sync, nightly full review sync (22:00 MSK, all 12 chunks), adaptive dialogue sync (5min/15min/60min), daily product sync, backfill worker, stores cache, Google Sheets, client directory, auto-sequence processor
 - See [CRON_JOBS.md](./CRON_JOBS.md) for details
 
 ---
