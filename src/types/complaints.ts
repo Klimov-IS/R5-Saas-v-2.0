@@ -14,11 +14,12 @@
  * жалоба сразу переходит в статус "Проверяем жалобу"
  */
 export type ComplaintStatus =
-  | 'draft'      // Черновик (можно редактировать/регенерировать)
-  | 'pending'    // На рассмотрении WB ("Проверяем жалобу")
-  | 'approved'   // WB одобрил жалобу
-  | 'rejected'   // WB отклонил жалобу
-  | 'reconsidered'; // WB пересмотрел жалобу
+  | 'draft'           // Черновик (можно редактировать/регенерировать)
+  | 'pending'         // На рассмотрении WB ("Проверяем жалобу")
+  | 'approved'        // WB одобрил жалобу
+  | 'rejected'        // WB отклонил жалобу
+  | 'reconsidered'    // WB пересмотрел жалобу
+  | 'not_applicable'; // Нельзя подать (отзыв удалён/недоступен)
 
 /**
  * Wildberries complaint reason categories (11-20)
@@ -189,6 +190,7 @@ export interface ComplaintStats {
   approved: number;
   rejected: number;
   reconsidered: number;
+  not_applicable: number;
 
   // Cost tracking
   total_tokens: number;
@@ -212,6 +214,7 @@ export const COMPLAINT_STATUS_LABELS: Record<ComplaintStatus, string> = {
   approved: '✅ Одобрена WB',
   rejected: '❌ Отклонена WB',
   reconsidered: '🔄 Пересмотрена',
+  not_applicable: '🚫 Нельзя подать',
 };
 
 /**
@@ -223,6 +226,7 @@ export const COMPLAINT_STATUS_COLORS: Record<ComplaintStatus, { bg: string; colo
   approved: { bg: '#d1fae5', color: '#065f46', border: '#10b981' },
   rejected: { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' },
   reconsidered: { bg: '#e0e7ff', color: '#3730a3', border: '#6366f1' },
+  not_applicable: { bg: '#f3e5f5', color: '#6a1b9a', border: '#ce93d8' },
 };
 
 /**

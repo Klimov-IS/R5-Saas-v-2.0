@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { query } from '@/db/client';
 import { verifyApiKey } from '@/lib/server-utils';
 import {
     autoGenerateComplaintsInBackground,
@@ -91,6 +92,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         let totalFetchedReviews = 0;
         let sessionLatestReviewDate = new Date(0);
         const newReviewIds: string[] = []; // Track new reviews for auto-complaint generation
+        const seenReviewIds = new Set<string>(); // Track all review IDs from WB API (for deletion detection)
 
         // Determine date range strategy
         let dateChunks: Array<{ from: number; to: number; days: number }>;
@@ -216,6 +218,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
 
                             // Upsert review
                             await dbHelpers.upsertReview(payload);
+                            seenReviewIds.add(review.id);
 
                             // Track new reviews for auto-complaint generation
                             if (isNewReview) {
@@ -272,6 +275,96 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         }
 
         console.log(`[API REVIEWS] Finished fetching. Total: ${totalFetchedReviews}. Recalculating store stats.`);
+
+        // ============================================================================
+        // DELETED REVIEW DETECTION (full sync mode only)
+        // Compare reviews in DB vs reviews from WB API → mark missing as deleted
+        // ============================================================================
+        if (mode === 'full' && seenReviewIds.size > 0) {
+            try {
+                // Determine date range for DB comparison
+                const rangeStart = dateRange?.from || new Date('2020-01-01T00:00:00Z');
+                const rangeEnd = dateRange?.to || new Date();
+
+                // Step 1: Get all non-deleted review IDs in DB for this store + date range
+                const dbReviewsResult = await query<{ id: string }>(
+                    `SELECT id FROM reviews
+                     WHERE store_id = $1
+                       AND date >= $2
+                       AND date <= $3
+                       AND review_status_wb != 'deleted'`,
+                    [storeId, rangeStart.toISOString(), rangeEnd.toISOString()]
+                );
+
+                const dbReviewIds = new Set(dbReviewsResult.rows.map(r => r.id));
+
+                // Step 2: Find reviews in DB but NOT returned by WB API
+                const missingIds: string[] = [];
+                for (const dbId of dbReviewIds) {
+                    if (!seenReviewIds.has(dbId)) {
+                        missingIds.push(dbId);
+                    }
+                }
+
+                // Step 3: Safeguard — if >30% "deleted", likely API issue
+                const deletionRatio = dbReviewIds.size > 0 ? missingIds.length / dbReviewIds.size : 0;
+
+                if (missingIds.length === 0) {
+                    console.log(`[DELETED DETECTION] No deleted reviews detected for store ${storeId}`);
+                } else if (deletionRatio > 0.30) {
+                    console.warn(`[DELETED DETECTION] ⚠️ SAFEGUARD: ${missingIds.length}/${dbReviewIds.size} (${(deletionRatio * 100).toFixed(1)}%) reviews appear deleted. Threshold exceeded (30%). SKIPPING.`);
+                } else {
+                    console.log(`[DELETED DETECTION] Found ${missingIds.length}/${dbReviewIds.size} potentially deleted reviews for store ${storeId}`);
+
+                    // Step 4: Mark as deleted (only if review_status_wb is 'unknown' or 'visible')
+                    const markResult = await query<{ id: string }>(
+                        `UPDATE reviews
+                         SET review_status_wb = 'deleted',
+                             deleted_from_wb_at = NOW(),
+                             updated_at = NOW()
+                         WHERE id = ANY($1)
+                           AND store_id = $2
+                           AND review_status_wb IN ('unknown', 'visible')
+                         RETURNING id`,
+                        [missingIds, storeId]
+                    );
+
+                    const markedCount = markResult.rowCount ?? 0;
+                    console.log(`[DELETED DETECTION] Marked ${markedCount} reviews as deleted`);
+
+                    // Step 5: Auto-cancel draft complaints on deleted reviews
+                    if (markedCount > 0) {
+                        const markedIds = markResult.rows.map(r => r.id);
+
+                        // Update review_complaints: draft → not_applicable
+                        const complaintResult = await query<{ review_id: string }>(
+                            `UPDATE review_complaints
+                             SET status = 'not_applicable', updated_at = NOW()
+                             WHERE review_id = ANY($1) AND status = 'draft'
+                             RETURNING review_id`,
+                            [markedIds]
+                        );
+
+                        // Update reviews.complaint_status for cancelled complaints
+                        if ((complaintResult.rowCount ?? 0) > 0) {
+                            const cancelledReviewIds = complaintResult.rows.map(r => r.review_id);
+                            await query(
+                                `UPDATE reviews
+                                 SET complaint_status = 'not_applicable',
+                                     has_complaint_draft = FALSE,
+                                     updated_at = NOW()
+                                 WHERE id = ANY($1)`,
+                                [cancelledReviewIds]
+                            );
+                            console.log(`[DELETED DETECTION] Auto-cancelled ${complaintResult.rowCount} draft complaints on deleted reviews`);
+                        }
+                    }
+                }
+            } catch (detectionError: any) {
+                console.error(`[DELETED DETECTION] Error during deletion detection (non-fatal):`, detectionError.message);
+                // Non-fatal — don't fail the sync
+            }
+        }
 
         // Count total reviews in store
         const stats = await dbHelpers.getStoreStats(storeId);

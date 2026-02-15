@@ -200,6 +200,12 @@ export async function shouldGenerateComplaint(review: Review): Promise<boolean> 
     return false;
   }
 
+  // 1.0. Skip deleted reviews (can't submit complaints for removed reviews)
+  if (review.review_status_wb === 'deleted') {
+    console.log(`[AutoComplaint] Skip: review ${review.id} is deleted from WB`);
+    return false;
+  }
+
   // 1.1. Check review date is not older than cutoff (WB rule: Oct 1, 2023)
   if (review.date) {
     const reviewDate = new Date(review.date);

@@ -133,6 +133,7 @@ export async function GET(request: NextRequest) {
         WHERE rc.status = 'draft'
           AND p.work_status = 'active'
           AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+          AND r.review_status_wb != 'deleted'
         GROUP BY rc.store_id
       ) cnt ON cnt.store_id = s.id
       WHERE s.owner_id = $1

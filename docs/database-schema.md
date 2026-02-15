@@ -77,6 +77,7 @@ CREATE TYPE review_status_wb AS ENUM (
   'visible',       -- Виден (подаем жалобы)
   'unpublished',   -- Снят с публикации (НЕ подаем)
   'excluded',      -- Исключён из рейтинга (НЕ подаем)
+  'deleted',       -- Удалён покупателем (обнаружен при full sync, migration 015)
   'unknown'        -- Неизвестно (по умолчанию)
 );
 ```
@@ -121,12 +122,14 @@ CREATE TYPE chat_status_by_review AS ENUM (
 
 ```sql
 CREATE TYPE complaint_status AS ENUM (
-  'not_sent',  -- Не отправлена (жалоба не создана)
-  'draft',     -- Черновик (сгенерирована AI, но не отправлена)
-  'sent',      -- Отправлена (вручную отмечено пользователем)
-  'approved',  -- Одобрена (WB одобрил жалобу)
-  'rejected',  -- Отклонена (WB отклонил жалобу)
-  'pending'    -- На рассмотрении (WB рассматривает)
+  'not_sent',         -- Без черновика (жалоба не создана)
+  'draft',            -- Черновик (сгенерирована AI, но не отправлена)
+  'sent',             -- Отправлена (вручную отмечено пользователем)
+  'approved',         -- Одобрена (WB одобрил жалобу)
+  'rejected',         -- Отклонена (WB отклонил жалобу)
+  'pending',          -- На рассмотрении (WB рассматривает)
+  'reconsidered',     -- Пересмотрена (WB пересмотрел)
+  'not_applicable'    -- Нельзя подать (отзыв удалён, migration 015)
 );
 ```
 
@@ -431,6 +434,9 @@ CREATE TABLE reviews (
   parsed_at                  TIMESTAMPTZ NULL,  -- When extension parsed this review
   page_number                INTEGER NULL,      -- Page number in WB cabinet
 
+  -- Deletion detection (added migration 015)
+  deleted_from_wb_at         TIMESTAMPTZ NULL,  -- When review was detected as deleted from WB
+
   created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -461,6 +467,10 @@ CREATE INDEX idx_reviews_default_filter ON reviews(store_id, rating, is_product_
 -- Status filters
 CREATE INDEX idx_reviews_wb_status ON reviews(store_id, review_status_wb, date DESC);
 CREATE INDEX idx_reviews_product_status ON reviews(store_id, product_status_by_review, date DESC);
+
+-- Deleted reviews detection (migration 015)
+CREATE INDEX idx_reviews_deleted ON reviews(store_id, deleted_from_wb_at DESC)
+  WHERE deleted_from_wb_at IS NOT NULL;
 
 -- Answer tracking
 CREATE INDEX idx_reviews_store_answer ON reviews(store_id, has_answer, date DESC);

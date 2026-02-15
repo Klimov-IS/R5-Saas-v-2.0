@@ -10,12 +10,13 @@ import { MultiSelectDropdown } from './MultiSelectDropdown';
 // Filter options
 // Статус 'sent' удалён - при отправке сразу ставится 'pending'
 const COMPLAINT_STATUS_OPTIONS = [
-  { value: 'not_sent', label: 'Не отправлена' },
+  { value: 'not_sent', label: 'Без черновика' },
   { value: 'draft', label: 'Черновик' },
   { value: 'pending', label: 'На рассмотрении' },
   { value: 'approved', label: 'Одобрена' },
   { value: 'rejected', label: 'Отклонена' },
   { value: 'reconsidered', label: 'Пересмотрена' },
+  { value: 'not_applicable', label: 'Нельзя подать' },
 ];
 
 const PRODUCT_STATUS_OPTIONS = [
@@ -29,6 +30,7 @@ const REVIEW_STATUS_OPTIONS = [
   { value: 'visible', label: 'Виден' },
   { value: 'unpublished', label: 'Снят с публикации' },
   { value: 'excluded', label: 'Исключён' },
+  { value: 'deleted', label: 'Удалён' },
 ];
 
 export type FilterState = {

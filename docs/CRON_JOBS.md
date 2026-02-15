@@ -985,6 +985,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 - Uses existing adaptive chunking logic (splits further if >19k reviews per sub-chunk)
 - Runs at 3:00 AM MSK — minimal load on WB API and server
 - Estimated duration: 5-20 minutes per run
+- **Deletion detection (migration 015):** After syncing each store, compares WB API IDs with DB IDs in the synced date range. Reviews missing from WB are marked as `review_status_wb = 'deleted'`, and their draft complaints are auto-cancelled (`status = 'not_applicable'`). Safeguard: skips if >30% would be marked deleted (likely API issue).
 
 **Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts)
 

@@ -7,6 +7,7 @@ export type ReviewStatusWB =
   | 'visible'       // Виден
   | 'unpublished'   // Снят с публикации
   | 'excluded'      // Исключён из рейтинга
+  | 'deleted'       // Удалён покупателем (обнаружен при full sync)
   | 'unknown';      // Неизвестно
 
 // Product purchase status from review
@@ -24,13 +25,14 @@ export type ChatStatusByReview =
 
 // Complaint processing status
 export type ComplaintStatus =
-  | 'not_sent'      // Не отправлена
-  | 'draft'         // Черновик (сгенерирован, но не отправлен)
-  | 'sent'          // Отправлена (вручную отмечено)
-  | 'approved'      // Одобрена (от WB)
-  | 'rejected'      // Отклонена (от WB)
-  | 'pending'       // На рассмотрении
-  | 'reconsidered'; // Пересмотрена (от WB)
+  | 'not_sent'         // Без черновика (жалоба не сгенерирована)
+  | 'draft'            // Черновик (сгенерирован, но не отправлен)
+  | 'sent'             // Отправлена (вручную отмечено)
+  | 'approved'         // Одобрена (от WB)
+  | 'rejected'         // Отклонена (от WB)
+  | 'pending'          // На рассмотрении
+  | 'reconsidered'     // Пересмотрена (от WB)
+  | 'not_applicable';  // Нельзя подать (отзыв удалён/недоступен)
 
 /**
  * Product type (enriched from products API)
@@ -72,6 +74,7 @@ export type Review = {
   purchase_date: string | null;
   parsed_at: string | null;
   page_number: number | null;
+  deleted_from_wb_at: string | null;
 
   // Denormalized flags
   has_answer: boolean;
@@ -90,6 +93,7 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatusWB, string> = {
   visible: 'Отзыв: Виден',
   unpublished: 'Отзыв: Снят с публикации',
   excluded: 'Отзыв: Исключён',
+  deleted: 'Отзыв: Удалён',
   unknown: 'Отзыв: Неизвестно',
 };
 
@@ -107,13 +111,14 @@ export const CHAT_STATUS_LABELS: Record<ChatStatusByReview, string> = {
 };
 
 export const COMPLAINT_STATUS_LABELS: Record<ComplaintStatus, string> = {
-  not_sent: 'Не отправлена',
+  not_sent: 'Без черновика',
   draft: 'Черновик',
   sent: 'Отправлена',
   approved: 'Одобрена',
   rejected: 'Отклонена',
   pending: 'На рассмотрении',
   reconsidered: 'Пересмотрена',
+  not_applicable: 'Нельзя подать',
 };
 
 /**
@@ -123,6 +128,7 @@ export const REVIEW_STATUS_COLORS: Record<ReviewStatusWB, { bg: string; color: s
   visible: { bg: '#d1fae5', color: '#065f46', border: '#10b981' },
   unpublished: { bg: '#fef3c7', color: '#92400e', border: '#f59e0b' },
   excluded: { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' },
+  deleted: { bg: '#fce4ec', color: '#880e4f', border: '#e91e63' },
   unknown: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
 };
 
@@ -140,5 +146,6 @@ export const COMPLAINT_STATUS_COLORS: Record<ComplaintStatus, { bg: string; colo
   approved: { bg: '#f0fdf4', color: '#166534', border: '#bbf7d0' },
   rejected: { bg: '#fef2f2', color: '#991b1b', border: '#fecaca' },
   pending: { bg: '#fefce8', color: '#854d0e', border: '#fef08a' },
-  reconsidered: { bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff' },  // Purple
+  reconsidered: { bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff' },
+  not_applicable: { bg: '#f3e5f5', color: '#6a1b9a', border: '#ce93d8' },
 };
