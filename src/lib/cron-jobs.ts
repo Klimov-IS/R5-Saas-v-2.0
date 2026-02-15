@@ -10,7 +10,7 @@
 import cron from 'node-cron';
 import * as dbHelpers from '@/db/helpers';
 import { runBackfillWorker } from '@/services/backfill-worker';
-import { refreshAllUsersCache, getCacheStats } from '@/lib/stores-cache';
+
 import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
 import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, getNextSlotTime } from '@/lib/auto-sequence-templates';
 
@@ -469,56 +469,7 @@ export function startBackfillWorker() {
   return job;
 }
 
-/**
- * Stores cache refresh job
- * Runs every 5 minutes to pre-warm the stores cache for Extension API
- * Ensures instant response times for GET /api/extension/stores
- */
-export function startStoresCacheRefresh() {
-  const cronSchedule = '*/5 * * * *'; // Every 5 minutes
-
-  console.log(`[CRON] Scheduling stores cache refresh: ${cronSchedule}`);
-
-  const job = cron.schedule(cronSchedule, async () => {
-    const jobName = 'stores-cache-refresh';
-
-    // Prevent concurrent runs
-    if (runningJobs[jobName]) {
-      console.log(`[CRON] ⚠️  Job ${jobName} is already running, skipping this trigger`);
-      return;
-    }
-
-    runningJobs[jobName] = true;
-
-    try {
-      const result = await refreshAllUsersCache();
-      const stats = getCacheStats();
-      console.log(`[CRON] Stores cache refreshed: ${result.usersRefreshed} users, ${result.totalStores} stores (oldest: ${stats.oldestCacheAge}s)`);
-    } catch (error: any) {
-      console.error('[CRON] ❌ Stores cache refresh error:', error.message);
-    } finally {
-      runningJobs[jobName] = false;
-    }
-  }, {
-    timezone: 'UTC'
-  });
-
-  job.start();
-  console.log('[CRON] ✅ Stores cache refresh job started successfully');
-
-  // Initial warm-up after 10 seconds
-  setTimeout(async () => {
-    console.log('[CRON] 🔥 Initial stores cache warm-up...');
-    try {
-      const result = await refreshAllUsersCache();
-      console.log(`[CRON] ✅ Initial cache warm-up complete: ${result.usersRefreshed} users, ${result.totalStores} stores`);
-    } catch (error: any) {
-      console.error('[CRON] ❌ Initial cache warm-up failed:', error.message);
-    }
-  }, 10000);
-
-  return job;
-}
+// Stores cache removed (2026-02-15): direct DB query is fast enough (<500ms with partial index)
 
 /**
  * Daily Google Sheets sync job

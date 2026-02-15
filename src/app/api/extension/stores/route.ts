@@ -2,18 +2,18 @@
  * GET /api/extension/stores
  *
  * Returns list of stores accessible by the current API token
- * Cache is pre-warmed every 5 minutes by CRON job
+ * Direct DB query (~500ms with partial index)
  *
  * Rate limiting: 100 requests per minute per token
  * CORS enabled for Chrome Extension
  *
- * @version 2.1.0
- * @date 2026-02-08
+ * @version 3.0.0
+ * @date 2026-02-15
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByApiToken } from '@/db/extension-helpers';
-import { getCachedStores, refreshCacheForUser, getCacheAge } from '@/lib/stores-cache';
+import { query } from '@/db/client';
 
 // Simple in-memory rate limiter (100 req/min per token)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -111,19 +111,42 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Check cache first (pre-warmed by CRON every 5 min)
-    let stores = getCachedStores(user.id);
-    let cacheStatus = 'HIT';
-    const cacheAge = getCacheAge(user.id);
+    // 4. Direct DB query (fast with partial index idx_complaints_draft_store_product)
+    const result = await query<{
+      id: string;
+      name: string;
+      status: string;
+      draft_complaints_count: string;
+    }>(
+      `
+      SELECT
+        s.id,
+        s.name,
+        s.status,
+        COALESCE(cnt.draft_count, 0)::text as draft_complaints_count
+      FROM stores s
+      LEFT JOIN (
+        SELECT rc.store_id, COUNT(*) as draft_count
+        FROM review_complaints rc
+        JOIN reviews r ON r.id = rc.review_id
+        JOIN products p ON rc.product_id = p.id
+        WHERE rc.status = 'draft'
+          AND p.work_status = 'active'
+          AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+        GROUP BY rc.store_id
+      ) cnt ON cnt.store_id = s.id
+      WHERE s.owner_id = $1
+      ORDER BY s.name ASC
+      `,
+      [user.id]
+    );
 
-    if (!stores) {
-      // Cache miss - refresh for this user (fallback)
-      console.log(`[Extension API] Cache MISS for user ${user.id}, refreshing...`);
-      stores = await refreshCacheForUser(user.id);
-      cacheStatus = 'MISS';
-    } else {
-      console.log(`[Extension API] Cache HIT for user ${user.id}: ${stores.length} stores (age: ${cacheAge}s)`);
-    }
+    const stores = result.rows.map(row => ({
+      id: row.id,
+      name: row.name,
+      isActive: row.status === 'active',
+      draftComplaintsCount: parseInt(row.draft_complaints_count) || 0,
+    }));
 
     return NextResponse.json(stores, {
       headers: {
@@ -131,8 +154,6 @@ export async function GET(request: NextRequest) {
         'X-RateLimit-Limit': '100',
         'X-RateLimit-Remaining': rateLimit.remaining.toString(),
         'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
-        'X-Cache': cacheStatus,
-        'X-Cache-Age': cacheAge?.toString() || '0',
       }
     });
 
