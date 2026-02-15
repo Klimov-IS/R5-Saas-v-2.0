@@ -10,7 +10,7 @@ WB Reputation Manager uses **automated background jobs** (CRON) to sync data fro
 
 **Key Features:**
 - Hourly incremental review synchronization
-- **Rolling full review sync** (3:00 AM MSK, every day) — 90-day chunks, 3-year coverage in ~12-day cycle
+- **Nightly full review sync** (22:00 MSK, every day) — all 12 chunks (3 years), parallel (concurrency=5)
 - **Midday review catchup** (13:00 MSK, every day) — chunk 0 only, catches WB API indexing delays
 - **Automatic complaint generation** immediately after sync (zero delay)
 - **Template-based optimization** for empty reviews (zero AI cost)
@@ -769,7 +769,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
 |-----|----------------|----------------|-------------|
 | Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync (3h overlap) + auto-generate complaints + retry failed stores |
-| **Rolling Review Full Sync** | **3:00 AM daily** | **0 0 * * *** | **Full review sync by 90-day chunks (chunk 0 + 1 rotational, 3-year coverage)** |
+| **Nightly Full Review Sync** | **22:00 daily** | **0 19 * * *** | **Full review sync — all 12 chunks (3 years), concurrency=5, ~1-2h** |
 | **Midday Review Catchup** | **13:00 daily** | **0 10 * * *** | **Chunk 0 only (last 90 days) — second daily pass to catch WB API delays** |
 | Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
@@ -945,46 +945,48 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 
 ---
 
-## 9. Rolling Review Full Sync (Полный синк отзывов)
+## 9. Nightly Full Review Sync (Полный синк отзывов)
 
 **Job Name:** `rolling-review-full-sync`
 **Schedule:**
-- **Production:** `0 0 * * *` (3:00 AM MSK / 0:00 UTC, every day including Sunday)
+- **Production:** `0 19 * * *` (22:00 MSK / 19:00 UTC, every day including Sunday)
 - **Development:** `*/30 * * * *` (every 30 minutes)
 
-**Purpose:** Guarantee complete review coverage across all stores. Incremental sync can miss reviews if server was down, WB API returned errors, or reviews were backdated.
+**Purpose:** Guarantee complete review coverage across all stores. Processes ALL 12 chunks every night — full 3-year history refreshed daily.
 
-**Strategy:** Each day syncs chunk 0 (last 90 days, ALWAYS) + a rotational chunk (1-11). Full cycle of all 12 chunks completes in ~12 days.
+**Strategy:** Every night processes all 12 chunks (0-11) sequentially. Within each chunk, stores are processed in parallel (concurrency=5) with 5-minute timeout per store. Estimated duration: ~1-2 hours (within 22:00-07:00 MSK window).
 
-**Chunk Schedule (by dayOfYear % 12):**
+**Chunk Layout (each 90 days):**
 
 | Chunk # | Date Range (days ago) | Description |
 |---------|----------------------|-------------|
-| 1 | 0–90 | Most recent reviews |
-| 2 | 91–180 | |
-| 3 | 181–270 | |
-| 4 | 271–360 | ~1 year |
-| 5 | 361–450 | |
-| 6 | 451–540 | |
-| 7 | 541–630 | |
-| 8 | 631–720 | ~2 years |
-| 9 | 721–810 | |
-| 10 | 811–900 | |
-| 11 | 901–990 | |
-| 12 | 991–1080 | ~3 years |
+| 0 | 0–90 | Most recent reviews |
+| 1 | 91–180 | |
+| 2 | 181–270 | |
+| 3 | 271–360 | ~1 year |
+| 4 | 361–450 | |
+| 5 | 451–540 | |
+| 6 | 541–630 | |
+| 7 | 631–720 | ~2 years |
+| 8 | 721–810 | |
+| 9 | 811–900 | |
+| 10 | 901–990 | |
+| 11 | 991–1080 | ~3 years |
 
 **What It Does:**
-1. Determines current chunk index from `dayOfYear % 12`
-2. Calculates `dateFrom` and `dateTo` for the 90-day window
-3. For each active store: calls `POST /api/stores/{storeId}/reviews/update?mode=full&dateFrom=X&dateTo=Y`
-4. Auto-complaint generation triggers automatically after sync (built into API route)
-5. Waits 3 seconds between stores
+1. Iterates through all 12 chunks (0-11)
+2. For each chunk: calculates `dateFrom` and `dateTo` for the 90-day window
+3. Processes stores in parallel (concurrency=5, 5-min timeout per store)
+4. Calls `POST /api/stores/{storeId}/reviews/update?mode=full&dateFrom=X&dateTo=Y`
+5. Auto-complaint generation triggers automatically after sync (built into API route)
+6. Only WB stores (OZON review sync not yet supported)
 
 **Key Properties:**
 - Does NOT interfere with hourly incremental sync (separate job name, separate concurrency lock)
 - Uses existing adaptive chunking logic (splits further if >19k reviews per sub-chunk)
-- Runs at 3:00 AM MSK — minimal load on WB API and server
-- Estimated duration: 5-20 minutes per run
+- Runs at 22:00 MSK — minimal user activity, 9-hour window until morning
+- Parallel processing: concurrency=5 stores, 5-min timeout per store
+- Estimated duration: ~1-2 hours for all 12 chunks across ~47 stores
 - **Deletion detection (migration 015):** After syncing each store, compares WB API IDs with DB IDs in the synced date range. Reviews missing from WB are marked as `review_status_wb = 'deleted'`, and their draft complaints are auto-cancelled (`status = 'not_applicable'`). Safeguard: skips if >30% would be marked deleted (likely API issue).
 
 **Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts)
@@ -992,7 +994,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 **Manual Trigger for Specific Date Range:**
 ```bash
 # Sync specific date range for one store (unix timestamps)
-curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=full&dateFrom=1700000000&dateTo=1708000000" \
+curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=full&dateFrom=1700000000&dateTo=1708000000" \
   -H "Authorization: Bearer $API_KEY"
 ```
 
@@ -1005,7 +1007,7 @@ curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=ful
 - **Production:** `0 10 * * *` (13:00 MSK / 10:00 UTC, every day)
 - **Development:** `*/45 * * * *` (every 45 minutes)
 
-**Purpose:** Second daily full sync pass for chunk 0 (last 90 days) to catch reviews missed by incremental sync due to WB API indexing delays. Combined with the 3:00 MSK rolling sync, this gives **double coverage** for recent reviews.
+**Purpose:** Second daily full sync pass for chunk 0 (last 90 days) to catch reviews missed by incremental sync due to WB API indexing delays. Combined with the 22:00 MSK nightly sync, this gives **double coverage** for recent reviews.
 
 **What It Does:**
 1. Calculates chunk 0 date range (last 90 days)

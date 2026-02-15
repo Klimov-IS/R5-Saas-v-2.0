@@ -771,24 +771,24 @@ export function startAutoSequenceProcessor() {
 }
 
 /**
- * Rolling full sync of reviews — runs daily at 3:00 MSK (0:00 UTC), every day
- * Each day syncs a different 90-day chunk, cycling through 12 chunks (3 years total)
- * Full cycle completes in 2 weeks (6 days/week, 12 chunks)
+ * Nightly full sync of reviews — runs daily at 22:00 MSK (19:00 UTC)
+ * Processes ALL 12 chunks (3 years of history) every night with parallel store processing.
+ * Concurrency: 5 stores simultaneously, 5-min timeout per store.
  *
- * Chunk schedule (by dayOfYear % 12):
+ * Chunk layout (each 90 days):
  * 0: 0-90 days ago (most recent)
  * 1: 91-180 days ago
  * ...
  * 11: 991-1080 days ago
  */
 export function startRollingReviewFullSync() {
-  // 0:00 UTC = 3:00 MSK, every day (including Sunday)
+  // 19:00 UTC = 22:00 MSK, every day (including Sunday)
   const cronSchedule = process.env.NODE_ENV === 'production'
-    ? '0 0 * * *'
+    ? '0 19 * * *'
     : '*/30 * * * *'; // Every 30 min for testing
 
-  console.log(`[CRON] Scheduling rolling review full sync: ${cronSchedule}`);
-  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (3:00 MSK, every day)' : 'TESTING (every 30 min)'}`);
+  console.log(`[CRON] Scheduling nightly full review sync: ${cronSchedule}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (22:00 MSK, all 12 chunks, concurrency=5)' : 'TESTING (every 30 min)'}`);
 
   const job = cron.schedule(cronSchedule, async () => {
     const jobName = 'rolling-review-full-sync';
@@ -804,30 +804,30 @@ export function startRollingReviewFullSync() {
     try {
       const now = new Date();
       const CHUNK_DAYS = 90;
+      const TOTAL_CHUNKS = 12;
+      const CONCURRENCY = 5;
+      const STORE_TIMEOUT_MS = 5 * 60 * 1000; // 5 min per store
 
-      // Determine rotational chunk (1-11) for today — chunk 0 is ALWAYS processed
-      const startOfYear = new Date(now.getFullYear(), 0, 0);
-      const dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24));
-      const rotationalChunk = (dayOfYear % 11) + 1; // 1-11 (never 0, because 0 runs every day)
-
-      // Build list of chunks to process: always chunk 0 + today's rotational chunk
-      const chunksToProcess = [0, rotationalChunk];
+      // Process ALL chunks every night (full 3-year coverage)
+      const chunksToProcess = Array.from({ length: TOTAL_CHUNKS }, (_, i) => i);
 
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
 
-      const stores = await dbHelpers.getAllStores();
+      // Only WB stores (OZON review sync not supported yet)
+      const stores = await dbHelpers.getAllStores('wb');
 
       console.log('\n========================================');
-      console.log(`[CRON] 🔄 Starting rolling review full sync at ${now.toISOString()}`);
-      console.log(`[CRON] Chunks to process: [0 (recent 90d), ${rotationalChunk}]`);
-      console.log(`[CRON] Found ${stores.length} stores`);
+      console.log(`[CRON] 🔄 Starting nightly full review sync at ${now.toISOString()}`);
+      console.log(`[CRON] Processing ALL ${TOTAL_CHUNKS} chunks (0-${TOTAL_CHUNKS - 1}), concurrency=${CONCURRENCY}`);
+      console.log(`[CRON] Found ${stores.length} WB stores`);
       console.log('========================================\n');
 
       let totalSuccess = 0;
       let totalErrors = 0;
 
       for (const chunkIndex of chunksToProcess) {
+        const chunkStartTime = Date.now();
         const daysAgoStart = chunkIndex * CHUNK_DAYS;
         const daysAgoEnd = daysAgoStart + CHUNK_DAYS;
 
@@ -842,56 +842,76 @@ export function startRollingReviewFullSync() {
         const dateFromUnix = Math.floor(dateFrom.getTime() / 1000);
         const dateToUnix = Math.floor(dateTo.getTime() / 1000);
 
-        console.log(`[CRON] --- Chunk ${chunkIndex}${chunkIndex === 0 ? ' (daily recent)' : ' (rotational)'}: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]} ---`);
+        console.log(`[CRON] --- Chunk ${chunkIndex}/${TOTAL_CHUNKS - 1}: ${dateFrom.toISOString().split('T')[0]} → ${dateTo.toISOString().split('T')[0]} ---`);
 
         let successCount = 0;
         let errorCount = 0;
 
-        for (const store of stores) {
-          try {
-            const response = await fetch(
-              `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full&dateFrom=${dateFromUnix}&dateTo=${dateToUnix}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${apiKey}`,
-                  'Content-Type': 'application/json',
-                },
+        // Parallel store processing with concurrency pool
+        let storeIdx = 0;
+
+        async function processNextStore() {
+          while (storeIdx < stores.length) {
+            const currentIdx = storeIdx++;
+            const store = stores[currentIdx];
+
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), STORE_TIMEOUT_MS);
+
+            try {
+              const response = await fetch(
+                `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full&dateFrom=${dateFromUnix}&dateTo=${dateToUnix}`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                  },
+                  signal: controller.signal,
+                }
+              );
+
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
               }
-            );
 
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
+              const result = await response.json();
+              console.log(`[CRON] ✅ ${store.name} (chunk ${chunkIndex}): ${result.message}`);
+              successCount++;
+            } catch (error: any) {
+              errorCount++;
+              const reason = error.name === 'AbortError' ? 'timeout (5min)' : error.message;
+              console.error(`[CRON] ❌ ${store.name} (chunk ${chunkIndex}): ${reason}`);
+            } finally {
+              clearTimeout(timeout);
             }
-
-            const result = await response.json();
-            console.log(`[CRON] ✅ ${store.name} (chunk ${chunkIndex}): ${result.message}`);
-            successCount++;
-
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          } catch (error: any) {
-            errorCount++;
-            console.error(`[CRON] ❌ ${store.name} (chunk ${chunkIndex}): ${error.message}`);
           }
         }
 
+        // Launch CONCURRENCY workers in parallel
+        await Promise.all(
+          Array.from({ length: Math.min(CONCURRENCY, stores.length) }, () => processNextStore())
+        );
+
         totalSuccess += successCount;
         totalErrors += errorCount;
-        console.log(`[CRON] Chunk ${chunkIndex} done: ${successCount}/${stores.length} success, ${errorCount} errors`);
+        const chunkDuration = Math.round((Date.now() - chunkStartTime) / 1000);
+        console.log(`[CRON] Chunk ${chunkIndex} done in ${chunkDuration}s: ${successCount}/${stores.length} success, ${errorCount} errors`);
       }
 
       const duration = Math.round((Date.now() - startTime) / 1000);
+      const durationMin = Math.round(duration / 60);
 
       console.log('\n========================================');
-      console.log(`[CRON] ✅ Rolling review full sync completed`);
-      console.log(`[CRON] Chunks: [0, ${rotationalChunk}]`);
-      console.log(`[CRON] Duration: ${duration}s`);
+      console.log(`[CRON] ✅ Nightly full review sync completed`);
+      console.log(`[CRON] Chunks: all ${TOTAL_CHUNKS} (0-${TOTAL_CHUNKS - 1})`);
+      console.log(`[CRON] Duration: ${duration}s (~${durationMin} min)`);
       console.log(`[CRON] Total: ${totalSuccess} success, ${totalErrors} errors`);
       console.log('========================================\n');
 
     } catch (error: any) {
-      console.error('[CRON] ❌ Fatal error in rolling review full sync:', error);
+      console.error('[CRON] ❌ Fatal error in nightly full review sync:', error);
     } finally {
       runningJobs[jobName] = false;
     }
@@ -900,7 +920,7 @@ export function startRollingReviewFullSync() {
   });
 
   job.start();
-  console.log('[CRON] ✅ Rolling review full sync job started successfully');
+  console.log('[CRON] ✅ Nightly full review sync job started successfully');
 
   return job;
 }
