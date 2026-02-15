@@ -51,9 +51,13 @@ export async function PATCH(
     // Trigger backfill if product was activated (fire and forget)
     if (isActivation && currentProduct) {
       onProductActivated(productId, storeId, currentProduct.owner_id)
-        .then(job => {
+        .then(async job => {
           if (job) {
-            console.log(`[BACKFILL] Created job ${job.id} for product ${productId}`);
+            console.log(`[BACKFILL] Created job ${job.id} for product ${productId}, triggering immediate processing`);
+            const { runBackfillWorker } = await import('@/services/backfill-worker');
+            runBackfillWorker(1).catch(err =>
+              console.error(`[BACKFILL] Immediate run failed:`, err.message)
+            );
           }
         })
         .catch(err => {

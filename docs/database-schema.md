@@ -572,6 +572,13 @@ CREATE INDEX idx_complaints_cost_date ON review_complaints(generated_at DESC, ai
 CREATE INDEX idx_complaints_draft_store_product ON review_complaints(store_id, product_id) WHERE status = 'draft';
 ```
 
+**CHECK Constraints:**
+```sql
+-- Migration 014: WB cutoff date — complaints only for reviews from 2023-10-01 onwards
+ALTER TABLE review_complaints
+ADD CONSTRAINT check_review_date_after_cutoff CHECK (review_date >= '2023-10-01');
+```
+
 **Partial Indexes:**
 - `idx_complaints_store_sent` - only sent complaints
 - `idx_complaints_status_moderated` - only moderated complaints

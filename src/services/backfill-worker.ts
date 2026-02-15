@@ -26,9 +26,9 @@ import type {
 // Configuration
 // ============================================================================
 
-const BATCH_SIZE = 100;
-const BATCH_DELAY_MS = 2000;
-const MAX_BATCHES_PER_RUN = 10;
+const BATCH_SIZE = 200;
+const BATCH_DELAY_MS = 1500;
+const MAX_BATCHES_PER_RUN = 20;
 
 /**
  * Get API base URL from environment

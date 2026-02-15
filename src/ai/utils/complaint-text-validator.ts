@@ -7,21 +7,21 @@
  * WB жёсткий лимит для текста жалобы
  * Превышение этого лимита не позволит подать жалобу
  */
-export const COMPLAINT_HARD_LIMIT = 1000;
+export const COMPLAINT_HARD_LIMIT = 900;
 
 /**
  * Рекомендуемый лимит для качества
  * Слишком длинные жалобы могут быть менее эффективны
  */
-export const COMPLAINT_SOFT_LIMIT = 800;
+export const COMPLAINT_SOFT_LIMIT = 750;
 
 /**
  * Результат валидации длины текста
  */
 export interface ValidationResult {
-  /** Текст в пределах жёсткого лимита (< 1000) */
+  /** Текст в пределах жёсткого лимита (< 900) */
   isValid: boolean;
-  /** Текст в пределах рекомендуемого лимита (< 800) */
+  /** Текст в пределах рекомендуемого лимита (< 750) */
   isOptimal: boolean;
   /** Текущая длина текста */
   length: number;

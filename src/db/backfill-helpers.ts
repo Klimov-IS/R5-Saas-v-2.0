@@ -22,7 +22,7 @@ import type {
 // Constants
 // ============================================================================
 
-export const DEFAULT_DAILY_LIMIT = 2000;
+export const DEFAULT_DAILY_LIMIT = 6000;
 export const DEFAULT_MAX_RETRIES = 3;
 
 // ============================================================================

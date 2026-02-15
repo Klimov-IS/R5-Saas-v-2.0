@@ -14,7 +14,8 @@
 
 1. **Жалоба — snapshot** на момент генерации (не синхронизируется обратно с отзывом)
 2. **1:1 связь** — один отзыв = максимум одна жалоба
-3. **Лимит текста** — 1000 символов (жёсткий лимит WB)
+3. **Лимит текста** — 900 символов (soft 750, WB hard limit 1000)
+6. **Cutoff дата** — только отзывы с 01.10.2023 (правило WB, CHECK constraint в БД)
 4. **Идемпотентность** — повторная генерация безопасна
 5. **Иммутабельность после отправки** — отправленную жалобу нельзя изменить
 
@@ -133,7 +134,7 @@ WHERE review_status_wb NOT IN ('excluded_rating', 'hidden')
 **Prompt:** см. `src/ai/prompts/optimized-review-complaint-prompt.ts`
 
 **Выход:**
-- `complaint_text` — текст жалобы (≤ 1000 символов)
+- `complaint_text` — текст жалобы (≤ 900 символов)
 - `reason_id` — категория WB (11-20)
 - `reason_name` — название категории
 
@@ -177,7 +178,7 @@ for (const review of newReviews) {
 Каждый час проверяет отзывы без жалоб:
 
 ```typescript
-const reviewIds = await getReviewsWithoutComplaints(storeId, 4, 50);
+const reviewIds = await getReviewsWithoutComplaints(storeId, 4, 200);
 if (reviewIds.length > 0) {
   await generateComplaintsBatch(reviewIds);
 }
@@ -185,16 +186,14 @@ if (reviewIds.length > 0) {
 
 ### Backfill Worker
 
-При активации `submit_complaints` на товаре:
+При активации товара:
 
-1. Создаётся запись в `backfill_queue`
-2. Worker обрабатывает каждые 5 минут
-3. Генерирует жалобы для существующих отзывов
-
-```sql
-INSERT INTO backfill_queue (product_id, max_rating, status)
-VALUES ($1, 4, 'pending');
-```
+1. Создаётся задача в `complaint_backfill_jobs`
+2. **Немедленный запуск** `runBackfillWorker(1)` (fire-and-forget)
+3. CRON подхватывает каждые 5 минут (fallback)
+4. Параметры: BATCH_SIZE=200, DELAY=1500ms, MAX_BATCHES=20
+5. Дневной лимит: 6000 жалоб/магазин (было 2000)
+6. 10K отзывов: ~2 дня (было 5 дней)
 
 ---
 
@@ -268,18 +267,30 @@ CREATE INDEX idx_complaints_product ON review_complaints(product_id, status);
 ### Лимит текста
 
 ```typescript
-const MAX_COMPLAINT_LENGTH = 1000;
-
-if (complaintText.length > MAX_COMPLAINT_LENGTH) {
-  complaintText = complaintText.substring(0, MAX_COMPLAINT_LENGTH - 3) + '...';
-}
+// src/ai/utils/complaint-text-validator.ts
+export const COMPLAINT_HARD_LIMIT = 900;  // Наш жёсткий лимит (WB = 1000)
+export const COMPLAINT_SOFT_LIMIT = 750;  // Рекомендуемый для качества
 ```
+
+AI промпт настроен на 450–750 символов. Truncation fallback обрезает до 900 по предложениям.
+
+### Cutoff дата (01.10.2023)
+
+```sql
+-- Migration 014: CHECK constraint на уровне БД
+ALTER TABLE review_complaints
+ADD CONSTRAINT check_review_date_after_cutoff
+CHECK (review_date >= '2023-10-01');
+```
+
+WB не принимает жалобы на отзывы до 01.10.2023. Проверка в коде + constraint в БД.
 
 ### Rate limiting
 
 - AI запросы: 60 RPM
-- Batch генерация: 50 отзывов за раз
-- CRON fallback: 50 отзывов на магазин
+- Batch генерация: 200 отзывов за раз (backfill worker)
+- CRON fallback: 200 отзывов на магазин
+- Дневной лимит: 6000 жалоб на магазин (backfill)
 
 ### Защита от дублей
 
@@ -332,10 +343,10 @@ WHERE generated_at >= CURRENT_DATE;
 - Жалоба сохраняется (snapshot)
 - При отправке через Extension → ошибка (обрабатывается в UI)
 
-### 2. Текст > 1000 символов
+### 2. Текст > 900 символов
 
-- AI промпт требует ≤ 1000
-- Fallback: обрезка + "..."
+- AI промпт требует 450–750 символов
+- Truncation fallback: обрезка до 900 по последнему полному предложению
 
 ### 3. AI недоступен
 
@@ -361,4 +372,4 @@ WHERE generated_at >= CURRENT_DATE;
 
 ---
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-15

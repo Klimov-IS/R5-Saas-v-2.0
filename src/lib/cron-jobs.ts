@@ -151,7 +151,7 @@ async function generateComplaintsForStore(storeId: string, storeName: string): P
 
   try {
     // Get reviews without complaints (max 50 per store, rating 1-4)
-    const reviewIds = await dbHelpers.getReviewsWithoutComplaints(storeId, 4, 50);
+    const reviewIds = await dbHelpers.getReviewsWithoutComplaints(storeId, 4, 200);
 
     if (reviewIds.length === 0) {
       console.log(`[CRON] ✅ No backlog — event-driven coverage is working for ${storeName}`);

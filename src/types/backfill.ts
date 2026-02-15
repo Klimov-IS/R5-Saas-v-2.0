@@ -32,17 +32,17 @@ export type BackfillTrigger =
 /**
  * Дневной лимит генерации жалоб
  */
-export const DAILY_COMPLAINT_LIMIT = 2000;
+export const DAILY_COMPLAINT_LIMIT = 6000;
 
 /**
  * Размер batch для обработки
  */
-export const BACKFILL_BATCH_SIZE = 100;
+export const BACKFILL_BATCH_SIZE = 200;
 
 /**
  * Интервал между batch'ами (мс)
  */
-export const BACKFILL_BATCH_DELAY = 2000;
+export const BACKFILL_BATCH_DELAY = 1500;
 
 // ============================================================================
 // Types
