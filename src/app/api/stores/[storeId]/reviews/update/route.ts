@@ -7,6 +7,7 @@ import {
     autoGenerateComplaintsInBackground,
     shouldGenerateComplaint,
 } from '@/services/auto-complaint-generator';
+import { refreshOzonReviews } from '@/lib/ozon-review-sync';
 
 /**
  * Generate initial date chunks for WB API with adaptive sizing
@@ -79,12 +80,10 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         const store = await dbHelpers.getStoreById(storeId);
         if (!store) throw new Error(`Store ${storeId} not found.`);
 
-        // OZON stores: skip WB review sync (OZON sync will be added in Sprint 002-003)
+        // OZON stores: use OZON review sync
         if (store.marketplace === 'ozon') {
-            return NextResponse.json({
-                message: 'OZON review sync not yet implemented',
-                reviews: 0,
-            });
+            const message = await refreshOzonReviews(storeId);
+            return NextResponse.json({ message });
         }
 
         // Get WB token
@@ -209,6 +208,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
                                 product_id: product.id,
                                 store_id: storeId,
                                 owner_id: store.owner_id,
+                                marketplace: 'wb',
                                 rating: review.productValuation,
                                 text: review.text || review.pros || review.cons || '', // Ensure non-null text
                                 pros: review.pros || '',

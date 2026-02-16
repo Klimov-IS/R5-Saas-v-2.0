@@ -7,6 +7,7 @@ import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
 import { buildStoreInstructions } from '@/lib/ai-context';
 import { sendTelegramNotifications } from '@/lib/telegram-notifications';
+import { refreshOzonChats } from '@/lib/ozon-chat-sync';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -25,9 +26,10 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         const store = await dbHelpers.getStoreById(storeId);
         if (!store) throw new Error(`Store with ID ${storeId} not found.`);
 
-        // OZON stores: skip WB dialogue sync (OZON sync will be added in Sprint 002-003)
+        // OZON stores: use OZON chat sync
         if (store.marketplace === 'ozon') {
-            return { success: true, message: 'OZON chat sync not yet implemented (skipped)' };
+            const message = await refreshOzonChats(storeId);
+            return { success: true, message };
         }
 
         const ownerId = store.owner_id;
@@ -65,6 +67,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                 id: activeChat.chatID,
                 store_id: storeId,
                 owner_id: ownerId,
+                marketplace: 'wb',
                 client_name: activeChat.clientName,
                 reply_sign: activeChat.replySign,
                 product_nm_id: activeChat.goodCard?.nmID ? String(activeChat.goodCard.nmID) : null,
@@ -151,6 +154,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         chat_id: chatId,
                         store_id: storeId,
                         owner_id: ownerId,
+                        marketplace: 'wb',
                         text: event.message?.text || '',
                         sender: event.sender,
                         timestamp: event.addTime,

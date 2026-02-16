@@ -125,6 +125,7 @@ export interface Review {
   id: string;
   product_id: string;
   store_id: string;
+  marketplace: Marketplace;
   rating: number;
   text?: string | null;
   pros?: string | null;
@@ -141,6 +142,16 @@ export interface Review {
   complaint_sent_date?: string | null;
   draft_reply?: string | null;
   wb_feedback_id?: string | null;  // For WB API integration
+  review_status_wb?: string | null; // visible / deleted (DB enum)
+  // OZON-specific fields
+  ozon_review_status?: string | null; // PROCESSED / UNPROCESSED
+  ozon_order_status?: string | null;
+  is_rating_participant?: boolean | null;
+  likes_amount?: number | null;
+  dislikes_amount?: number | null;
+  ozon_sku?: string | null;
+  ozon_comment_id?: string | null;
+  ozon_comments_amount?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -149,6 +160,7 @@ export interface Chat {
   id: string;
   store_id: string;
   owner_id: string;
+  marketplace: Marketplace;
   client_name: string;
   product_nm_id?: string | null;
   product_name?: string | null;
@@ -158,14 +170,19 @@ export interface Chat {
   last_message_sender?: 'client' | 'seller' | null;
   reply_sign: string;
   tag?: ChatTag | null;
-  status: ChatStatus; // NEW: Kanban status (inbox, in_progress, awaiting_reply, resolved, closed)
-  status_updated_at?: string | null; // NEW: When status was last changed
-  completion_reason?: CompletionReason | null; // NEW: Why chat was closed (only for status='closed')
+  status: ChatStatus;
+  status_updated_at?: string | null;
+  completion_reason?: CompletionReason | null;
   draft_reply?: string | null;
   draft_reply_thread_id?: string | null;
-  draft_reply_generated_at?: string | null; // NEW: When AI generated the draft
-  draft_reply_edited?: boolean | null; // NEW: If user manually edited the draft
-  message_count?: number; // NEW: Real message count from chat_messages table
+  draft_reply_generated_at?: string | null;
+  draft_reply_edited?: boolean | null;
+  message_count?: number;
+  // OZON-specific fields
+  ozon_chat_type?: string | null; // BUYER_SELLER, SELLER_SUPPORT, UNSPECIFIED
+  ozon_chat_status?: string | null; // OPENED, CLOSED
+  ozon_unread_count?: number | null;
+  ozon_last_message_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -175,6 +192,7 @@ export interface ChatMessage {
   chat_id: string;
   store_id: string;
   owner_id: string;
+  marketplace: Marketplace;
   text?: string | null;
   sender: 'client' | 'seller';
   timestamp: string;
@@ -709,15 +727,19 @@ export async function getReviewById(id: string): Promise<Review | null> {
 export async function createReview(review: Omit<Review, 'created_at' | 'updated_at'>): Promise<Review> {
   const result = await query<Review>(
     `INSERT INTO reviews (
-      id, product_id, store_id, rating, text, pros, cons, author, date, owner_id,
+      id, product_id, store_id, marketplace, rating, text, pros, cons, author, date, owner_id,
       answer, photo_links, video, supplier_feedback_valuation, supplier_product_valuation,
-      complaint_text, complaint_sent_date, draft_reply, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
+      complaint_text, complaint_sent_date, draft_reply,
+      ozon_review_status, ozon_order_status, is_rating_participant, ozon_sku,
+      ozon_comment_id, ozon_comments_amount, likes_amount, dislikes_amount,
+      created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, NOW(), NOW())
     RETURNING *`,
     [
       review.id,
       review.product_id,
       review.store_id,
+      review.marketplace || 'wb',
       review.rating,
       review.text || null,
       review.pros || null,
@@ -733,6 +755,14 @@ export async function createReview(review: Omit<Review, 'created_at' | 'updated_
       review.complaint_text || null,
       review.complaint_sent_date || null,
       review.draft_reply || null,
+      review.ozon_review_status || null,
+      review.ozon_order_status || null,
+      review.is_rating_participant ?? null,
+      review.ozon_sku || null,
+      review.ozon_comment_id || null,
+      review.ozon_comments_amount ?? null,
+      review.likes_amount ?? null,
+      review.dislikes_amount ?? null,
     ]
   );
   return result.rows[0];
@@ -761,6 +791,14 @@ export async function updateReview(
     ['complaint_text', 'complaint_text'],
     ['complaint_sent_date', 'complaint_sent_date'],
     ['draft_reply', 'draft_reply'],
+    ['ozon_review_status', 'ozon_review_status'],
+    ['ozon_order_status', 'ozon_order_status'],
+    ['is_rating_participant', 'is_rating_participant'],
+    ['ozon_sku', 'ozon_sku'],
+    ['ozon_comment_id', 'ozon_comment_id'],
+    ['ozon_comments_amount', 'ozon_comments_amount'],
+    ['likes_amount', 'likes_amount'],
+    ['dislikes_amount', 'dislikes_amount'],
   ];
 
   for (const [key, dbField] of fieldMappings) {
@@ -785,10 +823,13 @@ export async function updateReview(
 export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_at'>): Promise<Review> {
   const result = await query<Review>(
     `INSERT INTO reviews (
-      id, product_id, store_id, rating, text, pros, cons, author, date, owner_id,
+      id, product_id, store_id, marketplace, rating, text, pros, cons, author, date, owner_id,
       answer, photo_links, video, supplier_feedback_valuation, supplier_product_valuation,
-      complaint_text, complaint_sent_date, draft_reply, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
+      complaint_text, complaint_sent_date, draft_reply,
+      ozon_review_status, ozon_order_status, is_rating_participant, ozon_sku,
+      ozon_comment_id, ozon_comments_amount, likes_amount, dislikes_amount,
+      created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, NOW(), NOW())
     ON CONFLICT (id) DO UPDATE SET
       rating = EXCLUDED.rating,
       text = EXCLUDED.text,
@@ -812,12 +853,21 @@ export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_
         WHEN reviews.review_status_wb = 'deleted' THEN NULL
         ELSE reviews.deleted_from_wb_at
       END,
+      ozon_review_status = COALESCE(EXCLUDED.ozon_review_status, reviews.ozon_review_status),
+      ozon_order_status = COALESCE(EXCLUDED.ozon_order_status, reviews.ozon_order_status),
+      is_rating_participant = COALESCE(EXCLUDED.is_rating_participant, reviews.is_rating_participant),
+      ozon_sku = COALESCE(EXCLUDED.ozon_sku, reviews.ozon_sku),
+      ozon_comment_id = COALESCE(EXCLUDED.ozon_comment_id, reviews.ozon_comment_id),
+      ozon_comments_amount = COALESCE(EXCLUDED.ozon_comments_amount, reviews.ozon_comments_amount),
+      likes_amount = COALESCE(EXCLUDED.likes_amount, reviews.likes_amount),
+      dislikes_amount = COALESCE(EXCLUDED.dislikes_amount, reviews.dislikes_amount),
       updated_at = NOW()
     RETURNING *`,
     [
       review.id,
       review.product_id,
       review.store_id,
+      review.marketplace || 'wb',
       review.rating,
       review.text !== undefined && review.text !== null ? review.text : '',
       review.pros || '',
@@ -833,6 +883,14 @@ export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_
       review.complaint_text || null,
       review.complaint_sent_date || null,
       review.draft_reply || null,
+      review.ozon_review_status || null,
+      review.ozon_order_status || null,
+      review.is_rating_participant ?? null,
+      review.ozon_sku || null,
+      review.ozon_comment_id || null,
+      review.ozon_comments_amount ?? null,
+      review.likes_amount ?? null,
+      review.dislikes_amount ?? null,
     ]
   );
   return result.rows[0];
@@ -867,15 +925,18 @@ export async function getChatById(id: string): Promise<Chat | null> {
 export async function createChat(chat: Omit<Chat, 'created_at' | 'updated_at'>): Promise<Chat> {
   const result = await query<Chat>(
     `INSERT INTO chats (
-      id, store_id, owner_id, client_name, product_nm_id, product_name, product_vendor_code,
+      id, store_id, owner_id, marketplace, client_name, product_nm_id, product_name, product_vendor_code,
       last_message_date, last_message_text, last_message_sender, reply_sign, status,
-      draft_reply, draft_reply_thread_id, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+      draft_reply, draft_reply_thread_id,
+      ozon_chat_type, ozon_chat_status, ozon_unread_count, ozon_last_message_id,
+      created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
     RETURNING *`,
     [
       chat.id,
       chat.store_id,
       chat.owner_id,
+      chat.marketplace || 'wb',
       chat.client_name,
       chat.product_nm_id || null,
       chat.product_name || null,
@@ -887,6 +948,10 @@ export async function createChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
       chat.status || 'inbox',
       chat.draft_reply || null,
       chat.draft_reply_thread_id || null,
+      chat.ozon_chat_type || null,
+      chat.ozon_chat_status || null,
+      chat.ozon_unread_count ?? null,
+      chat.ozon_last_message_id || null,
     ]
   );
   return result.rows[0];
@@ -915,8 +980,12 @@ export async function updateChat(
     ['completion_reason', 'completion_reason'], // NEW: Why chat was closed
     ['draft_reply', 'draft_reply'],
     ['draft_reply_thread_id', 'draft_reply_thread_id'],
-    ['draft_reply_generated_at', 'draft_reply_generated_at'], // NEW
-    ['draft_reply_edited', 'draft_reply_edited'], // NEW
+    ['draft_reply_generated_at', 'draft_reply_generated_at'],
+    ['draft_reply_edited', 'draft_reply_edited'],
+    ['ozon_chat_type', 'ozon_chat_type'],
+    ['ozon_chat_status', 'ozon_chat_status'],
+    ['ozon_unread_count', 'ozon_unread_count'],
+    ['ozon_last_message_id', 'ozon_last_message_id'],
   ];
 
   for (const [key, dbField] of fieldMappings) {
@@ -941,10 +1010,12 @@ export async function updateChat(
 export async function upsertChat(chat: Omit<Chat, 'created_at' | 'updated_at'>): Promise<Chat> {
   const result = await query<Chat>(
     `INSERT INTO chats (
-      id, store_id, owner_id, client_name, product_nm_id, product_name, product_vendor_code,
+      id, store_id, owner_id, marketplace, client_name, product_nm_id, product_name, product_vendor_code,
       last_message_date, last_message_text, last_message_sender, reply_sign, status,
-      draft_reply, draft_reply_thread_id, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+      draft_reply, draft_reply_thread_id,
+      ozon_chat_type, ozon_chat_status, ozon_unread_count, ozon_last_message_id,
+      created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
     ON CONFLICT (id) DO UPDATE SET
       client_name = EXCLUDED.client_name,
       product_nm_id = EXCLUDED.product_nm_id,
@@ -957,12 +1028,17 @@ export async function upsertChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
       status = EXCLUDED.status,
       draft_reply = EXCLUDED.draft_reply,
       draft_reply_thread_id = EXCLUDED.draft_reply_thread_id,
+      ozon_chat_type = COALESCE(EXCLUDED.ozon_chat_type, chats.ozon_chat_type),
+      ozon_chat_status = COALESCE(EXCLUDED.ozon_chat_status, chats.ozon_chat_status),
+      ozon_unread_count = COALESCE(EXCLUDED.ozon_unread_count, chats.ozon_unread_count),
+      ozon_last_message_id = COALESCE(EXCLUDED.ozon_last_message_id, chats.ozon_last_message_id),
       updated_at = NOW()
     RETURNING *`,
     [
       chat.id,
       chat.store_id,
       chat.owner_id,
+      chat.marketplace || 'wb',
       chat.client_name,
       chat.product_nm_id || null,
       chat.product_name || null,
@@ -974,6 +1050,10 @@ export async function upsertChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
       chat.status || 'inbox',
       chat.draft_reply || null,
       chat.draft_reply_thread_id || null,
+      chat.ozon_chat_type || null,
+      chat.ozon_chat_status || null,
+      chat.ozon_unread_count ?? null,
+      chat.ozon_last_message_id || null,
     ]
   );
   return result.rows[0];
@@ -1051,14 +1131,15 @@ export async function getRecentDialogues(storeId: string, limit = 500): Promise<
 export async function createChatMessage(message: Omit<ChatMessage, 'created_at'>): Promise<ChatMessage> {
   const result = await query<ChatMessage>(
     `INSERT INTO chat_messages (
-      id, chat_id, store_id, owner_id, text, sender, timestamp, download_id, is_auto_reply, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      id, chat_id, store_id, owner_id, marketplace, text, sender, timestamp, download_id, is_auto_reply, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
     RETURNING *`,
     [
       message.id,
       message.chat_id,
       message.store_id,
       message.owner_id,
+      message.marketplace || 'wb',
       message.text || null,
       message.sender,
       message.timestamp,
@@ -1072,8 +1153,8 @@ export async function createChatMessage(message: Omit<ChatMessage, 'created_at'>
 export async function upsertChatMessage(message: Omit<ChatMessage, 'created_at'>): Promise<ChatMessage> {
   const result = await query<ChatMessage>(
     `INSERT INTO chat_messages (
-      id, chat_id, store_id, owner_id, text, sender, timestamp, download_id, is_auto_reply, created_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+      id, chat_id, store_id, owner_id, marketplace, text, sender, timestamp, download_id, is_auto_reply, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
     ON CONFLICT (id) DO UPDATE SET
       text = EXCLUDED.text,
       sender = EXCLUDED.sender,
@@ -1086,6 +1167,7 @@ export async function upsertChatMessage(message: Omit<ChatMessage, 'created_at'>
       message.chat_id,
       message.store_id,
       message.owner_id,
+      message.marketplace || 'wb',
       message.text || null,
       message.sender,
       message.timestamp,
