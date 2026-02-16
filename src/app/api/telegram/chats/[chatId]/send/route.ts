@@ -4,12 +4,13 @@ import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
+import { createOzonClient } from '@/lib/ozon-api';
 
 /**
  * POST /api/telegram/chats/[chatId]/send
  *
- * Send message to WB buyer via TG Mini App.
- * Proxy to WB Chat API with ownership validation.
+ * Send message to buyer via TG Mini App.
+ * Dispatches to WB Chat API or OZON Chat API based on store marketplace.
  */
 export async function POST(
   request: NextRequest,
@@ -43,35 +44,45 @@ export async function POST(
 
     const chat = chatResult.rows[0];
 
-    // Get store's chat API token
+    // Get store
     const store = await dbHelpers.getStoreById(chat.store_id);
     if (!store) {
       return NextResponse.json({ error: 'Store not found' }, { status: 404 });
     }
 
-    const token = store.chat_api_token || store.api_token;
-    if (!token) {
-      return NextResponse.json({ error: 'Chat API token not configured' }, { status: 400 });
+    // OZON stores: use OZON Chat API
+    if (store.marketplace === 'ozon') {
+      if (!store.ozon_client_id || !store.ozon_api_key) {
+        return NextResponse.json({ error: 'OZON credentials not configured' }, { status: 400 });
+      }
+
+      const client = createOzonClient(store.ozon_client_id, store.ozon_api_key);
+      await client.sendChatMessage(chatId, message.trim());
+    } else {
+      // WB stores: use WB Chat API
+      const token = store.chat_api_token || store.api_token;
+      if (!token) {
+        return NextResponse.json({ error: 'Chat API token not configured' }, { status: 400 });
+      }
+
+      const formData = new FormData();
+      formData.append('replySign', chat.reply_sign);
+      formData.append('message', message.trim());
+
+      const wbResponse = await fetch('https://buyer-chat-api.wildberries.ru/api/v1/seller/message', {
+        method: 'POST',
+        headers: { 'Authorization': token },
+        body: formData,
+      });
+
+      if (!wbResponse.ok) {
+        const errorText = await wbResponse.text();
+        console.error(`[TG-SEND] WB API error: ${wbResponse.status} ${errorText}`);
+        return NextResponse.json({ error: 'Failed to send message to WB' }, { status: 502 });
+      }
     }
 
-    // Send to WB Chat API
-    const formData = new FormData();
-    formData.append('replySign', chat.reply_sign);
-    formData.append('message', message.trim());
-
-    const wbResponse = await fetch('https://buyer-chat-api.wildberries.ru/api/v1/seller/message', {
-      method: 'POST',
-      headers: { 'Authorization': token },
-      body: formData,
-    });
-
-    if (!wbResponse.ok) {
-      const errorText = await wbResponse.text();
-      console.error(`[TG-SEND] WB API error: ${wbResponse.status} ${errorText}`);
-      return NextResponse.json({ error: 'Failed to send message to WB' }, { status: 502 });
-    }
-
-    // Clear draft, update status, and mark as seller-replied (removes from queue)
+    // Clear draft, update status, and mark as seller-replied
     await dbHelpers.updateChat(chatId, {
       draft_reply: null,
       draft_reply_generated_at: null,

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChatById, getStoreById } from '@/db/helpers';
+import { createOzonClient } from '@/lib/ozon-api';
 
 /**
  * POST /api/stores/[storeId]/chats/[chatId]/send
- * Send message to Wildberries Chat API
+ * Send message to marketplace Chat API (WB or OZON)
  */
 export async function POST(
   request: NextRequest,
@@ -30,7 +31,7 @@ export async function POST(
       );
     }
 
-    // Get store to get WB API token
+    // Get store to get API credentials
     const store = await getStoreById(storeId);
     if (!store) {
       return NextResponse.json(
@@ -39,6 +40,25 @@ export async function POST(
       );
     }
 
+    // OZON stores: use OZON Chat API
+    if (store.marketplace === 'ozon') {
+      if (!store.ozon_client_id || !store.ozon_api_key) {
+        return NextResponse.json(
+          { error: 'OZON credentials not configured for this store' },
+          { status: 400 }
+        );
+      }
+
+      const client = createOzonClient(store.ozon_client_id, store.ozon_api_key);
+      const result = await client.sendChatMessage(chatId, message);
+
+      return NextResponse.json({
+        success: true,
+        data: result,
+      }, { status: 200 });
+    }
+
+    // WB stores: use WB Chat API
     const wbToken = store.chat_api_token || store.api_token;
     if (!wbToken) {
       return NextResponse.json(
@@ -47,7 +67,6 @@ export async function POST(
       );
     }
 
-    // Send message to WB Chat API
     const formData = new FormData();
     formData.append('replySign', chat.reply_sign);
     formData.append('message', message);
