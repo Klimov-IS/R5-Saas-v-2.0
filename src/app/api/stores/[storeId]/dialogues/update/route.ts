@@ -25,6 +25,11 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         const store = await dbHelpers.getStoreById(storeId);
         if (!store) throw new Error(`Store with ID ${storeId} not found.`);
 
+        // OZON stores: skip WB dialogue sync (OZON sync will be added in Sprint 002-003)
+        if (store.marketplace === 'ozon') {
+            return { success: true, message: 'OZON chat sync not yet implemented (skipped)' };
+        }
+
         const ownerId = store.owner_id;
         if (!ownerId) throw new Error(`OwnerID is missing for store ${storeId}.`);
 

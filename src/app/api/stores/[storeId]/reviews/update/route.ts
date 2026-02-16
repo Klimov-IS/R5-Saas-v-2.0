@@ -79,6 +79,14 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         const store = await dbHelpers.getStoreById(storeId);
         if (!store) throw new Error(`Store ${storeId} not found.`);
 
+        // OZON stores: skip WB review sync (OZON sync will be added in Sprint 002-003)
+        if (store.marketplace === 'ozon') {
+            return NextResponse.json({
+                message: 'OZON review sync not yet implemented',
+                reviews: 0,
+            });
+        }
+
         // Get WB token
         const wbToken = store.feedbacks_api_token || store.api_token;
         if (!wbToken) throw new Error('Feedbacks API token not found.');

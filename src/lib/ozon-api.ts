@@ -131,6 +131,83 @@ export interface OzonRatingHistoryItem {
 }
 
 // ============================================================================
+// Review types — POST /v1/review/*
+// ============================================================================
+
+/** Single review from POST /v1/review/list */
+export interface OzonReview {
+  id: string; // UUID
+  rating: number; // 1-5
+  text: string;
+  sku: number; // product SKU (int64)
+  status: 'PROCESSED' | 'UNPROCESSED';
+  order_status: string; // DELIVERED, CANCELLED, etc.
+  is_rating_participant: boolean;
+  published_at: string; // ISO 8601
+  comments_amount: number;
+  photos_amount: number;
+  videos_amount: number;
+}
+
+/** Extended review info from POST /v1/review/info */
+export interface OzonReviewInfo extends OzonReview {
+  likes_amount: number;
+  dislikes_amount: number;
+  photos: Array<{ url: string; width: number; height: number }>;
+  videos: Array<{
+    url: string;
+    preview_url: string;
+    width: number;
+    height: number;
+  }>;
+}
+
+/** Comment on review from POST /v1/review/comment/list */
+export interface OzonReviewComment {
+  id: string;
+  text: string;
+  published_at: string;
+  is_official: boolean; // seller's official reply
+  is_owner: boolean; // author is store owner
+  parent_comment_id: string;
+}
+
+// ============================================================================
+// Chat types — POST /v3/chat/*, /v1/chat/*
+// ============================================================================
+
+/** Single chat from POST /v3/chat/list */
+export interface OzonChatListItem {
+  chat: {
+    created_at: string;
+    chat_id: string; // UUID
+    chat_status: 'OPENED' | 'CLOSED';
+    chat_type: 'BUYER_SELLER' | 'SELLER_SUPPORT' | 'UNSPECIFIED';
+  };
+  first_unread_message_id: number;
+  last_message_id: number;
+  unread_count: number;
+}
+
+/** Single message from POST /v3/chat/history */
+export interface OzonChatMessage {
+  message_id: string; // large number as string
+  user: {
+    id: string;
+    type: string; // customer, seller, NotificationUser, crm, courier, support
+  };
+  created_at: string; // ISO 8601
+  is_read: boolean;
+  data: string[]; // text content (usually 1 element)
+  context?: {
+    order_number?: string;
+    sku?: string;
+  };
+  is_image?: boolean;
+  moderate_image_status?: string;
+}
+
+// ============================================================================
 // Client
 // ============================================================================
 
@@ -368,6 +445,292 @@ export class OzonApiClient {
       with_premium_scores: true,
     });
     return data.ratings;
+  }
+
+  // ========================================================================
+  // Reviews (requires Premium Plus)
+  // ========================================================================
+
+  /**
+   * List reviews with cursor pagination.
+   *
+   * @param lastId - Cursor (empty string for first page)
+   * @param limit - 20-100 per page (default 100)
+   * @param status - 'ALL' | 'UNPROCESSED' | 'PROCESSED'
+   * @param sortDir - 'ASC' | 'DESC' (default DESC = newest first)
+   */
+  async getReviewList(
+    lastId: string = '',
+    limit: number = 100,
+    status: 'ALL' | 'UNPROCESSED' | 'PROCESSED' = 'ALL',
+    sortDir: 'ASC' | 'DESC' = 'DESC'
+  ): Promise<{
+    reviews: OzonReview[];
+    hasNext: boolean;
+    lastId: string;
+  }> {
+    const data = await this.post<{
+      reviews: OzonReview[];
+      has_next: boolean;
+      last_id: string;
+    }>('/v1/review/list', {
+      last_id: lastId,
+      limit,
+      sort_dir: sortDir,
+      status,
+    });
+    return {
+      reviews: data.reviews || [],
+      hasNext: data.has_next,
+      lastId: data.last_id,
+    };
+  }
+
+  /**
+   * Get extended review info (photos, videos, likes/dislikes).
+   *
+   * @param reviewId - Review UUID (string, not number!)
+   */
+  async getReviewInfo(reviewId: string): Promise<OzonReviewInfo> {
+    const data = await this.post<{ review: OzonReviewInfo }>(
+      '/v1/review/info',
+      { review_id: reviewId }
+    );
+    return data.review;
+  }
+
+  /**
+   * Get review count by status.
+   */
+  async getReviewCount(): Promise<{
+    all: number;
+    processed: number;
+    unprocessed: number;
+  }> {
+    const data = await this.post<{
+      all: number;
+      processed: number;
+      unprocessed: number;
+    }>('/v1/review/count');
+    return data;
+  }
+
+  /**
+   * Post a comment (reply) on a review.
+   * Seller's reply will go through moderation before publishing.
+   *
+   * @param reviewId - Review UUID
+   * @param text - Comment text (1-1000 chars)
+   * @param markAsProcessed - Auto-set review status to PROCESSED
+   * @param parentCommentId - For nested replies (reply to a reply)
+   */
+  async createReviewComment(
+    reviewId: string,
+    text: string,
+    markAsProcessed: boolean = true,
+    parentCommentId?: string
+  ): Promise<{ commentId: string }> {
+    const body: Record<string, any> = {
+      review_id: reviewId,
+      text: text.slice(0, 1000), // enforce 1000-char limit
+      mark_review_as_processed: markAsProcessed,
+    };
+    if (parentCommentId) {
+      body.parent_comment_id = parentCommentId;
+    }
+    const data = await this.post<{ comment_id: string }>(
+      '/v1/review/comment/create',
+      body
+    );
+    return { commentId: data.comment_id };
+  }
+
+  /**
+   * List comments on a review.
+   */
+  async getReviewComments(
+    reviewId: string
+  ): Promise<OzonReviewComment[]> {
+    const data = await this.post<{ comments: OzonReviewComment[] }>(
+      '/v1/review/comment/list',
+      { review_id: reviewId }
+    );
+    return data.comments || [];
+  }
+
+  /**
+   * Change review status (PROCESSED / UNPROCESSED).
+   */
+  async changeReviewStatus(
+    reviewIds: string[],
+    status: 'PROCESSED' | 'UNPROCESSED'
+  ): Promise<void> {
+    await this.post('/v1/review/change-status', {
+      review_ids: reviewIds,
+      status,
+    });
+  }
+
+  // ========================================================================
+  // Chats (requires Premium Plus for BUYER_SELLER)
+  // ========================================================================
+
+  /**
+   * List chats with cursor pagination.
+   *
+   * @param cursor - Empty string for first page
+   * @param limit - Max 100 per page
+   * @param chatStatus - 'All' | 'OPENED' | 'CLOSED'
+   * @param unreadOnly - Only chats with unread messages
+   */
+  async getChatList(
+    cursor: string = '',
+    limit: number = 100,
+    chatStatus: string = 'All',
+    unreadOnly: boolean = false
+  ): Promise<{
+    chats: OzonChatListItem[];
+    totalUnreadCount: number;
+    cursor: string;
+    hasNext: boolean;
+  }> {
+    const data = await this.post<{
+      chats: OzonChatListItem[];
+      total_unread_count: number;
+      cursor: string;
+      has_next: boolean;
+    }>('/v3/chat/list', {
+      filter: {
+        chat_status: chatStatus,
+        unread_only: unreadOnly,
+      },
+      limit,
+      cursor,
+    });
+    return {
+      chats: data.chats || [],
+      totalUnreadCount: data.total_unread_count,
+      cursor: data.cursor || '',
+      hasNext: data.has_next,
+    };
+  }
+
+  /**
+   * Get message history for a specific chat.
+   * Requires Premium Plus for BUYER_SELLER chats.
+   *
+   * @param chatId - Chat UUID
+   * @param direction - 'Forward' (old→new) or 'Backward' (new→old). CASE-SENSITIVE!
+   * @param fromMessageId - Start from this message (required for Forward)
+   * @param limit - Max 1000 (default 100)
+   */
+  async getChatHistory(
+    chatId: string,
+    direction: 'Forward' | 'Backward' = 'Backward',
+    fromMessageId?: number,
+    limit: number = 100
+  ): Promise<{
+    messages: OzonChatMessage[];
+    hasNext: boolean;
+  }> {
+    const body: Record<string, any> = {
+      chat_id: chatId,
+      direction,
+      limit,
+    };
+    if (fromMessageId !== undefined) {
+      body.from_message_id = fromMessageId;
+    }
+    const data = await this.post<{
+      messages: OzonChatMessage[];
+      has_next: boolean;
+    }>('/v3/chat/history', body);
+    return {
+      messages: data.messages || [],
+      hasNext: data.has_next,
+    };
+  }
+
+  /**
+   * Send a text message in a chat.
+   * Text: 1-1000 chars, plain text.
+   *
+   * @param chatId - Chat UUID
+   * @param text - Message text (max 1000 chars)
+   */
+  async sendChatMessage(
+    chatId: string,
+    text: string
+  ): Promise<{ result: string }> {
+    const data = await this.post<{ result: string }>(
+      '/v1/chat/send/message',
+      {
+        chat_id: chatId,
+        text: text.slice(0, 1000),
+      }
+    );
+    return data;
+  }
+
+  /**
+   * Mark messages as read in a chat.
+   *
+   * @param chatId - Chat UUID
+   * @param fromMessageId - Mark all messages up to this ID as read
+   */
+  async markChatRead(
+    chatId: string,
+    fromMessageId: number
+  ): Promise<void> {
+    await this.post('/v2/chat/read', {
+      chat_id: chatId,
+      from_message_id: fromMessageId,
+    });
+  }
+
+  /**
+   * Get ALL reviews with pagination (helper).
+   * Fetches all pages automatically.
+   *
+   * @param status - Filter by status
+   */
+  async getAllReviews(
+    status: 'ALL' | 'UNPROCESSED' | 'PROCESSED' = 'ALL'
+  ): Promise<OzonReview[]> {
+    const allReviews: OzonReview[] = [];
+    let lastId = '';
+
+    while (true) {
+      const page = await this.getReviewList(lastId, 100, status, 'DESC');
+      allReviews.push(...page.reviews);
+
+      if (!page.hasNext || page.reviews.length === 0) break;
+      lastId = page.lastId;
+    }
+
+    return allReviews;
+  }
+
+  /**
+   * Get ALL BUYER_SELLER chats with pagination (helper).
+   * Filters out SELLER_SUPPORT and UNSPECIFIED.
+   */
+  async getAllBuyerChats(): Promise<OzonChatListItem[]> {
+    const allChats: OzonChatListItem[] = [];
+    let cursor = '';
+
+    while (true) {
+      const page = await this.getChatList(cursor, 100);
+      const buyerChats = page.chats.filter(
+        (c) => c.chat.chat_type === 'BUYER_SELLER'
+      );
+      allChats.push(...buyerChats);
+
+      if (!page.hasNext || page.chats.length === 0) break;
+      cursor = page.cursor;
+    }
+
+    return allChats;
   }
 }
 
