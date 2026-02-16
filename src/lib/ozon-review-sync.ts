@@ -14,6 +14,7 @@
 
 import { createOzonClient } from '@/lib/ozon-api';
 import * as dbHelpers from '@/db/helpers';
+import { query } from '@/db/client';
 
 /**
  * Sync OZON reviews for a store.
@@ -46,18 +47,30 @@ export async function refreshOzonReviews(storeId: string): Promise<string> {
     }
     console.log(`[OZON-REVIEWS] Product SKU map: ${skuToProduct.size} entries`);
 
-    // Fetch all reviews (cursor pagination)
+    // Pre-fetch existing OZON review IDs for incremental sync
+    const existingIds = await query<{ id: string }>(
+      'SELECT id FROM reviews WHERE store_id = $1 AND marketplace = $2',
+      [storeId, 'ozon']
+    );
+    const knownReviewIds = new Set(existingIds.rows.map(r => r.id));
+    console.log(`[OZON-REVIEWS] Existing OZON reviews: ${knownReviewIds.size}`);
+
+    // Fetch reviews (cursor pagination, DESC = newest first)
     let lastId = '';
     let hasMore = true;
     let totalFetched = 0;
     let upsertedCount = 0;
     let skippedNoProduct = 0;
+    let stoppedEarly = false;
 
     while (hasMore) {
       const page = await client.getReviewList(lastId, 100, 'ALL', 'DESC');
+      let knownInPage = 0;
 
       for (const review of page.reviews) {
         totalFetched++;
+        const reviewDbId = `ozon_${review.id}`;
+        if (knownReviewIds.has(reviewDbId)) knownInPage++;
 
         // Find product by SKU
         const sku = String(review.sku);
@@ -73,7 +86,7 @@ export async function refreshOzonReviews(storeId: string): Promise<string> {
 
         // Upsert review into shared reviews table
         await dbHelpers.upsertReview({
-          id: `ozon_${review.id}`, // prefix to avoid ID collision with WB
+          id: reviewDbId,
           product_id: product.id,
           store_id: storeId,
           marketplace: 'ozon',
@@ -104,6 +117,13 @@ export async function refreshOzonReviews(storeId: string): Promise<string> {
         upsertedCount++;
       }
 
+      // Incremental sync: if entire page was already known → stop
+      if (knownInPage === page.reviews.length && page.reviews.length > 0) {
+        console.log(`[OZON-REVIEWS] Full page of ${page.reviews.length} known reviews — incremental sync complete`);
+        stoppedEarly = true;
+        break;
+      }
+
       hasMore = page.hasNext && page.reviews.length > 0;
       if (hasMore) {
         lastId = page.lastId;
@@ -118,7 +138,7 @@ export async function refreshOzonReviews(storeId: string): Promise<string> {
       total_reviews: stats.totalReviews,
     });
 
-    const message = `OZON reviews synced: ${upsertedCount} upserted, ${skippedNoProduct} skipped (no product), ${totalFetched} total from API`;
+    const message = `OZON reviews synced: ${upsertedCount} upserted, ${skippedNoProduct} skipped (no product), ${totalFetched} fetched${stoppedEarly ? ' (incremental)' : ' (full)'}`;
     console.log(`[OZON-REVIEWS] ${message}`);
     return message;
   } catch (error: any) {

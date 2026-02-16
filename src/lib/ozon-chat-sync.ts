@@ -18,6 +18,7 @@ import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { buildStoreInstructions } from '@/lib/ai-context';
 import { DEFAULT_TRIGGER_PHRASE, DEFAULT_OZON_FOLLOWUP_TEMPLATES, DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
+import { sendTelegramNotifications } from '@/lib/telegram-notifications';
 
 /** Map OZON user.type to our sender format */
 function mapSender(userType: string): 'client' | 'seller' | null {
@@ -71,6 +72,8 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
     let chatErrors = 0;
     const chatsToClassify: { chatId: string; productName?: string }[] = [];
     const newSellerMessagesByChat: Record<string, string[]> = {};
+    const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
+    let statusTransitions = 0;
 
     for (const chatItem of allChats) {
       const chatId = chatItem.chat.chat_id;
@@ -164,7 +167,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
           newForThisChat++;
 
           // Track new seller messages for trigger phrase detection
-          if (sender === 'seller' && text.trim() && msg.message_id > existingLastMsgId) {
+          if (sender === 'seller' && text.trim() && Number(msg.message_id) > existingLastMsgId) {
             if (!newSellerMessagesByChat[chatId]) newSellerMessagesByChat[chatId] = [];
             newSellerMessagesByChat[chatId].push(text);
           }
@@ -172,6 +175,77 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
 
         newMessagesTotal += newForThisChat;
         chatsProcessed++;
+
+        // Step 3a: Status transitions + draft clearing (only for chats with NEW activity)
+        const hasNewActivity = latestMsg && Number(latestMsg.message_id) > existingLastMsgId;
+        if (hasNewActivity && existing) {
+          try {
+            if (latestSender === 'client') {
+              // Client replied → move to inbox
+              if (existing.status !== 'inbox') {
+                const updates: Record<string, any> = {
+                  status: 'inbox' as ChatStatus,
+                  status_updated_at: new Date().toISOString(),
+                };
+                if (existing.status === 'closed') {
+                  updates.completion_reason = null;
+                }
+                await dbHelpers.updateChat(chatId, updates);
+                console.log(`[OZON-CHATS] Chat ${chatId}: ${existing.status} → inbox (client replied)`);
+                statusTransitions++;
+              }
+
+              // Stop auto-sequence if client replied
+              try {
+                const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+                if (activeSeq) {
+                  await dbHelpers.stopSequence(activeSeq.id, 'client_replied');
+                  console.log(`[OZON-CHATS] Auto-sequence stopped for chat ${chatId} (client replied)`);
+                }
+              } catch (seqErr: any) {
+                console.error(`[OZON-CHATS] Failed to stop auto-sequence for chat ${chatId}: ${seqErr.message}`);
+              }
+
+              // Collect for TG notification
+              clientRepliedChats.push({
+                chatId,
+                clientName: existing.client_name || 'Покупатель',
+                productName: productName || null,
+                messagePreview: latestMsg?.data?.[0] || null,
+              });
+            } else if (latestSender === 'seller') {
+              if (existing.status === 'closed') {
+                // Reopen closed chat
+                await dbHelpers.updateChat(chatId, {
+                  status: 'in_progress' as ChatStatus,
+                  status_updated_at: new Date().toISOString(),
+                  completion_reason: null,
+                });
+                console.log(`[OZON-CHATS] Chat ${chatId}: closed → in_progress (seller replied)`);
+                statusTransitions++;
+              } else if (existing.status !== 'in_progress') {
+                // Move to in_progress
+                await dbHelpers.updateChat(chatId, {
+                  status: 'in_progress' as ChatStatus,
+                  status_updated_at: new Date().toISOString(),
+                });
+                console.log(`[OZON-CHATS] Chat ${chatId}: ${existing.status} → in_progress (seller replied)`);
+                statusTransitions++;
+              }
+            }
+
+            // Clear draft when new message arrives (draft is outdated)
+            if (existing.draft_reply) {
+              await dbHelpers.updateChat(chatId, {
+                draft_reply: null,
+                draft_reply_generated_at: null,
+                draft_reply_edited: null,
+              });
+            }
+          } catch (transErr: any) {
+            console.error(`[OZON-CHATS] Status transition error for chat ${chatId}: ${transErr.message}`);
+          }
+        }
 
         // Collect chats needing AI classification (last message from client, limit 20)
         if (newForThisChat > 0 && latestSender === 'client' && chatsToClassify.length < 20) {
@@ -240,6 +314,16 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       }
     }
 
+    // Step 5a-tg: Send Telegram notifications for OZON client replies
+    if (clientRepliedChats.length > 0) {
+      try {
+        await sendTelegramNotifications(storeId, store.name || storeId, ownerId, clientRepliedChats);
+        console.log(`[OZON-CHATS] TG notifications sent for ${clientRepliedChats.length} client replies`);
+      } catch (tgErr: any) {
+        console.error(`[OZON-CHATS] TG notification error (non-critical): ${tgErr.message}`);
+      }
+    }
+
     // Step 4: AI classification for chats with new client messages
     let classified = 0;
     if (chatsToClassify.length > 0) {
@@ -284,7 +368,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       total_chats: allStoreChats.length,
     });
 
-    const message = `OZON chats synced: ${chatsProcessed} chats processed, ${newMessagesTotal} messages, ${triggersDetected} triggers, ${classified} classified, ${chatErrors} errors`;
+    const message = `OZON chats synced: ${chatsProcessed} chats, ${newMessagesTotal} msgs, ${statusTransitions} transitions, ${triggersDetected} triggers, ${clientRepliedChats.length} notifs, ${classified} classified, ${chatErrors} errors`;
     console.log(`[OZON-CHATS] ${message}`);
     return message;
   } catch (error: any) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getReviewById, markReviewReplySent, getStoreById } from '@/db/helpers';
+import { getReviewById, markReviewReplySent, updateReview, getStoreById } from '@/db/helpers';
 import { createOzonClient } from '@/lib/ozon-api';
 
 /**
@@ -55,8 +55,9 @@ export async function POST(
       const client = createOzonClient(store.ozon_client_id, store.ozon_api_key);
       const result = await client.createReviewComment(ozonReviewId, replyText);
 
-      // Update local database
+      // Update local database: mark as sent + persist ozon_comment_id
       const updatedReview = await markReviewReplySent(reviewId, replyText);
+      await updateReview(reviewId, { ozon_comment_id: result.commentId });
 
       return NextResponse.json({
         success: true,
