@@ -84,7 +84,7 @@ ${chatHistory}
       storeId,
       ownerId,
       chatId,
-      storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
+      storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
     });
 
     // ✅ Save draft to database

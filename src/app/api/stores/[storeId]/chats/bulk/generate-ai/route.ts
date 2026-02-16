@@ -93,7 +93,7 @@ ${chatHistory}
           storeId,
           ownerId: chat.owner_id,
           chatId,
-          storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions),
+          storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions, store?.marketplace),
         });
 
         // ✅ Save draft to database

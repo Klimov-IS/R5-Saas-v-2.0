@@ -170,7 +170,7 @@ export async function POST(
           storeId,
           ownerId: chat.owner_id,
           chatId: chat.id,
-          storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions),
+          storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions, store?.marketplace),
         });
 
         // Create deletion case

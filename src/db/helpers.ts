@@ -2181,7 +2181,8 @@ export async function getReviewsWithoutComplaints(
       AND r.rating <= $2
       AND rc.id IS NULL
       AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
-      AND r.date >= '2023-10-01'`;
+      AND r.date >= '2023-10-01'
+      AND r.marketplace = 'wb'`;
 
   // Filter only active products (for CRON auto-generation)
   if (activeProductsOnly) {

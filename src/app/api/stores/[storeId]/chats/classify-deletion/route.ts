@@ -154,7 +154,7 @@ async function classifyAllChatsForDeletion(
                     chatId: chat.id,
                     productName: chat.product_name || undefined,
                     productRules: productRules || undefined,
-                    storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
+                    storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
                 });
                 const duration = Date.now() - startTime;
 

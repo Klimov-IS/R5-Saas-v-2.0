@@ -91,7 +91,7 @@ ${chatHistory}
     `.trim();
 
     // Build store instructions (pass ai_instructions, not product_nm_id)
-    const storeInstructions = await buildStoreInstructions(chat.store_id, chat.ai_instructions);
+    const storeInstructions = await buildStoreInstructions(chat.store_id, chat.ai_instructions, chat.marketplace);
 
     // Generate AI reply
     const result = await generateChatReply({

@@ -350,7 +350,7 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
                         ownerId,
                         chatId,
                         productName: chat?.product_name || undefined,
-                        storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
+                        storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
                     });
 
                     const tag = result.tag;

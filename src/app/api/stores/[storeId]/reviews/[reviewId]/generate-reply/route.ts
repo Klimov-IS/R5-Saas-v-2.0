@@ -98,7 +98,7 @@ export async function POST(
       storeId,
       ownerId: store.owner_id,
       reviewId,
-      storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
+      storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
     });
 
     // Save as draft

@@ -195,6 +195,9 @@ export async function autoGenerateComplaintsInBackground(
  * }
  */
 export async function shouldGenerateComplaint(review: Review): Promise<boolean> {
+  // 0. Skip OZON reviews — complaints are WB-only
+  if (review.marketplace === 'ozon') return false;
+
   // 1. Check rating is 1-4 (not 5 stars)
   if (review.rating < 1 || review.rating > 4) {
     return false;
@@ -282,6 +285,9 @@ export async function shouldGenerateComplaintWithRules(
   review: Review,
   productRule: ProductRule | null
 ): Promise<boolean> {
+  // 0. Skip OZON reviews — complaints are WB-only
+  if (review.marketplace === 'ozon') return false;
+
   // 1. Check rating is 1-4
   if (review.rating < 1 || review.rating > 4) {
     return false;

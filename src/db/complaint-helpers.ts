@@ -673,6 +673,9 @@ export async function findEligibleReviewsForComplaints(options?: {
       -- 4. Store is active
       AND s.status = 'active'
 
+      -- 4.5. WB only — complaints not available for OZON
+      AND r.marketplace = 'wb'
+
       -- 5. Review status check (currently all reviews are 'unknown', so this is a placeholder for future)
       -- In the future, exclude: 'excluded', 'unpublished' statuses
       AND (r.review_status_wb IS NULL OR r.review_status_wb = 'unknown' OR r.review_status_wb = 'visible')
@@ -719,6 +722,7 @@ export async function getComplaintBacklogCount(storeId?: string): Promise<number
       AND r.date >= '${COMPLAINT_CUTOFF_DATE}'
       AND r.is_product_active = TRUE
       AND s.status = 'active'
+      AND r.marketplace = 'wb'
       AND (r.review_status_wb IS NULL OR r.review_status_wb = 'unknown' OR r.review_status_wb = 'visible')
       AND NOT EXISTS (
         SELECT 1 FROM review_complaints c WHERE c.review_id = r.id

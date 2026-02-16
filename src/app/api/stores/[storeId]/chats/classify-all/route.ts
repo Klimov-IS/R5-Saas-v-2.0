@@ -85,7 +85,7 @@ async function classifyAllChatsForStore(
                     storeId,
                     ownerId,
                     chatId: chat.id,
-                    storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions),
+                    storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
                 });
 
                 // Update chat with new tag
