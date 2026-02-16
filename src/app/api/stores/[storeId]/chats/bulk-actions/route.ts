@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatById, getChatMessages, updateChat, updateChatStatus } from '@/db/helpers';
+import { getChatById, getChatMessages, updateChat, updateChatStatus, getStoreById } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 import { sendChatMessage } from '@/lib/wb-chat-api';
+import { createOzonClient } from '@/lib/ozon-api';
 import type { ChatStatus } from '@/db/helpers';
 
 type BulkAction = 'generate' | 'send' | 'change_status';
@@ -51,6 +52,10 @@ export async function POST(
       failed: 0,
       errors: [] as string[],
     };
+
+    // Fetch store for marketplace-aware dispatch
+    const store = await getStoreById(storeId);
+    const isOzon = store?.marketplace === 'ozon' && store.ozon_client_id && store.ozon_api_key;
 
     // Process each chat
     for (const chatId of chatIds) {
@@ -113,8 +118,13 @@ ${chatHistory}
             }
 
             try {
-              // Send message via WB Chat API
-              await sendChatMessage(storeId, chatId, chat.draft_reply);
+              // Send message via marketplace-aware dispatch
+              if (isOzon) {
+                const ozonClient = createOzonClient(store!.ozon_client_id!, store!.ozon_api_key!);
+                await ozonClient.sendChatMessage(chatId, chat.draft_reply);
+              } else {
+                await sendChatMessage(storeId, chatId, chat.draft_reply);
+              }
 
               // Mark as sent and clear draft
               await updateChat(chatId, {

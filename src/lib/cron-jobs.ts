@@ -615,6 +615,7 @@ export function startAutoSequenceProcessor() {
 
           // Check stop condition 2: chat status still valid?
           const chat = await dbHelpers.getChatById(seq.chat_id);
+          const seqStore = await dbHelpers.getStoreById(seq.store_id);
           if (!chat || (chat.status !== 'awaiting_reply' && chat.status !== 'in_progress' && chat.status !== 'inbox')) {
             if (!dryRun) await dbHelpers.stopSequence(seq.id, 'status_changed');
             stopped++;
@@ -653,8 +654,15 @@ export function startAutoSequenceProcessor() {
               console.log(`[CRON] 🧪 DRY RUN: would send STOP message to chat ${seq.chat_id} and close it`);
             } else {
               try {
-                const { sendChatMessage: sendStopMsg } = await import('@/lib/wb-chat-api');
-                await sendStopMsg(seq.store_id, seq.chat_id, stopMessage);
+                // Marketplace-aware dispatch
+                if (seqStore?.marketplace === 'ozon' && seqStore.ozon_client_id && seqStore.ozon_api_key) {
+                  const { createOzonClient } = await import('@/lib/ozon-api');
+                  const ozonClient = createOzonClient(seqStore.ozon_client_id, seqStore.ozon_api_key);
+                  await ozonClient.sendChatMessage(seq.chat_id, stopMessage);
+                } else {
+                  const { sendChatMessage: sendStopMsg } = await import('@/lib/wb-chat-api');
+                  await sendStopMsg(seq.store_id, seq.chat_id, stopMessage);
+                }
 
                 // Record stop message in chat_messages
                 const stopMsgId = `auto_stop_${seq.id}`;
@@ -708,9 +716,15 @@ export function startAutoSequenceProcessor() {
             continue;
           }
 
-          // Send message via WB Chat API
-          const { sendChatMessage } = await import('@/lib/wb-chat-api');
-          await sendChatMessage(seq.store_id, seq.chat_id, template.text);
+          // Send message via marketplace-aware dispatch
+          if (seqStore?.marketplace === 'ozon' && seqStore.ozon_client_id && seqStore.ozon_api_key) {
+            const { createOzonClient } = await import('@/lib/ozon-api');
+            const ozonClient = createOzonClient(seqStore.ozon_client_id, seqStore.ozon_api_key);
+            await ozonClient.sendChatMessage(seq.chat_id, template.text);
+          } else {
+            const { sendChatMessage } = await import('@/lib/wb-chat-api');
+            await sendChatMessage(seq.store_id, seq.chat_id, template.text);
+          }
 
           // Record sent message in chat_messages
           const msgId = `auto_${seq.id}_${seq.current_step}`;
