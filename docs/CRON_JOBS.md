@@ -976,7 +976,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 **What It Does:**
 1. Iterates through all 12 chunks (0-11)
 2. For each chunk: calculates `dateFrom` and `dateTo` for the 90-day window
-3. Processes stores in parallel (concurrency=5, 5-min timeout per store)
+3. Processes stores in parallel (concurrency=5, 15-min timeout per store)
 4. Calls `POST /api/stores/{storeId}/reviews/update?mode=full&dateFrom=X&dateTo=Y`
 5. Auto-complaint generation triggers automatically after sync (built into API route)
 6. Only WB stores (OZON review sync not yet supported)
@@ -985,7 +985,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 - Does NOT interfere with hourly incremental sync (separate job name, separate concurrency lock)
 - Uses existing adaptive chunking logic (splits further if >19k reviews per sub-chunk)
 - Runs at 22:00 MSK — minimal user activity, 9-hour window until morning
-- Parallel processing: concurrency=5 stores, 5-min timeout per store
+- Parallel processing: concurrency=5 stores, 15-min timeout per store
 - Estimated duration: ~1-2 hours for all 12 chunks across ~47 stores
 - **Deletion detection (migration 015):** After syncing each store, compares WB API IDs with DB IDs in the synced date range. Reviews missing from WB are marked as `review_status_wb = 'deleted'`, and their draft complaints are auto-cancelled (`status = 'not_applicable'`). Safeguard: skips if >30% would be marked deleted (likely API issue).
 

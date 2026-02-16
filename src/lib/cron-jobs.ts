@@ -806,7 +806,7 @@ export function startRollingReviewFullSync() {
       const CHUNK_DAYS = 90;
       const TOTAL_CHUNKS = 12;
       const CONCURRENCY = 5;
-      const STORE_TIMEOUT_MS = 5 * 60 * 1000; // 5 min per store
+      const STORE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min per store
 
       // Process ALL chunks every night (full 3-year coverage)
       const chunksToProcess = Array.from({ length: TOTAL_CHUNKS }, (_, i) => i);
@@ -881,7 +881,7 @@ export function startRollingReviewFullSync() {
               successCount++;
             } catch (error: any) {
               errorCount++;
-              const reason = error.name === 'AbortError' ? 'timeout (5min)' : error.message;
+              const reason = error.name === 'AbortError' ? 'timeout (15min)' : error.message;
               console.error(`[CRON] ❌ ${store.name} (chunk ${chunkIndex}): ${reason}`);
             } finally {
               clearTimeout(timeout);
