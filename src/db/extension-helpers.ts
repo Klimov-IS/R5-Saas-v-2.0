@@ -479,7 +479,7 @@ export async function getUserStores(userId: string): Promise<Array<{
       marketplace: string;
       total_reviews: number;
     }>(
-      'SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) ORDER BY name ASC',
+      'SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) AND status = \'active\' ORDER BY name ASC',
       [storeIds]
     );
     return result.rows;
@@ -492,7 +492,7 @@ export async function getUserStores(userId: string): Promise<Array<{
     marketplace: string;
     total_reviews: number;
   }>(
-    'SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 ORDER BY name ASC',
+    'SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 AND status = \'active\' ORDER BY name ASC',
     [userId]
   );
 

@@ -222,7 +222,7 @@ export async function getAccessibleStoreIds(userId: string): Promise<string[]> {
   if (member.role === 'owner' || member.role === 'admin') {
     // All stores in the organization
     const result = await query<{ id: string }>(
-      'SELECT id FROM stores WHERE org_id = $1',
+      'SELECT id FROM stores WHERE org_id = $1 AND status = \'active\'',
       [member.org_id]
     );
     return result.rows.map(r => r.id);
