@@ -53,6 +53,7 @@ export async function GET(
         id: chat.id,
         storeId: chat.store_id,
         storeName: chat.store_name,
+        marketplace: chat.marketplace,
         clientName: chat.client_name,
         productName: chat.product_name,
         status: chat.status,

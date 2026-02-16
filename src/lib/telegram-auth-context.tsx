@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 interface TelegramStore {
   id: string;
   name: string;
+  marketplace?: string;
 }
 
 interface TelegramAuthState {

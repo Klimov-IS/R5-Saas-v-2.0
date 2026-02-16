@@ -465,6 +465,7 @@ export async function getUserByApiToken(token: string) {
 export async function getUserStores(userId: string): Promise<Array<{
   id: string;
   name: string;
+  marketplace: string;
   total_reviews: number;
 }>> {
   // Try org-based access first
@@ -475,9 +476,10 @@ export async function getUserStores(userId: string): Promise<Array<{
     const result = await query<{
       id: string;
       name: string;
+      marketplace: string;
       total_reviews: number;
     }>(
-      'SELECT id, name, total_reviews FROM stores WHERE id = ANY($1::text[]) ORDER BY name ASC',
+      'SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) ORDER BY name ASC',
       [storeIds]
     );
     return result.rows;
@@ -487,9 +489,10 @@ export async function getUserStores(userId: string): Promise<Array<{
   const result = await query<{
     id: string;
     name: string;
+    marketplace: string;
     total_reviews: number;
   }>(
-    'SELECT id, name, total_reviews FROM stores WHERE owner_id = $1 ORDER BY name ASC',
+    'SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 ORDER BY name ASC',
     [userId]
   );
 

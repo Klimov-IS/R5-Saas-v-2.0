@@ -14,8 +14,10 @@
 
 import { createOzonClient, OzonChatMessage } from '@/lib/ozon-api';
 import * as dbHelpers from '@/db/helpers';
+import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { buildStoreInstructions } from '@/lib/ai-context';
+import { DEFAULT_TRIGGER_PHRASE, DEFAULT_OZON_FOLLOWUP_TEMPLATES, DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
 
 /** Map OZON user.type to our sender format */
 function mapSender(userType: string): 'client' | 'seller' | null {
@@ -68,6 +70,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
     let chatsProcessed = 0;
     let chatErrors = 0;
     const chatsToClassify: { chatId: string; productName?: string }[] = [];
+    const newSellerMessagesByChat: Record<string, string[]> = {};
 
     for (const chatItem of allChats) {
       const chatId = chatItem.chat.chat_id;
@@ -137,8 +140,9 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
           ozon_last_message_id: latestMsg ? String(latestMsg.message_id) : existing?.ozon_last_message_id || null,
         });
 
-        // Step 3: Save messages
+        // Step 3: Save messages + track new seller messages for trigger detection
         let newForThisChat = 0;
+        const existingLastMsgId = existing?.ozon_last_message_id ? parseInt(existing.ozon_last_message_id, 10) : 0;
         for (const msg of messages) {
           const sender = mapSender(msg.user.type);
           if (!sender) continue; // skip system messages
@@ -158,6 +162,12 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
             is_auto_reply: false,
           });
           newForThisChat++;
+
+          // Track new seller messages for trigger phrase detection
+          if (sender === 'seller' && text.trim() && msg.message_id > existingLastMsgId) {
+            if (!newSellerMessagesByChat[chatId]) newSellerMessagesByChat[chatId] = [];
+            newSellerMessagesByChat[chatId].push(text);
+          }
         }
 
         newMessagesTotal += newForThisChat;
@@ -170,6 +180,63 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       } catch (err: any) {
         console.error(`[OZON-CHATS] Error processing chat ${chatId}: ${err.message}`);
         chatErrors++;
+      }
+    }
+
+    // Step 3.5: Trigger phrase detection for OZON auto-sequences
+    let triggersDetected = 0;
+    if (Object.keys(newSellerMessagesByChat).length > 0) {
+      const settings = await dbHelpers.getUserSettings();
+      const triggerPhrase = settings?.no_reply_trigger_phrase || DEFAULT_TRIGGER_PHRASE;
+      const triggerPhrase2 = settings?.no_reply_trigger_phrase2 || null;
+
+      const deletionTags: ChatTag[] = [
+        'deletion_candidate', 'deletion_offered', 'deletion_agreed',
+        'deletion_confirmed', 'refund_requested',
+      ];
+
+      for (const [trigChatId, sellerTexts] of Object.entries(newSellerMessagesByChat)) {
+        try {
+          const matchedSet1 = sellerTexts.some(text => text.includes(triggerPhrase));
+          const matchedSet2 = triggerPhrase2 ? sellerTexts.some(text => text.includes(triggerPhrase2)) : false;
+
+          if (!matchedSet1 && !matchedSet2) continue;
+
+          const chat = await dbHelpers.getChatById(trigChatId);
+          if (!chat) continue;
+
+          // Skip if already in deletion workflow
+          if (chat.tag && deletionTags.includes(chat.tag as ChatTag)) continue;
+
+          const is4Star = matchedSet2 && !matchedSet1;
+          const sequenceType = is4Star ? 'ozon_no_reply_followup_4star' : 'ozon_no_reply_followup';
+
+          await dbHelpers.updateChat(trigChatId, {
+            tag: 'deletion_candidate' as ChatTag,
+            status: 'in_progress' as ChatStatus,
+            status_updated_at: new Date().toISOString(),
+          });
+
+          // Create auto-sequence if none exists
+          const existingSeq = await dbHelpers.getActiveSequenceForChat(trigChatId);
+          if (!existingSeq) {
+            let templates;
+            if (is4Star) {
+              templates = settings?.no_reply_messages2?.length
+                ? settings.no_reply_messages2.map((text: string, i: number) => ({ day: i + 1, text }))
+                : DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR;
+            } else {
+              templates = settings?.no_reply_messages?.length
+                ? settings.no_reply_messages.map((text: string, i: number) => ({ day: i + 1, text }))
+                : DEFAULT_OZON_FOLLOWUP_TEMPLATES;
+            }
+            await dbHelpers.createAutoSequence(trigChatId, chat.store_id, chat.owner_id, templates, sequenceType);
+            console.log(`[OZON-CHATS] Trigger detected in chat ${trigChatId} → deletion_candidate + sequence [${sequenceType}]`);
+          }
+          triggersDetected++;
+        } catch (triggerErr: any) {
+          console.error(`[OZON-CHATS] Trigger detection error for chat ${trigChatId}: ${triggerErr.message}`);
+        }
       }
     }
 
@@ -217,7 +284,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       total_chats: allStoreChats.length,
     });
 
-    const message = `OZON chats synced: ${chatsProcessed} chats processed, ${newMessagesTotal} messages, ${classified} classified, ${chatErrors} errors`;
+    const message = `OZON chats synced: ${chatsProcessed} chats processed, ${newMessagesTotal} messages, ${triggersDetected} triggers, ${classified} classified, ${chatErrors} errors`;
     console.log(`[OZON-CHATS] ${message}`);
     return message;
   } catch (error: any) {

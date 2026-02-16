@@ -98,7 +98,7 @@ async function handleStart(msg) {
 
   await sendMessage(chatId,
     `👋 Привет, ${name}!\n\n` +
-    `Я — бот R5 для управления чатами с покупателями Wildberries.\n\n` +
+    `Я — бот R5 для управления чатами с покупателями Wildberries и OZON.\n\n` +
     `<b>Что я умею:</b>\n` +
     `• Уведомляю о новых ответах клиентов\n` +
     `• Открываю Mini App для быстрого ответа\n\n` +
@@ -180,17 +180,20 @@ async function handleLink(msg, apiKey) {
       [userId, telegramId, telegramUsername, chatId]
     );
 
-    // Get stores count
+    // Get stores count with marketplace breakdown
     const storesResult = await dbQuery(
-      "SELECT COUNT(*) as count FROM stores WHERE owner_id = $1 AND status = 'active'",
+      "SELECT marketplace, COUNT(*) as count FROM stores WHERE owner_id = $1 AND status = 'active' GROUP BY marketplace",
       [userId]
     );
-    const storeCount = parseInt(storesResult.rows[0].count, 10);
+    const wbCount = parseInt((storesResult.rows.find(r => r.marketplace === 'wb') || { count: 0 }).count, 10);
+    const ozonCount = parseInt((storesResult.rows.find(r => r.marketplace === 'ozon') || { count: 0 }).count, 10);
+    const storeCount = wbCount + ozonCount;
+    const storeBreakdown = ozonCount > 0 ? ` (WB: ${wbCount}, OZON: ${ozonCount})` : '';
 
     await sendMessage(chatId,
       `✅ Аккаунт привязан!\n\n` +
       `📧 ${userEmail}\n` +
-      `🏪 Магазинов: ${storeCount}\n\n` +
+      `🏪 Магазинов: ${storeCount}${storeBreakdown}\n\n` +
       `Теперь вы будете получать уведомления о новых ответах клиентов.`,
       {
         reply_markup: {
@@ -286,10 +289,13 @@ async function handleStatus(msg) {
 
     // Get stores
     const storesResult = await dbQuery(
-      "SELECT name FROM stores WHERE owner_id = $1 AND status = 'active' ORDER BY name",
+      "SELECT name, marketplace FROM stores WHERE owner_id = $1 AND status = 'active' ORDER BY name",
       [tgUser.user_id]
     );
-    const storeNames = storesResult.rows.map(r => r.name).join(', ') || 'Нет активных';
+    const storeNames = storesResult.rows.map(r => {
+      const suffix = r.marketplace === 'ozon' ? ' (OZON)' : ' (WB)';
+      return r.name + suffix;
+    }).join(', ') || 'Нет активных';
 
     // Get notification count (last 24h)
     const notifResult = await dbQuery(

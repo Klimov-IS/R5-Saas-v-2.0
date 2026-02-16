@@ -72,15 +72,15 @@ export async function POST(
       }
     }
 
-    // Build context string (matching web API format)
+    // Build context string (matching web API format, marketplace-aware labels)
+    const isOzon = chat.marketplace === 'ozon';
     const context = `
 **Магазин:**
 Название: ${chat.store_name}
 
 **Товар:**
 Название: ${chat.product_name || 'Неизвестно'}
-Артикул WB: ${chat.product_nm_id || 'Неизвестно'}
-Вендор код: ${chat.product_vendor_code || 'Неизвестно'}
+${isOzon ? 'ID товара OZON' : 'Артикул WB'}: ${chat.product_nm_id || 'Неизвестно'}${!isOzon ? `\nВендор код: ${chat.product_vendor_code || 'Неизвестно'}` : ''}
 ${productRulesContext}
 
 **Клиент:**

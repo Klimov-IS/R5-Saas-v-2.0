@@ -10,6 +10,7 @@ interface QueueItem {
   id: string;
   storeId: string;
   storeName: string;
+  marketplace?: string;
   clientName: string;
   productName: string | null;
   lastMessageText: string | null;

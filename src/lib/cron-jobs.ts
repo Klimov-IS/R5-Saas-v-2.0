@@ -12,7 +12,7 @@ import * as dbHelpers from '@/db/helpers';
 import { runBackfillWorker } from '@/services/backfill-worker';
 
 import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
-import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, getNextSlotTime } from '@/lib/auto-sequence-templates';
+import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MESSAGE, DEFAULT_OZON_STOP_MESSAGE_4STAR, getNextSlotTime } from '@/lib/auto-sequence-templates';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -644,11 +644,12 @@ export function startAutoSequenceProcessor() {
 
           // Check max steps — send СТОП message and close chat
           if (seq.current_step >= seq.max_steps) {
-            // Choose stop message based on sequence type (negatives vs 4-star)
-            const is4Star = seq.sequence_type === 'no_reply_followup_4star';
+            // Choose stop message based on sequence type (negatives vs 4-star, WB vs OZON)
+            const is4Star = seq.sequence_type === 'no_reply_followup_4star' || seq.sequence_type === 'ozon_no_reply_followup_4star';
+            const isOzonSeq = seq.sequence_type?.startsWith('ozon_');
             const stopMessage = is4Star
-              ? (settings?.no_reply_stop_message2 || DEFAULT_STOP_MESSAGE_4STAR)
-              : (settings?.no_reply_stop_message || DEFAULT_STOP_MESSAGE);
+              ? (settings?.no_reply_stop_message2 || (isOzonSeq ? DEFAULT_OZON_STOP_MESSAGE_4STAR : DEFAULT_STOP_MESSAGE_4STAR))
+              : (settings?.no_reply_stop_message || (isOzonSeq ? DEFAULT_OZON_STOP_MESSAGE : DEFAULT_STOP_MESSAGE));
 
             if (dryRun) {
               console.log(`[CRON] 🧪 DRY RUN: would send STOP message to chat ${seq.chat_id} and close it`);

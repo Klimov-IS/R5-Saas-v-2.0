@@ -37,6 +37,7 @@ export interface QueueChat {
   id: string;
   store_id: string;
   store_name: string;
+  marketplace: string;
   client_name: string;
   product_name: string | null;
   product_nm_id: string | null;
@@ -230,13 +231,15 @@ export async function getUnifiedChatQueue(
 
   const result = await query<QueueChat>(
     `SELECT
-       c.id, c.store_id, s.name as store_name,
+       c.id, c.store_id, s.name as store_name, c.marketplace,
        c.client_name, c.product_name, c.product_nm_id,
        c.last_message_text, c.last_message_date, c.last_message_sender,
        c.draft_reply, c.status, c.tag, c.completion_reason
      FROM chats c
      JOIN stores s ON c.store_id = s.id
-     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
+     LEFT JOIN products p ON p.store_id = c.store_id
+       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
      LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE ${conditions.join(' AND ')}
      ORDER BY c.last_message_date DESC NULLS LAST
@@ -277,7 +280,9 @@ export async function getUnifiedChatQueueCount(
     `SELECT COUNT(*) as count
      FROM chats c
      JOIN stores s ON c.store_id = s.id
-     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
+     LEFT JOIN products p ON p.store_id = c.store_id
+       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
      LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE ${conditions.join(' AND ')}`,
     params
@@ -304,7 +309,9 @@ export async function getUnifiedChatQueueCountsByStatus(
     `SELECT c.status, COUNT(*) as count
      FROM chats c
      JOIN stores s ON c.store_id = s.id
-     LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND p.store_id = c.store_id
+     LEFT JOIN products p ON p.store_id = c.store_id
+       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
      LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE c.store_id = ANY($1::text[])
        AND s.status = 'active'

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         valid: true,
         userId: devUserId,
-        stores: stores.map(s => ({ id: s.id, name: s.name })),
+        stores: stores.map(s => ({ id: s.id, name: s.name, marketplace: s.marketplace })),
       });
     }
 
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       valid: true,
       userId: result.userId,
-      stores: stores.map(s => ({ id: s.id, name: s.name })),
+      stores: stores.map(s => ({ id: s.id, name: s.name, marketplace: s.marketplace })),
     });
   } catch (error: any) {
     console.error('[TG-AUTH] Error:', error.message);

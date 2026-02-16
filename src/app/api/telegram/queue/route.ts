@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
         id: c.id,
         storeId: c.store_id,
         storeName: c.store_name,
+        marketplace: c.marketplace,
         clientName: c.client_name,
         productName: c.product_name,
         lastMessageText: c.last_message_text,

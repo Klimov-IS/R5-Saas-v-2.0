@@ -16,6 +16,7 @@ interface ChatDetail {
   id: string;
   storeId: string;
   storeName: string;
+  marketplace?: string;
   clientName: string;
   productName: string | null;
   status: string;
@@ -241,6 +242,18 @@ export default function TgChatPage() {
           }}>
             {chat.storeName}
           </span>
+          {chat.marketplace === 'ozon' && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              padding: '2px 6px',
+              borderRadius: '8px',
+              backgroundColor: '#005bff',
+              color: '#fff',
+            }}>
+              OZON
+            </span>
+          )}
         </div>
         <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--tg-text)' }}>{chat.clientName}</div>
         {chat.productName && (

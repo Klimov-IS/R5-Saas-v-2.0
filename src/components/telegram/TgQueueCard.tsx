@@ -18,6 +18,7 @@ interface TgQueueCardProps {
   id: string;
   storeId: string;
   storeName: string;
+  marketplace?: string;
   clientName: string;
   productName: string | null;
   lastMessageText: string | null;
@@ -36,6 +37,7 @@ interface TgQueueCardProps {
 
 export default function TgQueueCard({
   storeName,
+  marketplace,
   clientName,
   productName,
   lastMessageText,
@@ -107,6 +109,18 @@ export default function TgQueueCard({
           >
             {storeName}
           </span>
+          {marketplace === 'ozon' && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              padding: '2px 6px',
+              borderRadius: '8px',
+              backgroundColor: '#005bff',
+              color: '#fff',
+            }}>
+              OZON
+            </span>
+          )}
         </div>
         <span style={{ fontSize: '11px', color: 'var(--tg-hint)' }}>
           {timeAgo}
