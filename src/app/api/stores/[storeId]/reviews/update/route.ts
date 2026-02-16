@@ -93,6 +93,7 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
         let sessionLatestReviewDate = new Date(0);
         const newReviewIds: string[] = []; // Track new reviews for auto-complaint generation
         const seenReviewIds = new Set<string>(); // Track all review IDs from WB API (for deletion detection)
+        const resurrectedIds: string[] = []; // Track reviews restored from 'deleted' status
 
         // Determine date range strategy
         let dateChunks: Array<{ from: number; to: number; days: number }>;
@@ -216,9 +217,16 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
                                 draft_reply: null, // Will be preserved by ON CONFLICT if exists
                             };
 
-                            // Upsert review
+                            // Track resurrection: review was deleted but WB API returned it again
+                            const isResurrected = existingReview?.review_status_wb === 'deleted';
+
+                            // Upsert review (auto-resets deleted → visible via CASE in SQL)
                             await dbHelpers.upsertReview(payload);
                             seenReviewIds.add(review.id);
+
+                            if (isResurrected) {
+                                resurrectedIds.push(review.id);
+                            }
 
                             // Track new reviews for auto-complaint generation
                             if (isNewReview) {
@@ -363,6 +371,37 @@ async function refreshReviewsForStore(storeId: string, mode: 'full' | 'increment
             } catch (detectionError: any) {
                 console.error(`[DELETED DETECTION] Error during deletion detection (non-fatal):`, detectionError.message);
                 // Non-fatal — don't fail the sync
+            }
+        }
+
+        // Log and restore resurrected reviews (deleted → visible via upsert CASE)
+        if (resurrectedIds.length > 0) {
+            console.log(`[RESURRECTION] Restored ${resurrectedIds.length} previously deleted reviews for store ${storeId}`);
+
+            try {
+                // Restore not_applicable complaints back to draft
+                const restoredComplaints = await query<{ review_id: string }>(
+                    `UPDATE review_complaints
+                     SET status = 'draft', updated_at = NOW()
+                     WHERE review_id = ANY($1) AND status = 'not_applicable'
+                     RETURNING review_id`,
+                    [resurrectedIds]
+                );
+
+                if ((restoredComplaints.rowCount ?? 0) > 0) {
+                    const restoredReviewIds = restoredComplaints.rows.map(r => r.review_id);
+                    await query(
+                        `UPDATE reviews
+                         SET complaint_status = 'draft',
+                             has_complaint_draft = TRUE,
+                             updated_at = NOW()
+                         WHERE id = ANY($1)`,
+                        [restoredReviewIds]
+                    );
+                    console.log(`[RESURRECTION] Restored ${restoredComplaints.rowCount} complaints from not_applicable back to draft`);
+                }
+            } catch (resError: any) {
+                console.error(`[RESURRECTION] Error restoring complaints (non-fatal):`, resError.message);
             }
         }
 

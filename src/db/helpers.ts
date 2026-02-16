@@ -804,6 +804,14 @@ export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_
       complaint_text = COALESCE(EXCLUDED.complaint_text, reviews.complaint_text),
       complaint_sent_date = COALESCE(EXCLUDED.complaint_sent_date, reviews.complaint_sent_date),
       draft_reply = COALESCE(EXCLUDED.draft_reply, reviews.draft_reply),
+      review_status_wb = CASE
+        WHEN reviews.review_status_wb = 'deleted' THEN 'visible'::review_status_wb
+        ELSE reviews.review_status_wb
+      END,
+      deleted_from_wb_at = CASE
+        WHEN reviews.review_status_wb = 'deleted' THEN NULL
+        ELSE reviews.deleted_from_wb_at
+      END,
       updated_at = NOW()
     RETURNING *`,
     [
