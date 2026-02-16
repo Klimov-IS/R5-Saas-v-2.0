@@ -8,6 +8,7 @@ import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TE
 import { buildStoreInstructions } from '@/lib/ai-context';
 import { sendTelegramNotifications } from '@/lib/telegram-notifications';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
+import { reconcileChatWithLink } from '@/db/review-chat-link-helpers';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -86,6 +87,23 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         }
 
         console.log(`[DIALOGUES] Updated/Created ${activeChats.length} chat documents.`);
+
+        // --- Step 3.5: Reconcile extension-opened chats ---
+        // For each synced chat, check if there's a pending review_chat_link
+        // and set chat_id so the link is complete
+        let reconciledCount = 0;
+        for (const activeChat of activeChats) {
+            if (!activeChat.chatID) continue;
+            try {
+                const reconciled = await reconcileChatWithLink(activeChat.chatID, storeId);
+                if (reconciled) reconciledCount++;
+            } catch (err) {
+                // Non-fatal: reconciliation failure shouldn't break sync
+            }
+        }
+        if (reconciledCount > 0) {
+            console.log(`[DIALOGUES] Reconciled ${reconciledCount} extension-opened chat links.`);
+        }
 
         // Build set of all known chat IDs (existing in DB + just upserted from WB active list)
         const knownChatIds = new Set<string>([

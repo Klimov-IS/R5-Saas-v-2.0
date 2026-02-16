@@ -792,6 +792,181 @@ API для Chrome Extension.
 
 ---
 
+## Extension Chat API (Sprint 002)
+
+API для связки отзывов с чатами через Chrome Extension.
+Расширение открывает чаты из страницы отзывов WB и сообщает бэкенду связку review ↔ chat.
+
+**Auth:** `Authorization: Bearer {api_key}` (тот же токен, что для complaints)
+**Base path:** `/api/extension/chat/`
+
+### GET /api/extension/chat/stores
+
+Список магазинов с информацией о чат-workflow.
+
+**Response:**
+```json
+[
+  {
+    "id": "store_123",
+    "name": "Store Name",
+    "isActive": true,
+    "chatEnabled": true,
+    "pendingChatsCount": 12
+  }
+]
+```
+
+| Field | Description |
+|-------|-------------|
+| chatEnabled | Есть ли хотя бы один товар с `work_in_chats = true` |
+| pendingChatsCount | Отзывы с отклонёнными жалобами, для которых ещё не открыт чат |
+
+---
+
+### GET /api/extension/chat/stores/:storeId/rules
+
+Правила чат-обработки для магазина. Расширение использует для отбора отзывов.
+
+**Response:**
+```json
+{
+  "storeId": "store_123",
+  "globalLimits": {
+    "maxChatsPerRun": 50,
+    "cooldownBetweenChatsMs": 3000
+  },
+  "items": [
+    {
+      "nmId": "649502497",
+      "productTitle": "Футболка мужская",
+      "isActive": true,
+      "chatEnabled": true,
+      "starsAllowed": [1, 2, 3, 4],
+      "requiredComplaintStatus": "rejected"
+    }
+  ]
+}
+```
+
+**Критерии отбора (логика в расширении):**
+- `nmId` совпадает с артикулом на странице WB
+- `isActive = true` и `chatEnabled = true`
+- Звёзды отзыва входят в `starsAllowed`
+- Статус жалобы на странице = «Отклонена» (`requiredComplaintStatus = "rejected"`)
+
+---
+
+### POST /api/extension/chat/opened
+
+Фиксация открытия чата. Идемпотентно: повторный вызов с тем же `reviewKey` возвращает существующую запись.
+
+**Request:**
+```json
+{
+  "storeId": "store_123",
+  "reviewContext": {
+    "nmId": "649502497",
+    "rating": 2,
+    "reviewDate": "2026-01-07T20:09:37.000Z",
+    "reviewKey": "649502497_2_2026-01-07T20:09"
+  },
+  "chatUrl": "https://seller.wildberries.ru/feedback-and-questions/chats/12345",
+  "openedAt": "2026-02-16T14:30:00.000Z",
+  "status": "CHAT_OPENED"
+}
+```
+
+**Response (201 Created / 200 OK):**
+```json
+{
+  "success": true,
+  "chatRecordId": "uuid-...",
+  "message": "Chat record created",
+  "reviewMatched": true
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| chatRecordId | UUID записи `review_chat_links` (используется в последующих запросах) |
+| reviewMatched | Удалось ли найти matching review в БД |
+
+---
+
+### POST /api/extension/chat/:chatRecordId/anchor
+
+Фиксация системного сообщения WB ("Чат с покупателем по товару...").
+
+**Request:**
+```json
+{
+  "systemMessageText": "Чат с покупателем по товару Футболка, артикул 649502497",
+  "parsedNmId": "649502497",
+  "parsedProductTitle": "Футболка",
+  "anchorFoundAt": "2026-02-16T14:30:05.000Z",
+  "status": "ANCHOR_FOUND"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "reviewChatLinked": true,
+  "message": "Review-chat association confirmed"
+}
+```
+
+---
+
+### POST /api/extension/chat/:chatRecordId/message-sent
+
+Фиксация отправки стартового сообщения покупателю.
+
+**Request:**
+```json
+{
+  "messageType": "A",
+  "messageText": "Здравствуйте! Мы увидели ваш отзыв...",
+  "sentAt": "2026-02-16T14:30:10.000Z",
+  "status": "MESSAGE_SENT"
+}
+```
+
+| Field | Values |
+|-------|--------|
+| messageType | `"A"` (1-3⭐), `"B"` (4⭐), `"NONE"` |
+| status | `MESSAGE_SENT`, `MESSAGE_SKIPPED` (дубль), `MESSAGE_FAILED` |
+
+---
+
+### POST /api/extension/chat/:chatRecordId/error
+
+Логирование ошибки на любом этапе.
+
+**Request:**
+```json
+{
+  "errorCode": "ERROR_ANCHOR_NOT_FOUND",
+  "errorMessage": "System message not found after scrolling to top",
+  "stage": "anchor_parsing",
+  "occurredAt": "2026-02-16T14:30:15.000Z"
+}
+```
+
+| errorCode | Description |
+|-----------|-------------|
+| ERROR_TAB_TIMEOUT | Вкладка чата не загрузилась |
+| ERROR_ANCHOR_NOT_FOUND | Системное сообщение не найдено |
+| ERROR_DOM_CHANGED | DOM изменился |
+| ERROR_INPUT_NOT_FOUND | Поле ввода не найдено |
+| ERROR_SEND_FAILED | Не удалось отправить сообщение |
+| ERROR_CHAT_BLOCKED | Чат заблокирован |
+| ERROR_UNKNOWN | Непредвиденная ошибка |
+
+---
+
 ## Admin API
 
 ### GET /api/admin/metrics/auto-complaints
@@ -1079,4 +1254,4 @@ Proxy к WB Questions API.
 
 ---
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-16

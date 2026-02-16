@@ -761,6 +761,73 @@ CREATE INDEX idx_questions_created ON questions(created_date DESC);
 
 ---
 
+### `review_chat_links`
+
+**Purpose:** Store review↔chat associations created by Chrome Extension (Sprint 002). The extension opens chats from the WB reviews page and reports the link back to backend, enabling full review lifecycle tracking.
+
+**Created by:** Migration 016
+
+```sql
+CREATE TABLE review_chat_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+
+  -- Review side (from extension)
+  review_id TEXT REFERENCES reviews(id) ON DELETE SET NULL,  -- matched asynchronously
+  review_key TEXT NOT NULL,              -- "{nmId}_{rating}_{dateTruncMin}" from extension
+  review_nm_id TEXT NOT NULL,            -- WB product nmID
+  review_rating INTEGER NOT NULL,        -- Review rating (1-5)
+  review_date TIMESTAMPTZ NOT NULL,      -- Review date (for fuzzy matching)
+
+  -- Chat side (from extension + dialogue sync reconciliation)
+  chat_id TEXT REFERENCES chats(id) ON DELETE SET NULL,  -- populated by reconciliation
+  chat_url TEXT NOT NULL,                -- Full WB chat URL
+  system_message_text TEXT,              -- WB system message ("Чат с покупателем по товару...")
+  parsed_nm_id TEXT,                     -- nmID extracted from system message
+  parsed_product_title TEXT,             -- Product title from system message
+
+  -- Progress tracking
+  status TEXT NOT NULL DEFAULT 'chat_opened',
+    -- chat_opened → anchor_found → message_sent → completed
+    -- chat_opened → anchor_not_found
+    -- * → error
+  message_type TEXT,                     -- 'A' (1-3⭐) / 'B' (4⭐)
+  message_text TEXT,                     -- Sent message text
+  message_sent_at TIMESTAMPTZ,
+
+  -- Error tracking
+  error_code TEXT,                       -- ERROR_TAB_TIMEOUT, ERROR_ANCHOR_NOT_FOUND, etc.
+  error_message TEXT,
+  error_stage TEXT,                      -- chat_open / anchor_parsing / message_send
+
+  -- Timestamps
+  opened_at TIMESTAMPTZ NOT NULL,
+  anchor_found_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(store_id, review_key)
+);
+```
+
+**Key design decisions:**
+- `review_id` nullable — matched asynchronously via fuzzy date/rating query
+- `chat_id` nullable — populated by dialogue sync reconciliation (Step 3.5)
+- `UNIQUE(store_id, review_key)` — one review = one chat link per store
+- Both FKs use `ON DELETE SET NULL` — link survives if review/chat is deleted
+
+**Indexes:**
+```sql
+idx_rcl_store(store_id)
+idx_rcl_review(review_id) WHERE review_id IS NOT NULL
+idx_rcl_chat(chat_id) WHERE chat_id IS NOT NULL
+idx_rcl_status(store_id, status)
+idx_rcl_chat_url(chat_url)
+idx_rcl_review_key(store_id, review_key)
+```
+
+---
+
 ### `chat_auto_sequences`
 
 **Purpose:** Track automated follow-up message sequences for chats in `awaiting_reply` status. 1 message/day, up to 14 days.
@@ -1088,7 +1155,11 @@ users (1) ───── (N) stores
   │                  │
   │                  ├─── (N) chats
   │                  │        ├─── (N) chat_messages
-  │                  │        └─── (N) chat_auto_sequences
+  │                  │        ├─── (N) chat_auto_sequences
+  │                  │        └───┐
+  │                  │            │ review_chat_links (N:1 chats, N:1 reviews)
+  │                  │            │ Links review ↔ chat via Chrome Extension
+  │                  │            │
   │                  │
   │                  ├─── (N) store_faq
   │                  ├─── (N) store_guides
@@ -1124,6 +1195,12 @@ users (1) ───── (N) stores
 5. **products → product_rules** (1:1)
    - UNIQUE constraint on `product_id`
    - Configuration per product
+
+6. **reviews ↔ chats via review_chat_links** (N:1 each)
+   - Created by Chrome Extension when opening chat from reviews page
+   - `review_id` nullable (fuzzy matched by nmId + rating + date)
+   - `chat_id` nullable (populated by dialogue sync reconciliation)
+   - UNIQUE(store_id, review_key) — one link per review
 
 ---
 
@@ -1227,6 +1304,7 @@ Key migrations:
 12. `013_ozon_reviews_chats_support.sql` - OZON: `marketplace` on reviews/chats/chat_messages, OZON-specific fields (review status, SKU, chat type, unread count)
 13. `014_optimize_draft_complaints_index.sql` - Partial index for extension stores API draft count optimization
 14. `015_deletion_detection.sql` - `review_status_wb` enum, `deleted_from_wb_at` column, resurrection logic
+15. `016_review_chat_links.sql` - Review↔Chat linking table for Chrome Extension (Sprint 002)
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
@@ -1408,7 +1486,7 @@ CREATE TABLE invites (
 
 ---
 
-**Last Updated:** 2026-02-11
+**Last Updated:** 2026-02-16
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials

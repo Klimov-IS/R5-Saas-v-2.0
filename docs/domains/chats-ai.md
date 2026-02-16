@@ -713,6 +713,84 @@ INSERT INTO ai_logs (
 
 ---
 
+## Review-Chat Linking (Sprint 002)
+
+**Проблема:** WB API не связывает отзывы и чаты. Система ведёт два независимых потока — мы не знаем, по какому отзыву идёт конкретный чат.
+
+**Решение:** Chrome-расширение выступает мостом:
+
+```
+Страница отзывов WB (Extension)
+    ↓ находит отзыв с rejected жалобой
+    ↓ кликает "Открыть чат"
+    ↓
+Вкладка чата WB (Extension)
+    ↓ парсит URL чата
+    ↓ парсит системное сообщение WB ("Чат с покупателем по товару...")
+    ↓
+POST /api/extension/chat/opened → review_chat_links (review_key + chat_url)
+POST /api/extension/chat/{id}/anchor → system_message_text + parsed_nm_id
+    ↓
+Dialogue Sync (Step 3.5) → reconciliation: заполняет chat_id
+```
+
+### Data flow
+
+| Шаг | Источник | Данные | Таблица |
+|-----|----------|--------|---------|
+| 1 | Extension → GET rules | starsAllowed, requiredComplaintStatus | product_rules |
+| 2 | Extension → POST opened | reviewKey, chatUrl, nmId, rating, date | review_chat_links |
+| 3 | Extension → POST anchor | systemMessageText, parsedNmId | review_chat_links |
+| 4 | Dialogue sync → Step 3.5 | chat_id (reconciliation) | review_chat_links |
+
+### Условие открытия чата
+
+Чат открывается **только если** жалоба уже отклонена:
+
+```
+Путь 1 (бесплатный): Жалоба → WB одобрил → Отзыв удалён ✓
+Путь 2 (платный):    Жалоба → WB отклонил → Чат → Компенсация → Удаление ✓
+```
+
+### Таблица
+
+`review_chat_links` — связка review ↔ chat:
+- `review_id` TEXT FK → reviews (nullable, fuzzy matched)
+- `chat_id` TEXT FK → chats (nullable, populated by reconciliation)
+- `review_key` TEXT — ключ от расширения (`{nmId}_{rating}_{dateTruncMin}`)
+- `chat_url` TEXT — URL чата WB
+- `system_message_text` TEXT — системное сообщение WB
+- `status` — `chat_opened` → `anchor_found` → `message_sent` → `completed`
+
+### API Endpoints
+
+| Method | Endpoint | Назначение |
+|--------|----------|------------|
+| GET | `/api/extension/chat/stores` | Магазины с pendingChatsCount |
+| GET | `/api/extension/chat/stores/{id}/rules` | Правила по артикулам |
+| POST | `/api/extension/chat/opened` | Фиксация открытия чата |
+| POST | `/api/extension/chat/{id}/anchor` | Фиксация системного сообщения |
+| POST | `/api/extension/chat/{id}/message-sent` | Фиксация отправки сообщения |
+| POST | `/api/extension/chat/{id}/error` | Логирование ошибок |
+
+### Файлы
+
+- **Миграция:** `migrations/016_review_chat_links.sql`
+- **DB Helpers:** `src/db/review-chat-link-helpers.ts`
+- **API Routes:** `src/app/api/extension/chat/`
+- **Reconciliation:** `src/app/api/stores/[storeId]/dialogues/update/route.ts` (Step 3.5)
+- **Sprint Docs:** `docs/sprints/sprint-002-review-chat-linking/`
+
+### Будущие возможности (Фаза 2-3)
+
+- AI получает текст отзыва при генерации ответа в чате
+- Авто-создание auto-sequence при открытии linked чата
+- Закрытие чата при обнаружении удаления отзыва
+- UI: виджет отзыва в карточке чата
+- Аналитика: воронка review → complaint → chat → deletion
+
+---
+
 ## Нереализованный функционал
 
 | Функционал | Статус | Где находится |
@@ -731,7 +809,8 @@ INSERT INTO ai_logs (
 - [Логика жалоб](./complaints.md)
 - [Статусы (reference)](../reference/statuses-reference.md)
 - [Database Schema](../database-schema.md)
+- [Sprint 002: Review-Chat Linking](../sprints/sprint-002-review-chat-linking/README.md)
 
 ---
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-16
