@@ -768,10 +768,10 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
 |-----|----------------|----------------|-------------|
-| Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync (3h overlap) + auto-generate complaints + retry failed stores |
-| **Nightly Full Review Sync** | **22:00 daily** | **0 19 * * *** | **Full review sync — all 12 chunks (3 years), concurrency=5, ~1-2h** |
-| **Midday Review Catchup** | **13:00 daily** | **0 10 * * *** | **Chunk 0 only (last 90 days) — second daily pass to catch WB API delays** |
-| Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues |
+| Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync (WB + OZON) + auto-generate complaints + retry failed stores |
+| **Nightly Full Review Sync** | **22:00 daily** | **0 19 * * *** | **WB: 12 chunks (3 years), concurrency=5; OZON: single full cursor sync** |
+| **Midday Review Catchup** | **13:00 daily** | **0 10 * * *** | **WB-only, chunk 0 (last 90 days) — second daily pass to catch WB API delays** |
+| Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues (WB + OZON) |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue (BATCH=200, DAILY_LIMIT=6000) |
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
@@ -974,19 +974,20 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 | 11 | 991–1080 | ~3 years |
 
 **What It Does:**
-1. Iterates through all 12 chunks (0-11)
-2. For each chunk: calculates `dateFrom` and `dateTo` for the 90-day window
-3. Processes stores in parallel (concurrency=5, 15-min timeout per store)
-4. Calls `POST /api/stores/{storeId}/reviews/update?mode=full&dateFrom=X&dateTo=Y`
-5. Auto-complaint generation triggers automatically after sync (built into API route)
-6. Only WB stores (OZON review sync not yet supported)
+1. **OZON stores** synced first (one full sync per store — OZON API has no date-range filter, uses cursor pagination)
+2. **WB stores:** Iterates through all 12 chunks (0-11)
+3. For each chunk: calculates `dateFrom` and `dateTo` for the 90-day window
+4. Processes WB stores in parallel (concurrency=5, 15-min timeout per store)
+5. Calls `POST /api/stores/{storeId}/reviews/update?mode=full&dateFrom=X&dateTo=Y`
+6. Auto-complaint generation triggers automatically after sync (built into API route)
 
 **Key Properties:**
+- **Multi-marketplace:** WB stores use 12-chunk date-range sync; OZON stores do single full cursor-based sync
 - Does NOT interfere with hourly incremental sync (separate job name, separate concurrency lock)
 - Uses existing adaptive chunking logic (splits further if >19k reviews per sub-chunk)
 - Runs at 22:00 MSK — minimal user activity, 9-hour window until morning
 - Parallel processing: concurrency=5 stores, 15-min timeout per store
-- Estimated duration: ~1-2 hours for all 12 chunks across ~47 stores
+- Estimated duration: ~1-2 hours for all 12 chunks across ~47 WB stores + a few minutes for OZON stores
 - **Deletion detection (migration 015):** After syncing each store, compares WB API IDs with DB IDs in the synced date range. Reviews missing from WB are marked as `review_status_wb = 'deleted'`, and their draft complaints are auto-cancelled (`status = 'not_applicable'`). Safeguard: skips if >30% would be marked deleted (likely API issue).
 
 **Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts)
@@ -1011,14 +1012,15 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 
 **What It Does:**
 1. Calculates chunk 0 date range (last 90 days)
-2. For each active store: calls full sync API with chunk 0 date range
+2. For each active **WB** store: calls full sync API with chunk 0 date range
 3. Uses upsert — no duplicates created
 4. Waits 3 seconds between stores
 
 **Key Properties:**
+- **WB-only:** OZON stores are excluded (OZON API has no date-range filter; covered by hourly incremental + nightly full sync)
 - Only processes chunk 0 (no rotational chunks)
 - Idempotent via upsert — safe to run alongside other syncs
-- Estimated duration: 3-5 minutes for 65 stores
+- Estimated duration: 3-5 minutes for ~65 WB stores
 - Auto-complaint generation triggers automatically for new reviews found
 
 **Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startMiddayReviewCatchup()`

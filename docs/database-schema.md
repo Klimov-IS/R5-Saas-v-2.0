@@ -386,8 +386,9 @@ CREATE TABLE reviews (
   product_id                 TEXT NOT NULL REFERENCES products(id),
   store_id                   TEXT NOT NULL REFERENCES stores(id),
   owner_id                   TEXT NOT NULL REFERENCES users(id),
+  marketplace                TEXT NOT NULL DEFAULT 'wb',  -- 'wb' | 'ozon' (migration 013)
 
-  -- Review content (from WB API)
+  -- Review content (from WB API / OZON API)
   rating                     INTEGER NOT NULL,
   text                       TEXT NOT NULL,
   pros                       TEXT NULL,
@@ -437,6 +438,16 @@ CREATE TABLE reviews (
   -- Deletion detection (added migration 015)
   deleted_from_wb_at         TIMESTAMPTZ NULL,  -- When review was detected as deleted from WB
 
+  -- OZON-specific fields (migration 013)
+  ozon_review_status         TEXT NULL,          -- 'PROCESSED' | 'UNPROCESSED'
+  ozon_order_status          TEXT NULL,          -- 'DELIVERED' | 'CANCELLED' etc.
+  is_rating_participant      BOOLEAN NULL,       -- Whether review participates in seller rating
+  likes_amount               INTEGER NULL,       -- OZON engagement metric
+  dislikes_amount            INTEGER NULL,       -- OZON engagement metric
+  ozon_sku                   TEXT NULL,          -- OZON SKU for product linking
+  ozon_comment_id            TEXT NULL,          -- Seller's reply comment ID
+  ozon_comments_amount       INTEGER NULL,       -- Total comments on review
+
   created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -444,6 +455,7 @@ CREATE TABLE reviews (
 
 **Key Fields:**
 - **From WB API:** `id`, `rating`, `text`, `author`, `date`, `answer`
+- **From OZON API:** `id` (prefixed `ozon_`), `rating`, `text`, `ozon_sku`, `ozon_review_status`
 - **From Extension:** `review_status_wb`, `product_status_by_review`, `chat_status_by_review`, `parsed_at`, `page_number`
 - **Denormalized:** `has_complaint`, `has_complaint_draft`, `is_product_active`
 
@@ -475,6 +487,10 @@ CREATE INDEX idx_reviews_deleted ON reviews(store_id, deleted_from_wb_at DESC)
 -- Answer tracking
 CREATE INDEX idx_reviews_store_answer ON reviews(store_id, has_answer, date DESC);
 CREATE INDEX idx_reviews_store_answer_date ON reviews(store_id, answer, date DESC) WHERE answer IS NOT NULL;
+
+-- Marketplace (migration 013)
+CREATE INDEX idx_reviews_marketplace ON reviews(marketplace);
+CREATE INDEX idx_reviews_ozon_sku ON reviews(ozon_sku) WHERE ozon_sku IS NOT NULL;
 ```
 
 **Triggers:**
@@ -608,6 +624,7 @@ CREATE TABLE chats (
   id                        TEXT PRIMARY KEY,
   store_id                  TEXT NOT NULL REFERENCES stores(id),
   owner_id                  TEXT NOT NULL REFERENCES users(id),
+  marketplace               TEXT NOT NULL DEFAULT 'wb',  -- 'wb' | 'ozon' (migration 013)
 
   -- Chat metadata
   client_name               TEXT NOT NULL,
@@ -639,12 +656,19 @@ CREATE TABLE chats (
   sent_no_reply_messages    JSONB DEFAULT '[]'::jsonb,
   sent_no_reply_messages2   JSONB DEFAULT '[]'::jsonb,
 
+  -- OZON-specific fields (migration 013)
+  ozon_chat_type            TEXT NULL,          -- 'BUYER_SELLER' | 'SELLER_SUPPORT' | 'UNSPECIFIED'
+  ozon_chat_status          TEXT NULL,          -- 'OPENED' | 'CLOSED'
+  ozon_unread_count         INTEGER NULL,       -- Unread messages count
+  ozon_last_message_id      TEXT NULL,          -- For incremental history fetch
+
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
 **Key Fields:**
+- `marketplace` - 'wb' | 'ozon' (migration 013)
 - `tag` - AI classification (12 тегов): `active`, `successful`, `unsuccessful`, `no_reply`, `untagged`, `completed`, `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`, `refund_requested`, `spam`
 - `status` - Kanban position (4 статуса): `inbox`, `awaiting_reply`, `in_progress`, `closed` (resolved removed in migration 008)
 - `completion_reason` - причина закрытия: `review_deleted`, `review_upgraded`, `no_reply`, `old_dialog`, `not_our_issue`, `spam`, `negative`, `other`
@@ -658,6 +682,7 @@ CREATE INDEX idx_chats_store_tag ON chats(store_id, tag);
 CREATE INDEX idx_chats_store_tag_date ON chats(store_id, tag, last_message_date DESC);
 CREATE INDEX idx_chats_last_message ON chats(last_message_date DESC);
 CREATE INDEX idx_chats_product ON chats(product_nm_id) WHERE product_nm_id IS NOT NULL;
+CREATE INDEX idx_chats_marketplace ON chats(marketplace);  -- migration 013
 ```
 
 ---
@@ -672,6 +697,7 @@ CREATE TABLE chat_messages (
   chat_id        TEXT NOT NULL REFERENCES chats(id),
   store_id       TEXT NOT NULL REFERENCES stores(id),
   owner_id       TEXT NOT NULL REFERENCES users(id),
+  marketplace    TEXT NOT NULL DEFAULT 'wb',  -- 'wb' | 'ozon' (migration 013)
 
   text           TEXT NULL,
   sender         TEXT NOT NULL,           -- 'client' or 'seller'
@@ -688,6 +714,7 @@ CREATE TABLE chat_messages (
 CREATE INDEX idx_chat_messages_chat ON chat_messages(chat_id, timestamp DESC);
 CREATE INDEX idx_chat_messages_store ON chat_messages(store_id, timestamp DESC);
 CREATE INDEX idx_chat_messages_auto ON chat_messages(chat_id, is_auto_reply) WHERE is_auto_reply = TRUE;
+CREATE INDEX idx_chat_messages_marketplace ON chat_messages(marketplace);  -- migration 013
 ```
 
 ---
@@ -1194,7 +1221,12 @@ Key migrations:
 6. `20260209_007_create_store_faq.sql` - Created `store_faq` table
 7. `20260209_008_create_store_guides.sql` - Created `store_guides` table
 8. `20260210_009_telegram_integration.sql` - Created `telegram_users` and `telegram_notifications_log` tables
-9. `013_optimize_draft_complaints_index.sql` - Partial index for extension stores API draft count optimization
+9. `010_auth_organizations.sql` - Auth system: organizations, org_members, member_store_access, invites
+10. `011_user_wb_token.sql` - Moved WB token to user level
+11. `012_ozon_marketplace_support.sql` - OZON: `marketplace` on stores/products, OZON credential fields, product triple-ID
+12. `013_ozon_reviews_chats_support.sql` - OZON: `marketplace` on reviews/chats/chat_messages, OZON-specific fields (review status, SKU, chat type, unread count)
+13. `014_optimize_draft_complaints_index.sql` - Partial index for extension stores API draft count optimization
+14. `015_deletion_detection.sql` - `review_status_wb` enum, `deleted_from_wb_at` column, resurrection logic
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 

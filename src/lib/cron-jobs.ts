@@ -814,14 +814,40 @@ export function startRollingReviewFullSync() {
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
 
-      // Only WB stores (OZON review sync not supported yet)
-      const stores = await dbHelpers.getAllStores('wb');
+      // Fetch all active stores (WB + OZON)
+      const allStores = await dbHelpers.getAllStores();
+      const wbStores = allStores.filter(s => s.marketplace !== 'ozon');
+      const ozonStores = allStores.filter(s => s.marketplace === 'ozon');
 
       console.log('\n========================================');
       console.log(`[CRON] 🔄 Starting nightly full review sync at ${now.toISOString()}`);
       console.log(`[CRON] Processing ALL ${TOTAL_CHUNKS} chunks (0-${TOTAL_CHUNKS - 1}), concurrency=${CONCURRENCY}`);
-      console.log(`[CRON] Found ${stores.length} WB stores`);
+      console.log(`[CRON] Found ${wbStores.length} WB stores + ${ozonStores.length} OZON stores`);
       console.log('========================================\n');
+
+      // OZON stores: sync once (OZON API has no date range, fetches all reviews)
+      for (const store of ozonStores) {
+        try {
+          const response = await fetch(
+            `${baseUrl}/api/stores/${store.id}/reviews/update?mode=full`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`HTTP ${response.status}: ${errorData.error || 'Unknown error'}`);
+          }
+          const result = await response.json();
+          console.log(`[CRON] ✅ ${store.name} (OZON full sync): ${result.message}`);
+        } catch (error: any) {
+          console.error(`[CRON] ❌ ${store.name} (OZON full sync): ${error.message}`);
+        }
+      }
 
       let totalSuccess = 0;
       let totalErrors = 0;
@@ -851,9 +877,9 @@ export function startRollingReviewFullSync() {
         let storeIdx = 0;
 
         async function processNextStore() {
-          while (storeIdx < stores.length) {
+          while (storeIdx < wbStores.length) {
             const currentIdx = storeIdx++;
-            const store = stores[currentIdx];
+            const store = wbStores[currentIdx];
 
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), STORE_TIMEOUT_MS);
@@ -891,13 +917,13 @@ export function startRollingReviewFullSync() {
 
         // Launch CONCURRENCY workers in parallel
         await Promise.all(
-          Array.from({ length: Math.min(CONCURRENCY, stores.length) }, () => processNextStore())
+          Array.from({ length: Math.min(CONCURRENCY, wbStores.length) }, () => processNextStore())
         );
 
         totalSuccess += successCount;
         totalErrors += errorCount;
         const chunkDuration = Math.round((Date.now() - chunkStartTime) / 1000);
-        console.log(`[CRON] Chunk ${chunkIndex} done in ${chunkDuration}s: ${successCount}/${stores.length} success, ${errorCount} errors`);
+        console.log(`[CRON] Chunk ${chunkIndex} done in ${chunkDuration}s: ${successCount}/${wbStores.length} success, ${errorCount} errors`);
       }
 
       const duration = Math.round((Date.now() - startTime) / 1000);
@@ -956,11 +982,13 @@ export function startMiddayReviewCatchup() {
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
 
-      const stores = await dbHelpers.getAllStores();
+      // WB stores only — OZON review API has no date-range filter,
+      // and OZON stores are already synced by the hourly incremental job
+      const stores = await dbHelpers.getAllStores('wb');
 
       console.log('\n========================================');
       console.log(`[CRON] 🔄 Starting midday review catchup at ${new Date().toISOString()}`);
-      console.log(`[CRON] Processing chunk 0 (last ${CHUNK_DAYS} days) for ${stores.length} stores`);
+      console.log(`[CRON] Processing chunk 0 (last ${CHUNK_DAYS} days) for ${stores.length} WB stores`);
       console.log('========================================\n');
 
       // Chunk 0: last 90 days
