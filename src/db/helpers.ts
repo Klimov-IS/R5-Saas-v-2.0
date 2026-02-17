@@ -71,6 +71,7 @@ export interface Store {
   ozon_api_key?: string | null;
   ozon_subscription?: string | null;
   owner_id: string;
+  org_id?: string | null;
   status: StoreStatus;
   product_count?: number; // NEW: Computed product count
   last_product_update_status?: UpdateStatus | null;
@@ -444,8 +445,8 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
     `INSERT INTO stores (
       id, name, marketplace, api_token, content_api_token, feedbacks_api_token, chat_api_token,
       ozon_client_id, ozon_api_key, ozon_subscription,
-      owner_id, status, total_reviews, total_chats, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+      owner_id, org_id, status, total_reviews, total_chats, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
     RETURNING *`,
     [
       store.id,
@@ -459,6 +460,7 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
       store.ozon_api_key || null,
       store.ozon_subscription || null,
       store.owner_id,
+      store.org_id || null,
       store.status || 'active',
       store.total_reviews || 0,
       store.total_chats || 0,

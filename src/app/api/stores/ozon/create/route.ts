@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { getOrgMemberByUserId } from '@/db/auth-helpers';
 import { createOzonClient, OzonApiError } from '@/lib/ozon-api';
 import { generateFirebaseId } from '@/lib/utils';
 
@@ -76,6 +77,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Resolve org_id from owner's membership
+    const orgMember = await getOrgMemberByUserId(userSettings.id);
+    const orgId = orgMember?.org_id || null;
+
     // Create the OZON store
     const storeId = generateFirebaseId();
     const newStore = await dbHelpers.createStore({
@@ -87,6 +92,7 @@ export async function POST(request: NextRequest) {
       ozon_api_key: apiKey,
       ozon_subscription: subscription,
       owner_id: userSettings.id,
+      org_id: orgId,
       status: 'active',
       total_reviews: 0,
       total_chats: 0,
