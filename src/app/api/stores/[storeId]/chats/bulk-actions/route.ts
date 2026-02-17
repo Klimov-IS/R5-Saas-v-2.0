@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChatById, getChatMessages, updateChat, updateChatStatus, getStoreById } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
+import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
 import { sendChatMessage } from '@/lib/wb-chat-api';
 import { createOzonClient } from '@/lib/ozon-api';
 import type { ChatStatus } from '@/db/helpers';
@@ -76,9 +77,12 @@ export async function POST(
               .map((msg) => `[${msg.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${msg.text}`)
               .join('\n');
 
+            // Detect conversation phase for stage-aware AI replies
+            const phase = detectConversationPhase(messages);
+
             const context = `
 **Информация о магазине:**
-Store ID: ${storeId}
+Название: ${store?.name || storeId}
 
 **Товар:**
 Название: ${chat.product_name || 'Неизвестно'}
@@ -86,6 +90,9 @@ Store ID: ${storeId}
 
 **Клиент:**
 Имя: ${chat.client_name}
+
+**Фаза диалога:** ${phase.phaseLabel}
+**Сообщений от клиента:** ${phase.clientMessageCount}
 
 **История переписки:**
 ${chatHistory}
@@ -96,6 +103,7 @@ ${chatHistory}
               storeId,
               ownerId: chat.owner_id,
               chatId,
+              storeInstructions: await buildStoreInstructions(storeId, store?.ai_instructions, store?.marketplace),
             });
 
             // Save draft to database

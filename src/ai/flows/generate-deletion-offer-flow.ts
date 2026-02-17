@@ -166,12 +166,26 @@ export async function generateDeletionOffer(
     userContent += `- **Сумма:** ${compensation.amount} руб\n`;
     userContent += `- **Стратегия:** ${input.chatStrategy || 'both'}\n`;
 
+    // Conversation phase detection (count client messages in history)
+    const historyLines = input.chatHistory.split('\n').filter(l => l.trim());
+    const clientLines = historyLines.filter(l => l.startsWith('Клиент:') || l.startsWith('[Клиент]'));
+    const clientMessageCount = clientLines.length;
+    const phaseLabel = clientMessageCount === 0 ? 'знакомство' : clientMessageCount <= 2 ? 'понимание' : 'решение';
+    userContent += `\n**Фаза диалога:** ${phaseLabel}\n`;
+    userContent += `**Сообщений от клиента:** ${clientMessageCount}\n`;
+
     // Chat history
     userContent += `\n**История переписки:**\n${input.chatHistory}\n`;
 
     // Instructions
     userContent += `\n**Задача:**\n`;
-    userContent += `Сгенерируйте сообщение клиенту с предложением компенсации ${compensation.amount}₽.\n`;
+    if (clientMessageCount === 0) {
+      userContent += `Клиент ещё не ответил. Сгенерируйте вопрос — узнайте, что случилось. НЕ предлагайте компенсацию.\n`;
+    } else if (clientMessageCount <= 2) {
+      userContent += `Клиент рассказал о проблеме. Покажите, что вникли. Мягко подведите к решению, но пока не называйте сумму.\n`;
+    } else {
+      userContent += `Сгенерируйте сообщение клиенту с предложением компенсации ${compensation.amount}₽.\n`;
+    }
     if (input.chatStrategy === 'upgrade_to_5') {
       userContent += `Акцент: попросить повысить оценку до 5★ после решения проблемы.\n`;
     } else if (input.chatStrategy === 'delete') {

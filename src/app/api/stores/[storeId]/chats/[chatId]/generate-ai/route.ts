@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChatById, getChatMessages, getStoreById, getProductRulesByNmId, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
-import { buildStoreInstructions } from '@/lib/ai-context';
+import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
 
 /**
  * POST /api/stores/[storeId]/chats/[chatId]/generate-ai
@@ -61,6 +61,9 @@ export async function POST(
       }
     }
 
+    // Detect conversation phase for stage-aware AI replies
+    const phase = detectConversationPhase(messages);
+
     const context = `
 **Магазин:**
 Название: ${store.name}
@@ -73,6 +76,9 @@ ${productRulesContext}
 
 **Клиент:**
 Имя: ${chat.client_name}
+
+**Фаза диалога:** ${phase.phaseLabel}
+**Сообщений от клиента:** ${phase.clientMessageCount}
 
 **История переписки:**
 ${chatHistory}

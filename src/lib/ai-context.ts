@@ -1,22 +1,80 @@
 import { getStoreFaq, getStoreGuides } from '@/db/helpers';
 
+// ============================================================================
+// Conversation Phase Detection
+// ============================================================================
+
+export interface ConversationPhase {
+  phase: 'discovery' | 'understanding' | 'resolution';
+  phaseLabel: string;
+  clientMessageCount: number;
+}
+
+/**
+ * Detect conversation phase based on client message count.
+ * Used to inject phase context into AI prompts for stage-aware replies.
+ *
+ * - discovery: client hasn't responded yet — ask what happened
+ * - understanding: client shared their problem — show empathy, respond to specifics
+ * - resolution: conversation developed — can offer compensation
+ */
+export function detectConversationPhase(
+  messages: Array<{ sender: string }>
+): ConversationPhase {
+  const clientMessageCount = messages.filter(m => m.sender === 'client').length;
+
+  if (clientMessageCount === 0) {
+    return { phase: 'discovery', phaseLabel: 'знакомство', clientMessageCount };
+  }
+  if (clientMessageCount <= 2) {
+    return { phase: 'understanding', phaseLabel: 'понимание', clientMessageCount };
+  }
+  return { phase: 'resolution', phaseLabel: 'решение', clientMessageCount };
+}
+
+// ============================================================================
+// Default AI Instructions
+// ============================================================================
+
 /**
  * Default AI instructions used when store has no custom instructions.
- * Ensures AI always has base behavioral rules even for unconfigured stores.
+ * Includes 3-phase conversation model: discovery → understanding → resolution.
  */
-export const DEFAULT_AI_INSTRUCTIONS = `Тон: вежливый, профессиональный, обращение на "вы"
+export const DEFAULT_AI_INSTRUCTIONS = `Ты — менеджер бренда. Общаешься с покупателями, которые оставили отзыв.
 
-Правила общения:
-- Всегда начинай с приветствия
-- Будь эмпатичным — покажи, что понимаешь проблему клиента
-- Предлагай конкретные решения, а не общие фразы
-- Если клиент жалуется на брак — предложи оформить возврат
-- Не обещай того, что нельзя гарантировать
+Тон: тёплый, внимательный, на "вы", но без канцелярита и шаблонов.
+Пиши как живой человек, а не бот.
+
+## Фазы разговора
+
+Обрати внимание на поле "Фаза диалога" в контексте:
+
+### Фаза "знакомство" (клиент ещё не ответил)
+- Спроси, что именно не понравилось или что пошло не так
+- НЕ предлагай компенсацию
+- НЕ извиняйся за конкретную проблему (ты её ещё не знаешь)
+- Покажи, что тебе важно мнение клиента
+- 2-3 предложения максимум
+
+### Фаза "понимание" (клиент рассказал о проблеме)
+- Отреагируй на конкретику из ответа клиента
+- Покажи, что вник в проблему
+- Можешь упомянуть, что передал информацию команде
+- Ещё НЕ предлагай компенсацию — сначала убедись, что клиент чувствует, что его услышали
+- 2-4 предложения
+
+### Фаза "решение" (диалог развился, можно предлагать)
+- Теперь можно предложить компенсацию/кешбэк
+- Свяжи предложение с тем, что клиент рассказал ранее
+- Будь конкретным в сумме и способе
+- 3-5 предложений
+
+## Общие правила
+- Не обещай невозможного
 - Не упоминай конкурентов
-- Заканчивай сообщение готовностью помочь дальше
-
-Компенсация: предлагай кэшбек за удаление негативного отзыва (сумма из правил товара).
-Возврат: возврат через WB в соответствии с правилами площадки.`;
+- Не упоминай "удаление отзыва" напрямую
+- Заканчивай готовностью помочь, но без приторности
+- Возврат: через маркетплейс по правилам площадки`;
 
 /**
  * OZON-specific addendum appended to store instructions when marketplace is OZON.

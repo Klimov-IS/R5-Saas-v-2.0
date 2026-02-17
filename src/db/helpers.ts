@@ -2036,7 +2036,8 @@ export async function getProductRulesByNmId(storeId: string, productNmId: string
   const result = await query<ProductRule>(
     `SELECT pr.* FROM product_rules pr
      JOIN products p ON p.id = pr.product_id
-     WHERE p.store_id = $1 AND p.wb_product_id = $2`,
+     WHERE p.store_id = $1
+       AND (p.wb_product_id = $2 OR p.ozon_sku = $2 OR p.ozon_fbs_sku = $2)`,
     [storeId, productNmId]
   );
   return result.rows[0] || null;

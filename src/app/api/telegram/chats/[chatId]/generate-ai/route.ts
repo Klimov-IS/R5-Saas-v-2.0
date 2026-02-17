@@ -5,7 +5,7 @@ import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
-import { buildStoreInstructions } from '@/lib/ai-context';
+import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
 
 /**
  * POST /api/telegram/chats/[chatId]/generate-ai
@@ -72,6 +72,10 @@ export async function POST(
       }
     }
 
+    // Detect conversation phase for stage-aware AI replies
+    const filteredMessages = messagesResult.rows.filter((m: any) => m.text && m.text.trim());
+    const phase = detectConversationPhase(filteredMessages);
+
     // Build context string (matching web API format, marketplace-aware labels)
     const isOzon = chat.marketplace === 'ozon';
     const context = `
@@ -85,6 +89,9 @@ ${productRulesContext}
 
 **Клиент:**
 Имя: ${chat.client_name || 'Клиент'}
+
+**Фаза диалога:** ${phase.phaseLabel}
+**Сообщений от клиента:** ${phase.clientMessageCount}
 
 **История переписки:**
 ${chatHistory}
