@@ -80,6 +80,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
 
     let newMessagesTotal = 0;
     let chatsProcessed = 0;
+    let chatsSkipped = 0;
     let chatErrors = 0;
     const chatsToClassify: { chatId: string; productName?: string }[] = [];
     const newSellerMessagesByChat: Record<string, string[]> = {};
@@ -90,15 +91,22 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       const chatId = chatItem.chat.chat_id;
       const existing = existingChatMap.get(chatId);
 
+      // Incremental sync: skip chats with no new messages
+      const apiLastMsgId = String(chatItem.last_message_id || 0);
+      if (existing && existing.ozon_last_message_id === apiLastMsgId) {
+        chatsSkipped++;
+        continue;
+      }
+
       try {
-        // Step 2: Fetch message history for this chat
+        // Step 2: Fetch message history only for chats with new activity
         let messages: OzonChatMessage[] = [];
         try {
           const history = await client.getChatHistory(chatId, 'Backward', undefined, 100);
           messages = history.messages || [];
         } catch (err: any) {
           if (err.status === 403) {
-            console.warn(`[OZON-CHATS] 403 for chat ${chatId} (Premium Plus required)`);
+            if (chatErrors < 5) console.warn(`[OZON-CHATS] 403 for chat ${chatId} (Premium Plus required)`);
             chatErrors++;
             continue;
           }
@@ -379,7 +387,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       total_chats: allStoreChats.length,
     });
 
-    const message = `OZON chats synced: ${chatsProcessed} chats, ${newMessagesTotal} msgs, ${statusTransitions} transitions, ${triggersDetected} triggers, ${clientRepliedChats.length} notifs, ${classified} classified, ${chatErrors} errors`;
+    const message = `OZON chats synced: ${chatsProcessed} processed, ${chatsSkipped} skipped (no changes), ${newMessagesTotal} msgs, ${statusTransitions} transitions, ${triggersDetected} triggers, ${clientRepliedChats.length} notifs, ${classified} classified, ${chatErrors} errors`;
     console.log(`[OZON-CHATS] ${message}`);
     return message;
   } catch (error: any) {
