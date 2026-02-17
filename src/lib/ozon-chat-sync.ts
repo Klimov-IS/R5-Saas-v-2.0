@@ -178,7 +178,8 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
           ozon_chat_type: chatItem.chat.chat_type,
           ozon_chat_status: chatItem.chat.chat_status,
           ozon_unread_count: chatItem.unread_count,
-          ozon_last_message_id: latestMsg ? String(latestMsg.message_id) : existing?.ozon_last_message_id || null,
+          // Always mark with apiLastMsgId so chats with empty history don't get re-processed
+          ozon_last_message_id: apiLastMsgId !== '0' ? apiLastMsgId : (latestMsg ? String(latestMsg.message_id) : existing?.ozon_last_message_id || null),
         });
 
         // Step 3: Save messages + track new seller messages for trigger detection
@@ -415,12 +416,15 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       console.log(`[OZON-CHATS] Seeded ozon_last_message_id for ${seedBatch.length} chats`);
     }
 
-    // Step 5: Update store stats
-    const allStoreChats = await dbHelpers.getChats(storeId);
+    // Step 5: Update store stats (COUNT only — no need to load all rows)
+    const totalChatsResult = await query<{ cnt: string }>(
+      'SELECT count(*) as cnt FROM chats WHERE store_id = $1',
+      [storeId]
+    );
     await dbHelpers.updateStore(storeId, {
       last_chat_update_status: 'success',
       last_chat_update_date: new Date().toISOString(),
-      total_chats: allStoreChats.length,
+      total_chats: parseInt(totalChatsResult.rows[0].cnt, 10),
     });
 
     const message = `OZON chats synced: ${chatsProcessed} processed, ${chatsSeeded} seeded, ${chatsSkipped} skipped (no changes), ${newMessagesTotal} msgs, ${statusTransitions} transitions, ${triggersDetected} triggers, ${clientRepliedChats.length} notifs, ${classified} classified, ${chatErrors} errors`;
