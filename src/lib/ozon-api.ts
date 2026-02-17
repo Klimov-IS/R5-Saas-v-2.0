@@ -720,7 +720,7 @@ export class OzonApiClient {
     let cursor = '';
 
     while (true) {
-      const page = await this.getChatList(cursor, 100);
+      const page = await this.getChatList(cursor, 1000);
       const buyerChats = page.chats.filter(
         (c) => c.chat.chat_type === 'BUYER_SELLER'
       );

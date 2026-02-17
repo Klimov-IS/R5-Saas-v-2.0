@@ -14,6 +14,7 @@
 
 import { createOzonClient, OzonChatMessage } from '@/lib/ozon-api';
 import * as dbHelpers from '@/db/helpers';
+import { query } from '@/db/client';
 import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { buildStoreInstructions } from '@/lib/ai-context';
@@ -74,18 +75,28 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
     const allChats = await client.getAllBuyerChats();
     console.log(`[OZON-CHATS] Found ${allChats.length} BUYER_SELLER chats`);
 
-    // Get existing chats map
-    const existingChats = await dbHelpers.getChats(storeId);
-    const existingChatMap = new Map(existingChats.map((c) => [c.id, c]));
+    // Get existing chats map (lightweight query — only fields needed for sync)
+    const existingChatsResult = await query(
+      `SELECT id, ozon_last_message_id, product_nm_id, product_name, product_vendor_code,
+              client_name, status, tag, draft_reply, draft_reply_thread_id,
+              draft_reply_generated_at, draft_reply_edited,
+              last_message_date, last_message_text, last_message_sender,
+              owner_id, ozon_chat_type, ozon_chat_status, ozon_unread_count
+       FROM chats WHERE store_id = $1`,
+      [storeId]
+    );
+    const existingChatMap = new Map(existingChatsResult.rows.map((c: any) => [c.id, c]));
 
     let newMessagesTotal = 0;
     let chatsProcessed = 0;
     let chatsSkipped = 0;
+    let chatsSeeded = 0;
     let chatErrors = 0;
     const chatsToClassify: { chatId: string; productName?: string }[] = [];
     const newSellerMessagesByChat: Record<string, string[]> = {};
     const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
     let statusTransitions = 0;
+    const seedBatch: Array<{ id: string; lastMsgId: string }> = [];
 
     for (const chatItem of allChats) {
       const chatId = chatItem.chat.chat_id;
@@ -95,6 +106,14 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       const apiLastMsgId = String(chatItem.last_message_id || 0);
       if (existing && existing.ozon_last_message_id === apiLastMsgId) {
         chatsSkipped++;
+        continue;
+      }
+
+      // Seed ozon_last_message_id for existing chats that don't have it yet
+      // (avoids fetching full history for 250K+ chats that were already synced)
+      if (existing && !existing.ozon_last_message_id && apiLastMsgId !== '0') {
+        seedBatch.push({ id: chatId, lastMsgId: apiLastMsgId });
+        chatsSeeded++;
         continue;
       }
 
@@ -379,6 +398,23 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       }
     }
 
+    // Step 4.5: Batch seed ozon_last_message_id for existing chats
+    if (seedBatch.length > 0) {
+      const BATCH_SIZE = 5000;
+      for (let i = 0; i < seedBatch.length; i += BATCH_SIZE) {
+        const batch = seedBatch.slice(i, i + BATCH_SIZE);
+        const values = batch.map((_, idx) => `($${idx * 2 + 1}, $${idx * 2 + 2})`).join(',');
+        const params = batch.flatMap(b => [b.id, b.lastMsgId]);
+        await query(
+          `UPDATE chats SET ozon_last_message_id = v.last_msg_id
+           FROM (VALUES ${values}) AS v(chat_id, last_msg_id)
+           WHERE chats.id = v.chat_id`,
+          params
+        );
+      }
+      console.log(`[OZON-CHATS] Seeded ozon_last_message_id for ${seedBatch.length} chats`);
+    }
+
     // Step 5: Update store stats
     const allStoreChats = await dbHelpers.getChats(storeId);
     await dbHelpers.updateStore(storeId, {
@@ -387,7 +423,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       total_chats: allStoreChats.length,
     });
 
-    const message = `OZON chats synced: ${chatsProcessed} processed, ${chatsSkipped} skipped (no changes), ${newMessagesTotal} msgs, ${statusTransitions} transitions, ${triggersDetected} triggers, ${clientRepliedChats.length} notifs, ${classified} classified, ${chatErrors} errors`;
+    const message = `OZON chats synced: ${chatsProcessed} processed, ${chatsSeeded} seeded, ${chatsSkipped} skipped (no changes), ${newMessagesTotal} msgs, ${statusTransitions} transitions, ${triggersDetected} triggers, ${clientRepliedChats.length} notifs, ${classified} classified, ${chatErrors} errors`;
     console.log(`[OZON-CHATS] ${message}`);
     return message;
   } catch (error: any) {
