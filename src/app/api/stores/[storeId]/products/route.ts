@@ -25,6 +25,7 @@ export async function GET(
       name: product.name,
       vendor_code: product.vendor_code,
       brand: '', // Not in current schema
+      marketplace: product.marketplace || 'wb',
       store_id: product.store_id,
       price: product.price,
       review_count: product.review_count || 0,
@@ -32,6 +33,10 @@ export async function GET(
       is_active: product.is_active !== undefined ? product.is_active : true,
       work_status: product.work_status || 'not_working', // NEW: Default to not_working if null
       rules: product.rule, // NEW: Include product rules
+      ozon_product_id: product.ozon_product_id || null,
+      ozon_offer_id: product.ozon_offer_id || null,
+      ozon_sku: product.ozon_sku || null,
+      ozon_fbs_sku: product.ozon_fbs_sku || null,
       updated_at: product.updated_at,
       created_at: product.created_at,
     }));

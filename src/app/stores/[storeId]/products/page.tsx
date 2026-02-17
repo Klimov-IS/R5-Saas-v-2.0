@@ -43,6 +43,7 @@ type Product = {
   name: string;
   vendor_code: string;
   brand: string;
+  marketplace: 'wb' | 'ozon';
   store_id: string;
   price: number | null;
   review_count: number;
@@ -50,6 +51,10 @@ type Product = {
   is_active: boolean;
   work_status: WorkStatus;
   rules: ProductRule | null;
+  ozon_product_id: number | null;
+  ozon_offer_id: string | null;
+  ozon_sku: string | null;
+  ozon_fbs_sku: string | null;
   updated_at: string;
   created_at: string;
 };
@@ -528,7 +533,11 @@ export default function ProductsPage() {
       filtered = filtered.filter(product =>
         product.name.toLowerCase().includes(query) ||
         product.vendor_code.toLowerCase().includes(query) ||
-        product.nm_id.toString().includes(query)
+        product.nm_id.toString().includes(query) ||
+        (product.ozon_sku && product.ozon_sku.includes(query)) ||
+        (product.ozon_fbs_sku && product.ozon_fbs_sku.includes(query)) ||
+        (product.ozon_offer_id && product.ozon_offer_id.toLowerCase().includes(query)) ||
+        (product.ozon_product_id && product.ozon_product_id.toString().includes(query))
       );
     }
 
@@ -708,7 +717,7 @@ export default function ProductsPage() {
           }}>
             <input
               type="text"
-              placeholder="🔍 Поиск по названию, артикулу WB или артикулу продавца..."
+              placeholder="🔍 Поиск по названию, артикулу, SKU..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
