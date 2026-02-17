@@ -75,7 +75,9 @@ export async function getChatsEligibleForDeletion(
       p.vendor_code as product_vendor_code,
       row_to_json(pr.*) as product_rule
     FROM chats c
-    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    LEFT JOIN products p ON p.store_id = c.store_id
+      AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
     LEFT JOIN product_rules pr ON p.id = pr.product_id
     WHERE c.store_id = $1
       AND pr.work_in_chats = true
@@ -148,7 +150,9 @@ export async function getChatsByTag(
       p.name as product_name,
       p.vendor_code as product_vendor_code
     FROM chats c
-    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    LEFT JOIN products p ON p.store_id = c.store_id
+      AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
     WHERE c.store_id = $1
       AND c.tag = ANY($2)
     ORDER BY c.last_message_date DESC
@@ -339,7 +343,9 @@ export async function getChatClassificationContext(
       p.name as product_name,
       row_to_json(pr.*) as product_rule
     FROM chats c
-    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    LEFT JOIN products p ON p.store_id = c.store_id
+      AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
     LEFT JOIN product_rules pr ON p.id = pr.product_id
     WHERE c.id = $1
   `;

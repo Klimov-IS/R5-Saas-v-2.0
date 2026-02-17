@@ -915,7 +915,9 @@ export async function getChatById(id: string): Promise<Chat | null> {
       p.name as product_name,
       p.vendor_code as product_vendor_code
     FROM chats c
-    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    LEFT JOIN products p ON p.store_id = c.store_id
+      AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
     WHERE c.id = $1
   `;
   const result = await query<Chat>(sql, [id]);
@@ -1735,7 +1737,9 @@ export async function getChatsByStoreWithPagination(
       p.vendor_code as product_vendor_code,
       (SELECT COUNT(*)::int FROM chat_messages WHERE chat_id = c.id) as message_count
     FROM chats c
-    LEFT JOIN products p ON c.product_nm_id = p.wb_product_id AND c.store_id = p.store_id
+    LEFT JOIN products p ON p.store_id = c.store_id
+      AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
     WHERE ${whereClauses.join(' AND ')}
     ORDER BY c.last_message_date DESC NULLS LAST
   `;
