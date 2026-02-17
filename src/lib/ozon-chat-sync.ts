@@ -29,6 +29,17 @@ function mapSender(userType: string): 'client' | 'seller' | null {
 }
 
 /**
+ * Extract text from OZON message data array.
+ * OZON format: client msgs = ["text"], seller msgs = ["errorText", "actual text"]
+ * "errorText" is OZON's internal type label, NOT an error.
+ */
+function extractMessageText(data?: string[], isImage?: boolean): string {
+  if (!data || data.length === 0) return isImage ? '[Изображение]' : '';
+  if (data[0] === 'errorText' && data.length > 1) return data[1];
+  return data[0];
+}
+
+/**
  * Sync OZON chats for a store.
  * Returns summary string for logging.
  */
@@ -97,7 +108,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
         // Extract latest message info
         const latestMsg = messages[0] || null;
         const latestSender = latestMsg ? mapSender(latestMsg.user.type) : null;
-        const latestText = latestMsg?.data?.[0] || null;
+        const latestText = latestMsg ? extractMessageText(latestMsg.data, latestMsg.is_image) || null : null;
 
         // Try to extract product SKU from messages
         let productNmId: string | null = existing?.product_nm_id || null;
@@ -150,7 +161,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
           const sender = mapSender(msg.user.type);
           if (!sender) continue; // skip system messages
 
-          const text = msg.data?.[0] || (msg.is_image ? '[Изображение]' : '');
+          const text = extractMessageText(msg.data, msg.is_image);
 
           await dbHelpers.upsertChatMessage({
             id: `ozon_${msg.message_id}`,
@@ -211,7 +222,7 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
                 chatId,
                 clientName: existing.client_name || 'Покупатель',
                 productName: productName || null,
-                messagePreview: latestMsg?.data?.[0] || null,
+                messagePreview: latestMsg ? extractMessageText(latestMsg.data, latestMsg.is_image) || null : null,
               });
             } else if (latestSender === 'seller') {
               if (existing.status === 'closed') {
