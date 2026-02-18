@@ -44,10 +44,20 @@ export default function TgQueuePage() {
     return new URLSearchParams(window.location.search).get('dev_user');
   }, []);
   const { isLoading: authLoading, isAuthenticated, isLinked, error: authError, apiFetch, stores } = useTelegramAuth();
+  // Cache helpers: queue items valid for 10 minutes
+  const CACHE_TTL_MS = 10 * 60 * 1000;
+  const isCacheValid = (statusKey: string) => {
+    try {
+      const ts = parseInt(sessionStorage.getItem(`tg_queue_ts_${statusKey}`) || '0', 10);
+      return Date.now() - ts < CACHE_TTL_MS && !!sessionStorage.getItem(`tg_queue_items_${statusKey}`);
+    } catch { return false; }
+  };
+
   // Restore last known queue items from sessionStorage to prevent blank state on navigation back
   const [queue, setQueue] = useState<QueueItem[]>(() => {
     try {
       const status = sessionStorage.getItem('tg_active_status') || 'inbox';
+      if (!isCacheValid(status)) return [];
       const saved = sessionStorage.getItem(`tg_queue_items_${status}`);
       return saved ? JSON.parse(saved) : [];
     } catch { return []; }
@@ -56,11 +66,11 @@ export default function TgQueuePage() {
   const [totalCount, setTotalCount] = useState<number>(() => {
     try { return parseInt(sessionStorage.getItem('tg_total_count') || '0', 10); } catch { return 0; }
   });
-  // If we have cached items, skip loading state to show them immediately
+  // If we have valid cached items, skip loading state to show them immediately
   const [isLoading, setIsLoading] = useState(() => {
     try {
       const status = sessionStorage.getItem('tg_active_status') || 'inbox';
-      return !sessionStorage.getItem(`tg_queue_items_${status}`);
+      return !isCacheValid(status);
     } catch { return true; }
   });
   const [error, setError] = useState<string | null>(null);
@@ -159,6 +169,7 @@ export default function TgQueuePage() {
         sessionStorage.setItem('tg_total_count', String(data.totalCount || 0));
         sessionStorage.setItem('tg_status_counts', JSON.stringify(data.statusCounts || {}));
         sessionStorage.setItem(`tg_queue_items_${activeStatus}`, JSON.stringify(data.data || []));
+        sessionStorage.setItem(`tg_queue_ts_${activeStatus}`, Date.now().toString());
       } catch {}
     } catch (err: any) {
       setError(err.message);
@@ -187,19 +198,18 @@ export default function TgQueuePage() {
   useEffect(() => {
     if (prevStatusRef.current === activeStatus) return; // skip on mount
     prevStatusRef.current = activeStatus;
-    try {
-      const saved = sessionStorage.getItem(`tg_queue_items_${activeStatus}`);
-      if (saved) {
-        setQueue(JSON.parse(saved));
-        setIsLoading(false);
-      } else {
-        setQueue([]);
-        setIsLoading(true);
-      }
-    } catch {
-      setQueue([]);
-      setIsLoading(true);
+    if (isCacheValid(activeStatus)) {
+      try {
+        const saved = sessionStorage.getItem(`tg_queue_items_${activeStatus}`);
+        if (saved) {
+          setQueue(JSON.parse(saved));
+          setIsLoading(false);
+          return;
+        }
+      } catch {}
     }
+    setQueue([]);
+    setIsLoading(true);
   }, [activeStatus]);
 
   // Reset selection mode when tab or store filter changes

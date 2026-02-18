@@ -122,7 +122,14 @@ export default function TgChatPage() {
       const data = await response.json();
       setChat(data.chat);
       setMessages(data.messages || []);
-      setDraftText(data.chat.draftReply || '');
+      // Prefer server draft, then local backup (unsaved user edits), then empty
+      const serverDraft = data.chat.draftReply || '';
+      try {
+        const localDraft = localStorage.getItem(`tg_draft_${chatId}`);
+        setDraftText(localDraft ?? serverDraft);
+      } catch {
+        setDraftText(serverDraft);
+      }
     } catch (err: any) {
       setFeedback('Ошибка загрузки чата');
     } finally {
@@ -165,6 +172,7 @@ export default function TgChatPage() {
       setFeedback('✅ Отправлено');
       setMessageSent(true);
       setDraftText('');
+      try { localStorage.removeItem(`tg_draft_${chatId}`); } catch {}
     } catch {
       haptic('error');
       setFeedback('❌ Ошибка отправки');
@@ -338,7 +346,10 @@ export default function TgChatPage() {
         ) : (
           <textarea
             value={draftText}
-            onChange={e => setDraftText(e.target.value)}
+            onChange={e => {
+              setDraftText(e.target.value);
+              try { localStorage.setItem(`tg_draft_${chatId}`, e.target.value); } catch {}
+            }}
             placeholder="Текст ответа..."
             style={{
               width: '100%',
@@ -356,6 +367,14 @@ export default function TgChatPage() {
               boxSizing: 'border-box',
             }}
           />
+          <div style={{
+            textAlign: 'right',
+            fontSize: '11px',
+            marginTop: '2px',
+            color: draftText.length > 900 ? '#ef4444' : 'var(--tg-hint)',
+          }}>
+            {draftText.length}/1000
+          </div>
         )}
 
         {/* Feedback */}
