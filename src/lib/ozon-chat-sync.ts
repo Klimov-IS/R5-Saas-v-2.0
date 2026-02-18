@@ -111,7 +111,8 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
 
       // Seed ozon_last_message_id for existing chats that don't have it yet
       // (avoids fetching full history for 250K+ chats that were already synced)
-      if (existing && !existing.ozon_last_message_id && apiLastMsgId !== '0') {
+      // Note: seed even if apiLastMsgId = "0" (empty chats) — "0" === "0" → skipped next time
+      if (existing && !existing.ozon_last_message_id) {
         seedBatch.push({ id: chatId, lastMsgId: apiLastMsgId });
         chatsSeeded++;
         continue;
@@ -178,8 +179,8 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
           ozon_chat_type: chatItem.chat.chat_type,
           ozon_chat_status: chatItem.chat.chat_status,
           ozon_unread_count: chatItem.unread_count,
-          // Always mark with apiLastMsgId so chats with empty history don't get re-processed
-          ozon_last_message_id: apiLastMsgId !== '0' ? apiLastMsgId : (latestMsg ? String(latestMsg.message_id) : existing?.ozon_last_message_id || null),
+          // Always mark with apiLastMsgId — even "0" for empty chats, so they skip next time
+          ozon_last_message_id: apiLastMsgId !== '0' ? apiLastMsgId : (latestMsg ? String(latestMsg.message_id) : apiLastMsgId),
         });
 
         // Step 3: Save messages + track new seller messages for trigger detection
