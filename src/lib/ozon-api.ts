@@ -719,8 +719,10 @@ export class OzonApiClient {
     const allChats: OzonChatListItem[] = [];
     let cursor = '';
 
+    // Only fetch OPENED chats — CLOSED chats are archived and need no action.
+    // This reduces 156K total chats to a few thousand active ones.
     while (true) {
-      const page = await this.getChatList(cursor, 100);
+      const page = await this.getChatList(cursor, 100, 'OPENED');
       const buyerChats = page.chats.filter(
         (c) => c.chat.chat_type === 'BUYER_SELLER'
       );
