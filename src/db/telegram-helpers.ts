@@ -215,7 +215,8 @@ export async function getUnifiedChatQueue(
   const conditions: string[] = [
     'c.store_id = ANY($1::text[])',
     "s.status = 'active'",
-    'pr.work_in_chats = TRUE',
+    // WB: require active product rule; OZON: show all chats (99.85% have no product link)
+    "(pr.work_in_chats = TRUE OR c.marketplace = 'ozon')",
   ];
   const params: any[] = [effectiveStoreIds];
 
@@ -267,7 +268,8 @@ export async function getUnifiedChatQueueCount(
   const conditions: string[] = [
     'c.store_id = ANY($1::text[])',
     "s.status = 'active'",
-    'pr.work_in_chats = TRUE',
+    // WB: require active product rule; OZON: show all chats (99.85% have no product link)
+    "(pr.work_in_chats = TRUE OR c.marketplace = 'ozon')",
   ];
   const params: any[] = [effectiveStoreIds];
 
@@ -315,7 +317,7 @@ export async function getUnifiedChatQueueCountsByStatus(
      LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE c.store_id = ANY($1::text[])
        AND s.status = 'active'
-       AND pr.work_in_chats = TRUE
+       AND (pr.work_in_chats = TRUE OR c.marketplace = 'ozon')
      GROUP BY c.status`,
     [effectiveStoreIds]
   );

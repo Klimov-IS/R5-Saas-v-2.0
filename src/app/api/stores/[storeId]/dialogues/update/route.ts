@@ -59,6 +59,15 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
         const existingChats = await dbHelpers.getChats(storeId);
         const existingChatMap = new Map(existingChats.map(c => [c.id, c]));
 
+        // Build set of active product nmIds (work_in_chats = TRUE) for TG notification filter
+        // Only send TG notifications for client replies on active products (matches queue filter)
+        const productsWithRules = await dbHelpers.getProductsWithRules(storeId);
+        const activeNmIds = new Set(
+            productsWithRules
+                .filter(p => p.rule?.work_in_chats === true && p.wb_product_id)
+                .map(p => String(p.wb_product_id))
+        );
+
         // --- Step 3: Update/create chat documents ---
         for (const activeChat of activeChats) {
             if (!activeChat.chatID) continue;
@@ -261,6 +270,10 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                 for (const chatId in latestMessagesPerChat) {
                     if (latestMessagesPerChat[chatId].sender === 'client') {
                         const chatInfo = existingChatMap.get(chatId);
+                        const nmId = chatInfo?.product_nm_id;
+                        // Filter: only notify for chats with active products (synced with TG queue filter)
+                        // Chats without product_nm_id are also excluded — they're not visible in queue either
+                        if (!nmId || !activeNmIds.has(nmId)) continue;
                         clientRepliedChats.push({
                             chatId,
                             clientName: chatInfo?.client_name || 'Клиент',
