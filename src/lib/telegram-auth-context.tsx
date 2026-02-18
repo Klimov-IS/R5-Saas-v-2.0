@@ -247,7 +247,22 @@ export function TelegramAuthProvider({ children }: { children: ReactNode }) {
       headers.set('X-Telegram-Init-Data', state.initData);
     }
 
-    return fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers });
+
+    // JWT expired: clear session and show login form
+    if (response.status === 401 && state.jwtToken) {
+      sessionStorage.removeItem(TG_JWT_KEY);
+      sessionStorage.removeItem(TG_USER_KEY);
+      setState(s => ({
+        ...s,
+        isAuthenticated: false,
+        isLinked: false,
+        jwtToken: null,
+        error: 'Сессия истекла. Войдите снова.',
+      }));
+    }
+
+    return response;
   }, [state.initData, state.jwtToken]);
 
   return (
