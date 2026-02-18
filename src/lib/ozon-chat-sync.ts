@@ -280,13 +280,16 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
                 console.error(`[OZON-CHATS] Failed to stop auto-sequence for chat ${chatId}: ${seqErr.message}`);
               }
 
-              // Collect for TG notification
-              clientRepliedChats.push({
-                chatId,
-                clientName: existing.client_name || 'Покупатель',
-                productName: productName || null,
-                messagePreview: latestMsg ? extractMessageText(latestMsg.data, latestMsg.is_image) || null : null,
-              });
+              // Collect for TG notification (only seller-initiated chats — those have product_nm_id from context.sku)
+              // Random buyer-initiated chats (no product_nm_id) are excluded — matches queue filter
+              if (existing.product_nm_id) {
+                clientRepliedChats.push({
+                  chatId,
+                  clientName: existing.client_name || 'Покупатель',
+                  productName: productName || null,
+                  messagePreview: latestMsg ? extractMessageText(latestMsg.data, latestMsg.is_image) || null : null,
+                });
+              }
             } else if (latestSender === 'seller') {
               if (existing.status === 'closed') {
                 // Reopen closed chat

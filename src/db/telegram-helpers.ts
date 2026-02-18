@@ -215,8 +215,8 @@ export async function getUnifiedChatQueue(
   const conditions: string[] = [
     'c.store_id = ANY($1::text[])',
     "s.status = 'active'",
-    // WB: require active product rule; OZON: show all chats (99.85% have no product link)
-    "(pr.work_in_chats = TRUE OR c.marketplace = 'ozon')",
+    // WB: require active product rule; OZON: only seller-initiated chats (product_nm_id = context.sku)
+    "(pr.work_in_chats = TRUE OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL))",
   ];
   const params: any[] = [effectiveStoreIds];
 
@@ -268,8 +268,8 @@ export async function getUnifiedChatQueueCount(
   const conditions: string[] = [
     'c.store_id = ANY($1::text[])',
     "s.status = 'active'",
-    // WB: require active product rule; OZON: show all chats (99.85% have no product link)
-    "(pr.work_in_chats = TRUE OR c.marketplace = 'ozon')",
+    // WB: require active product rule; OZON: only seller-initiated chats (product_nm_id = context.sku)
+    "(pr.work_in_chats = TRUE OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL))",
   ];
   const params: any[] = [effectiveStoreIds];
 
@@ -317,7 +317,7 @@ export async function getUnifiedChatQueueCountsByStatus(
      LEFT JOIN product_rules pr ON p.id = pr.product_id
      WHERE c.store_id = ANY($1::text[])
        AND s.status = 'active'
-       AND (pr.work_in_chats = TRUE OR c.marketplace = 'ozon')
+       AND (pr.work_in_chats = TRUE OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL))
      GROUP BY c.status`,
     [effectiveStoreIds]
   );
