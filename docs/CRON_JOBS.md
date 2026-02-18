@@ -1,6 +1,6 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-17
 
 ---
 
@@ -17,6 +17,7 @@ WB Reputation Manager uses **automated background jobs** (CRON) to sync data fro
 - **AI-powered complaints** for reviews with content
 - **Active products filter** - only generates complaints for active products
 - **3-tier adaptive dialogue sync** — 5min (work hours), 15min (morning/evening), 60min (night)
+- **OZON hybrid chat sync** — unread-only every 5min + hourly full scan safety net (9:00-20:00 MSK)
 
 Jobs are managed using the `node-cron` library and initialize automatically when the Next.js server starts.
 
@@ -49,6 +50,44 @@ graph TD
 ---
 
 ## CRON Jobs
+
+### 0. OZON Hybrid Chat Sync (Unread-Only + Hourly Full Scan)
+
+OZON chat sync uses a **two-tier strategy** to maximize speed while ensuring no messages are missed:
+
+**Tier 1 — Fast unread-only scan (every 5 min via adaptive dialogue sync):**
+- Calls `getChatList(unread_only=true)` → returns 0-20 chats with new buyer messages
+- Processes only those chats (getChatHistory + AI classification)
+- Completes in seconds instead of 5 minutes
+
+**Tier 2 — Hourly full scan (safety net):**
+- Calls `getChatList()` for ALL 156K+ OPENED chats
+- Needed because: if a seller reads a chat in OZON dashboard before R5 syncs,
+  it loses its "unread" flag and would be missed by Tier 1
+- Uses incremental skip (`ozon_last_message_id`) — only actually processes changed chats
+- Runs **9:00-20:00 MSK**, all days including weekends
+
+**Job Name:** `ozon-hourly-full-sync`
+**Schedule:**
+- **Production:** `0 6-17 * * *` (every hour 9:00-20:00 MSK = 6:00-17:00 UTC)
+- **Development:** `*/20 * * * *` (every 20 minutes)
+
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `syncStoreDialoguesFull()` + `startOzonHourlyFullSync()`
+
+**API endpoint called:** `POST /api/stores/{storeId}/dialogues/update?fullScan=true`
+
+**Expected output (full scan):**
+```
+[CRON] 🔍 Starting OZON hourly full scan at 2026-02-17T06:00:00.000Z
+[CRON] Found 1 OZON stores to full-scan
+[OZON-CHATS] Starting chat sync for store xxx (mode: FULL SCAN)
+[OZON-CHATS] Found 156864 BUYER_SELLER chats (FULL SCAN)
+[OZON-CHATS] Seeded 0 chats, skipped 156863 unchanged, processed 1 new
+[CRON] ✅ Full scan HANIBANI: OZON chats synced: 1 processed
+[CRON] Stores: 1/1 success, 0 errors
+```
+
+---
 
 ### 1. Hourly Review Sync + Auto-Complaint Generation (100% Automation)
 

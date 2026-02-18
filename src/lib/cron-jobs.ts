@@ -1113,6 +1113,118 @@ export function startChatStatusTransition() {
 }
 
 /**
+ * Full scan dialogue sync for a single OZON store.
+ * Passes ?fullScan=true to trigger getAllBuyerChatsAll() instead of unread-only.
+ */
+async function syncStoreDialoguesFull(storeId: string, storeName: string): Promise<void> {
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue';
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:9002';
+
+  console.log(`[CRON] Full scan sync for OZON store: ${storeName}`);
+
+  try {
+    const response = await fetch(`${baseUrl}/api/stores/${storeId}/dialogues/update?fullScan=true`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`HTTP ${response.status}: ${errorData.error || errorData.details || 'Unknown error'}`);
+    }
+
+    const result = await response.json();
+    console.log(`[CRON] ✅ Full scan ${storeName}: ${result.message}`);
+  } catch (error: any) {
+    console.error(`[CRON] ❌ Full scan failed for ${storeName}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Hourly OZON full scan — safety net for chats read in OZON dashboard before unread sync.
+ *
+ * Runs every hour during 9:00-20:00 MSK (6:00-17:00 UTC) daily, including weekends.
+ * Processes only OZON stores (WB stores are handled by adaptive dialogue sync).
+ *
+ * Why needed: if a chat is read in OZON seller dashboard before our unread-only sync runs,
+ * it loses its "unread" flag and would never be picked up. This full scan catches those.
+ * Cost: ~5 min of API pagination per large store (156K chats), but runs only once per hour.
+ */
+export function startOzonHourlyFullSync() {
+  // 6:00-17:00 UTC = 9:00-20:00 MSK, every hour on the hour
+  const cronSchedule = process.env.NODE_ENV === 'production'
+    ? '0 6-17 * * *'  // Every hour 9:00-20:00 MSK (6-17 UTC), all days
+    : '*/20 * * * *'; // Every 20 minutes for testing
+
+  console.log(`[CRON] Scheduling OZON hourly full sync: ${cronSchedule}`);
+  console.log(`[CRON] Mode: ${process.env.NODE_ENV === 'production' ? 'PRODUCTION (9:00-20:00 MSK, all days)' : 'TESTING (every 20 min)'}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'ozon-hourly-full-sync';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  Job ${jobName} is already running, skipping this trigger`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+    const startTime = Date.now();
+
+    try {
+      console.log('\n========================================');
+      console.log(`[CRON] 🔍 Starting OZON hourly full scan at ${new Date().toISOString()}`);
+      console.log('========================================\n');
+
+      // Only process OZON stores
+      const allStores = await dbHelpers.getAllStores();
+      const ozonStores = allStores.filter(s => s.marketplace === 'ozon');
+      console.log(`[CRON] Found ${ozonStores.length} OZON stores to full-scan`);
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const store of ozonStores) {
+        try {
+          await syncStoreDialoguesFull(store.id, store.name);
+          successCount++;
+
+          // Wait between stores — full scan is slow; don't hammer DB
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (error: any) {
+          errorCount++;
+          console.error(`[CRON] Error in full scan for ${store.name}:`, error.message);
+        }
+      }
+
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      const durationMin = Math.round(duration / 60);
+
+      console.log('\n========================================');
+      console.log(`[CRON] ✅ OZON hourly full scan completed`);
+      console.log(`[CRON] Duration: ${duration}s (~${durationMin} min)`);
+      console.log(`[CRON] Stores: ${successCount}/${ozonStores.length} success, ${errorCount} errors`);
+      console.log('========================================\n');
+
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in OZON hourly full scan:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ OZON hourly full scan started (9:00-20:00 MSK, all days)');
+
+  return job;
+}
+
+/**
  * Stop all cron jobs
  */
 export function stopAllJobs() {

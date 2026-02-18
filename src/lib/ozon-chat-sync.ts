@@ -42,10 +42,13 @@ function extractMessageText(data?: string[], isImage?: boolean): string {
 
 /**
  * Sync OZON chats for a store.
+ * @param fullScan - if true, fetches ALL opened chats (hourly safety scan);
+ *                   if false (default), fetches only unread chats (fast 5-min scan).
  * Returns summary string for logging.
  */
-export async function refreshOzonChats(storeId: string): Promise<string> {
-  console.log(`[OZON-CHATS] Starting chat sync for store ${storeId}`);
+export async function refreshOzonChats(storeId: string, fullScan = false): Promise<string> {
+  const scanMode = fullScan ? 'FULL SCAN' : 'UNREAD ONLY';
+  console.log(`[OZON-CHATS] Starting chat sync for store ${storeId} (mode: ${scanMode})`);
 
   // Mark sync as pending
   await dbHelpers.updateStore(storeId, {
@@ -71,12 +74,16 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       if (p.ozon_fbs_sku) skuToProduct.set(p.ozon_fbs_sku, p);
     }
 
-    // Step 1: Fetch UNREAD BUYER_SELLER chats (not full scan — only chats with new buyer messages)
-    const allChats = await client.getAllBuyerChats();
-    console.log(`[OZON-CHATS] Found ${allChats.length} unread BUYER_SELLER chats`);
+    // Step 1: Fetch BUYER_SELLER chats from OZON API
+    // - unread-only (default): fast 5-min scan, catches buyer replies to trigger messages
+    // - full scan: hourly safety net, catches chats read in OZON dashboard before unread scan
+    const allChats = fullScan
+      ? await client.getAllBuyerChatsAll()
+      : await client.getAllBuyerChats();
+    console.log(`[OZON-CHATS] Found ${allChats.length} BUYER_SELLER chats (${scanMode})`);
 
-    // Early exit: no unread chats → nothing to do
-    if (allChats.length === 0) {
+    // Early exit: unread scan found nothing → nothing to do
+    if (!fullScan && allChats.length === 0) {
       await dbHelpers.updateStore(storeId, {
         last_chat_update_status: 'success',
         last_chat_update_date: new Date().toISOString(),
@@ -86,17 +93,32 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       return msg;
     }
 
-    // Load only the specific chats returned by API (1-20 rows, not 156K)
-    const chatIds = allChats.map(c => c.chat.chat_id);
-    const existingChatsResult = await query(
-      `SELECT id, ozon_last_message_id, product_nm_id, product_name, product_vendor_code,
-              client_name, status, tag, draft_reply, draft_reply_thread_id,
-              draft_reply_generated_at, draft_reply_edited,
-              last_message_date, last_message_text, last_message_sender,
-              owner_id, ozon_chat_type, ozon_chat_status, ozon_unread_count
-       FROM chats WHERE store_id = $1 AND id = ANY($2::text[])`,
-      [storeId, chatIds]
-    );
+    // Load existing chats from DB
+    // - unread scan: targeted SELECT for the 1-20 specific chat IDs (fast)
+    // - full scan: load all store chats (may be 156K rows, but needed for incremental skip)
+    let existingChatsResult;
+    if (fullScan) {
+      existingChatsResult = await query(
+        `SELECT id, ozon_last_message_id, product_nm_id, product_name, product_vendor_code,
+                client_name, status, tag, draft_reply, draft_reply_thread_id,
+                draft_reply_generated_at, draft_reply_edited,
+                last_message_date, last_message_text, last_message_sender,
+                owner_id, ozon_chat_type, ozon_chat_status, ozon_unread_count
+         FROM chats WHERE store_id = $1 AND marketplace = 'ozon'`,
+        [storeId]
+      );
+    } else {
+      const chatIds = allChats.map(c => c.chat.chat_id);
+      existingChatsResult = await query(
+        `SELECT id, ozon_last_message_id, product_nm_id, product_name, product_vendor_code,
+                client_name, status, tag, draft_reply, draft_reply_thread_id,
+                draft_reply_generated_at, draft_reply_edited,
+                last_message_date, last_message_text, last_message_sender,
+                owner_id, ozon_chat_type, ozon_chat_status, ozon_unread_count
+         FROM chats WHERE store_id = $1 AND id = ANY($2::text[])`,
+        [storeId, chatIds]
+      );
+    }
     const existingChatMap = new Map(existingChatsResult.rows.map((c: any) => [c.id, c]));
 
     let newMessagesTotal = 0;

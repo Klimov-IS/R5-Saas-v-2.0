@@ -3,7 +3,7 @@
  * This file runs once when the Next.js server starts (via instrumentation.ts)
  */
 
-import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker, startGoogleSheetsSync, startAutoSequenceProcessor, startRollingReviewFullSync, startMiddayReviewCatchup, startChatStatusTransition } from './cron-jobs';
+import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker, startGoogleSheetsSync, startAutoSequenceProcessor, startRollingReviewFullSync, startMiddayReviewCatchup, startChatStatusTransition, startOzonHourlyFullSync } from './cron-jobs';
 
 let initialized = false;
 
@@ -29,6 +29,7 @@ export function initializeServer() {
     startRollingReviewFullSync(); // Rolling full review sync (3:00 MSK daily, 90-day chunks)
     startMiddayReviewCatchup(); // Midday review catchup (13:00 MSK daily, chunk 0 only)
     startChatStatusTransition(); // Chat status: in_progress → awaiting_reply after 2 days (every 30 min)
+    startOzonHourlyFullSync();   // OZON hourly full scan — safety net for chats read in OZON dashboard (9:00-20:00 MSK)
 
     initialized = true;
     const duration = Date.now() - startTime;

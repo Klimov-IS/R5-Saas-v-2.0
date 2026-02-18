@@ -13,7 +13,7 @@ import { reconcileChatWithLink } from '@/db/review-chat-link-helpers';
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
  */
-async function updateDialoguesForStore(storeId: string): Promise<{ success: boolean; message: string; }> {
+async function updateDialoguesForStore(storeId: string, fullScan = false): Promise<{ success: boolean; message: string; }> {
     console.log(`[DIALOGUES] Starting dialogue update for store: ${storeId}`);
 
     try {
@@ -28,8 +28,9 @@ async function updateDialoguesForStore(storeId: string): Promise<{ success: bool
         if (!store) throw new Error(`Store with ID ${storeId} not found.`);
 
         // OZON stores: use OZON chat sync
+        // ?fullScan=true triggers hourly safety scan (all opened chats); default = unread-only
         if (store.marketplace === 'ozon') {
-            const message = await refreshOzonChats(storeId);
+            const message = await refreshOzonChats(storeId, fullScan);
             return { success: true, message };
         }
 
@@ -503,8 +504,9 @@ export async function POST(request: NextRequest, { params }: { params: { storeId
             return NextResponse.json({ error: 'Store not found.' }, { status: 404 });
         }
 
-        // Run sync
-        const result = await updateDialoguesForStore(storeId);
+        // Run sync (?fullScan=true = hourly OZON safety scan)
+        const fullScan = request.nextUrl.searchParams.get('fullScan') === 'true';
+        const result = await updateDialoguesForStore(storeId, fullScan);
 
         if (!result.success) {
             return NextResponse.json({

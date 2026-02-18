@@ -740,6 +740,30 @@ export class OzonApiClient {
 
     return allChats;
   }
+
+  /**
+   * Get ALL OPENED BUYER_SELLER chats (full scan, no unread filter).
+   * Used for hourly safety scan to catch chats that were read in OZON
+   * dashboard before the incremental (unread-only) sync could process them.
+   * Warning: may return 100K+ chats for large stores (~5 min of API pagination).
+   */
+  async getAllBuyerChatsAll(): Promise<OzonChatListItem[]> {
+    const allChats: OzonChatListItem[] = [];
+    let cursor = '';
+
+    while (true) {
+      const page = await this.getChatList(cursor, 100, 'OPENED', false);
+      const buyerChats = page.chats.filter(
+        (c) => c.chat.chat_type === 'BUYER_SELLER'
+      );
+      allChats.push(...buyerChats);
+
+      if (!page.hasNext || page.chats.length === 0) break;
+      cursor = page.cursor;
+    }
+
+    return allChats;
+  }
 }
 
 // ============================================================================
