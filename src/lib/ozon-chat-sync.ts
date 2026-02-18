@@ -19,7 +19,8 @@ import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { buildStoreInstructions } from '@/lib/ai-context';
 import { DEFAULT_TRIGGER_PHRASE, DEFAULT_OZON_FOLLOWUP_TEMPLATES, DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
-import { sendTelegramNotifications } from '@/lib/telegram-notifications';
+import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
+import { detectSuccessEvent } from '@/lib/success-detector';
 
 /** Map OZON user.type to our sender format */
 function mapSender(userType: string): 'client' | 'seller' | null {
@@ -283,12 +284,30 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
               // Collect for TG notification (only seller-initiated chats — those have product_nm_id from context.sku)
               // Random buyer-initiated chats (no product_nm_id) are excluded — matches queue filter
               if (existing.product_nm_id) {
+                const msgPreview = latestMsg ? extractMessageText(latestMsg.data, latestMsg.is_image) || null : null;
                 clientRepliedChats.push({
                   chatId,
                   clientName: existing.client_name || 'Покупатель',
                   productName: productName || null,
-                  messagePreview: latestMsg ? extractMessageText(latestMsg.data, latestMsg.is_image) || null : null,
+                  messagePreview: msgPreview,
                 });
+
+                // Detect success event (deleted/upgraded review)
+                if (msgPreview) {
+                  const successEvent = detectSuccessEvent(msgPreview);
+                  if (successEvent) {
+                    // Fire-and-forget — errors caught in outer try/catch
+                    sendSuccessNotification(storeId, store.name || storeId, ownerId, {
+                      chatId,
+                      clientName: existing.client_name || 'Покупатель',
+                      productName: productName || null,
+                      messageText: msgPreview,
+                      event: successEvent,
+                    }).catch((err: any) => {
+                      console.error(`[OZON-CHATS] Success notification error for chat ${chatId}: ${err.message}`);
+                    });
+                  }
+                }
               }
             } else if (latestSender === 'seller') {
               if (existing.status === 'closed') {

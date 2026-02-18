@@ -5,8 +5,9 @@
  * Called from dialogue sync process (non-blocking, wrapped in try/catch).
  *
  * Features:
+ * - Digest format: ONE message per store per sync, listing all new replies
+ * - Success notifications: immediate separate message for "deleted/upgraded/needs help" events
  * - Dedup: won't send duplicate notification for same chat within 1 hour
- * - Batching: 1-5 individual, 6+ summary notification
  * - Inline button to open Mini App
  */
 
@@ -15,6 +16,7 @@ import {
   wasNotificationSentRecently,
   logTelegramNotification,
 } from '@/db/telegram-helpers';
+import type { SuccessEvent } from './success-detector';
 
 const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'https://r5saas.ru/tg';
 
@@ -25,8 +27,16 @@ interface ChatNotificationData {
   messagePreview: string | null;
 }
 
+export interface SuccessNotificationData {
+  chatId: string;
+  clientName: string;
+  productName: string | null;
+  messageText: string;
+  event: SuccessEvent;
+}
+
 /**
- * Send Telegram notification via Bot API
+ * Send Telegram message via Bot API
  */
 async function tgSendMessage(chatId: number, text: string, replyMarkup?: any): Promise<number | null> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -58,32 +68,50 @@ async function tgSendMessage(chatId: number, text: string, replyMarkup?: any): P
 }
 
 /**
- * Format individual notification message
+ * Format digest notification — ONE message listing all chats with new replies
  */
-function formatNotification(storeName: string, chat: ChatNotificationData): string {
+function formatDigestNotification(storeName: string, chats: ChatNotificationData[]): string {
+  const count = chats.length;
   const lines: string[] = [];
-  lines.push(`🏪 <b>${escapeHtml(storeName)}</b> — Новый ответ клиента`);
+
+  const countWord = count === 1 ? 'ответ' : count < 5 ? 'новых ответа' : 'новых ответов';
+  lines.push(`🏪 <b>${escapeHtml(storeName)}</b> — ${count} ${countWord}`);
   lines.push('');
-  lines.push(`👤 ${escapeHtml(chat.clientName)}`);
-  if (chat.productName) {
-    lines.push(`📦 ${escapeHtml(truncate(chat.productName, 50))}`);
+
+  const shownChats = chats.slice(0, 5);
+  for (const chat of shownChats) {
+    const clientStr = escapeHtml(chat.clientName);
+    const productStr = chat.productName ? ` · ${escapeHtml(truncate(chat.productName, 30))}` : '';
+    const preview = chat.messagePreview
+      ? `: <i>"${escapeHtml(truncate(chat.messagePreview, 80))}"</i>`
+      : '';
+    lines.push(`• ${clientStr}${productStr}${preview}`);
   }
-  if (chat.messagePreview) {
-    lines.push('');
-    lines.push(`💬 <i>"${escapeHtml(truncate(chat.messagePreview, 150))}"</i>`);
+
+  if (count > 5) {
+    lines.push(`<i>...и ещё ${count - 5}</i>`);
   }
+
   return lines.join('\n');
 }
 
 /**
- * Format summary notification (6+ chats)
+ * Format success notification — buyer deleted/upgraded their review
  */
-function formatSummaryNotification(storeName: string, count: number): string {
-  return (
-    `🏪 <b>${escapeHtml(storeName)}</b>\n\n` +
-    `📨 <b>${count}</b> новых ответов клиентов\n\n` +
-    `Откройте Mini App для обработки.`
-  );
+function formatSuccessNotification(storeName: string, data: SuccessNotificationData): string {
+  const { event, clientName, productName, messageText } = data;
+  const lines: string[] = [];
+
+  lines.push(`${event.emoji} <b>${escapeHtml(storeName)}</b>`);
+  lines.push('');
+  lines.push(`<b>${event.label}</b>`);
+  lines.push('');
+
+  const productStr = productName ? ` (${escapeHtml(truncate(productName, 40))})` : '';
+  lines.push(`👤 ${escapeHtml(clientName)}${productStr}:`);
+  lines.push(`<i>"${escapeHtml(truncate(messageText, 200))}"</i>`);
+
+  return lines.join('\n');
 }
 
 function escapeHtml(text: string): string {
@@ -99,8 +127,9 @@ function truncate(text: string, maxLen: number): string {
 }
 
 /**
- * Main entry point: send notifications for new client replies in a store
+ * Send digest notification for new client replies in a store.
  *
+ * ONE message per sync per store, listing all new replies.
  * Called from dialogue sync after processing new messages.
  * Non-blocking — errors are logged but don't propagate.
  *
@@ -119,9 +148,9 @@ export async function sendTelegramNotifications(
 
   // Find linked TG user for this store's owner
   const tgUser = await getTelegramUserForStore(ownerId);
-  if (!tgUser) return; // No linked TG account or notifications disabled
+  if (!tgUser) return;
 
-  // Filter out already-notified chats (dedup)
+  // Filter out already-notified chats (dedup within 1 hour)
   const newChats: ChatNotificationData[] = [];
   for (const chat of chats) {
     const alreadySent = await wasNotificationSentRecently(tgUser.id, chat.chatId, 'client_reply', 60);
@@ -132,58 +161,75 @@ export async function sendTelegramNotifications(
 
   if (newChats.length === 0) return;
 
-  console.log(`[TG-NOTIF] Sending ${newChats.length} notifications to TG ${tgUser.telegram_id} for store ${storeName}`);
+  console.log(`[TG-NOTIF] Sending digest for ${newChats.length} chats to TG ${tgUser.telegram_id} (store: ${storeName})`);
 
-  // Batching: 1-5 individual, 6+ summary
-  if (newChats.length <= 5) {
-    // Individual notifications
-    for (const chat of newChats) {
-      const text = formatNotification(storeName, chat);
-      const replyMarkup = {
-        inline_keyboard: [[{
-          text: '📱 Открыть чат',
-          web_app: { url: `${MINI_APP_URL}/chat/${chat.chatId}?storeId=${storeId}` },
-        }]],
-      };
+  // Single digest message listing all new chats
+  const text = formatDigestNotification(storeName, newChats);
+  const replyMarkup = {
+    inline_keyboard: [[{
+      text: '📱 Открыть очередь',
+      web_app: { url: `${MINI_APP_URL}?storeId=${storeId}` },
+    }]],
+  };
 
-      const msgId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+  const msgId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
 
-      await logTelegramNotification({
-        telegramUserId: tgUser.id,
-        chatId: chat.chatId,
-        storeId,
-        notificationType: 'client_reply',
-        messageText: text.substring(0, 500),
-        tgMessageId: msgId || undefined,
-      });
-
-      // Small delay between messages to respect rate limits
-      if (newChats.length > 1) {
-        await new Promise(r => setTimeout(r, 100));
-      }
-    }
-  } else {
-    // Summary notification
-    const text = formatSummaryNotification(storeName, newChats.length);
-    const replyMarkup = {
-      inline_keyboard: [[{
-        text: '📱 Открыть очередь',
-        web_app: { url: MINI_APP_URL },
-      }]],
-    };
-
-    const msgId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
-
-    // Log for all chats (to prevent re-notification)
-    for (const chat of newChats) {
-      await logTelegramNotification({
-        telegramUserId: tgUser.id,
-        chatId: chat.chatId,
-        storeId,
-        notificationType: 'client_reply',
-        messageText: `[summary] ${newChats.length} chats`,
-        tgMessageId: msgId || undefined,
-      });
-    }
+  // Log for all chats to prevent re-notification within the hour
+  for (const chat of newChats) {
+    await logTelegramNotification({
+      telegramUserId: tgUser.id,
+      chatId: chat.chatId,
+      storeId,
+      notificationType: 'client_reply',
+      messageText: `[digest] ${newChats.length} chats`,
+      tgMessageId: msgId || undefined,
+    });
   }
+}
+
+/**
+ * Send immediate success notification when buyer deletes/upgrades their review.
+ *
+ * Separate from digest — sent immediately, not batched.
+ * Dedup: won't re-send for same chat within 24 hours.
+ *
+ * @param storeId Store ID
+ * @param storeName Store name
+ * @param ownerId Store owner's R5 user ID
+ * @param data Success event data (chat, buyer, message, event type)
+ */
+export async function sendSuccessNotification(
+  storeId: string,
+  storeName: string,
+  ownerId: string,
+  data: SuccessNotificationData
+): Promise<void> {
+  const tgUser = await getTelegramUserForStore(ownerId);
+  if (!tgUser) return;
+
+  // Dedup: 24 hours per chat per event type
+  const notifType = `success_${data.event.type}`;
+  const alreadySent = await wasNotificationSentRecently(tgUser.id, data.chatId, notifType, 1440);
+  if (alreadySent) return;
+
+  console.log(`[TG-NOTIF] Success event [${data.event.type}] for chat ${data.chatId} in store ${storeName}`);
+
+  const text = formatSuccessNotification(storeName, data);
+  const replyMarkup = {
+    inline_keyboard: [[{
+      text: '📱 Открыть чат',
+      web_app: { url: `${MINI_APP_URL}/chat/${data.chatId}?storeId=${storeId}` },
+    }]],
+  };
+
+  const msgId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+
+  await logTelegramNotification({
+    telegramUserId: tgUser.id,
+    chatId: data.chatId,
+    storeId,
+    notificationType: notifType,
+    messageText: text.substring(0, 500),
+    tgMessageId: msgId || undefined,
+  });
 }

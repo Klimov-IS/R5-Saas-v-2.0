@@ -6,7 +6,8 @@ import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
 import { buildStoreInstructions } from '@/lib/ai-context';
-import { sendTelegramNotifications } from '@/lib/telegram-notifications';
+import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
+import { detectSuccessEvent } from '@/lib/success-detector';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
 import { reconcileChatWithLink } from '@/db/review-chat-link-helpers';
 
@@ -274,12 +275,27 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         // Filter: only notify for chats with active products (synced with TG queue filter)
                         // Chats without product_nm_id are also excluded — they're not visible in queue either
                         if (!nmId || !activeNmIds.has(nmId)) continue;
+                        const msgText = latestMessagesPerChat[chatId].message?.text || null;
                         clientRepliedChats.push({
                             chatId,
                             clientName: chatInfo?.client_name || 'Клиент',
                             productName: chatInfo?.product_name || null,
-                            messagePreview: latestMessagesPerChat[chatId].message?.text || null,
+                            messagePreview: msgText,
                         });
+
+                        // Detect success event (deleted/upgraded review)
+                        if (msgText) {
+                            const successEvent = detectSuccessEvent(msgText);
+                            if (successEvent) {
+                                await sendSuccessNotification(storeId, store.name || storeId, ownerId, {
+                                    chatId,
+                                    clientName: chatInfo?.client_name || 'Клиент',
+                                    productName: chatInfo?.product_name || null,
+                                    messageText: msgText,
+                                    event: successEvent,
+                                });
+                            }
+                        }
                     }
                 }
                 if (clientRepliedChats.length > 0) {
