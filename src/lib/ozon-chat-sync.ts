@@ -71,19 +71,31 @@ export async function refreshOzonChats(storeId: string): Promise<string> {
       if (p.ozon_fbs_sku) skuToProduct.set(p.ozon_fbs_sku, p);
     }
 
-    // Step 1: Fetch all BUYER_SELLER chats
+    // Step 1: Fetch UNREAD BUYER_SELLER chats (not full scan — only chats with new buyer messages)
     const allChats = await client.getAllBuyerChats();
-    console.log(`[OZON-CHATS] Found ${allChats.length} BUYER_SELLER chats`);
+    console.log(`[OZON-CHATS] Found ${allChats.length} unread BUYER_SELLER chats`);
 
-    // Get existing chats map (lightweight query — only fields needed for sync)
+    // Early exit: no unread chats → nothing to do
+    if (allChats.length === 0) {
+      await dbHelpers.updateStore(storeId, {
+        last_chat_update_status: 'success',
+        last_chat_update_date: new Date().toISOString(),
+      });
+      const msg = 'OZON chats synced: 0 processed (no unread chats)';
+      console.log(`[OZON-CHATS] ${msg}`);
+      return msg;
+    }
+
+    // Load only the specific chats returned by API (1-20 rows, not 156K)
+    const chatIds = allChats.map(c => c.chat.chat_id);
     const existingChatsResult = await query(
       `SELECT id, ozon_last_message_id, product_nm_id, product_name, product_vendor_code,
               client_name, status, tag, draft_reply, draft_reply_thread_id,
               draft_reply_generated_at, draft_reply_edited,
               last_message_date, last_message_text, last_message_sender,
               owner_id, ozon_chat_type, ozon_chat_status, ozon_unread_count
-       FROM chats WHERE store_id = $1`,
-      [storeId]
+       FROM chats WHERE store_id = $1 AND id = ANY($2::text[])`,
+      [storeId, chatIds]
     );
     const existingChatMap = new Map(existingChatsResult.rows.map((c: any) => [c.id, c]));
 

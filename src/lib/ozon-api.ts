@@ -712,17 +712,23 @@ export class OzonApiClient {
   }
 
   /**
-   * Get ALL BUYER_SELLER chats with pagination (helper).
-   * Filters out SELLER_SUPPORT and UNSPECIFIED.
+   * Get BUYER_SELLER chats with UNREAD messages (helper).
+   *
+   * Uses unread_only=true to fetch only chats with new buyer messages.
+   * This replaces the full scan of 156K+ chats — with unread_only we get
+   * only the 1-20 chats that actually need processing (buyer replies to
+   * trigger messages sent from OZON seller interface, new inquiries, etc.).
+   *
+   * Chats remain "unread" in OZON until seller opens them in OZON dashboard.
+   * R5 does NOT call markChatRead, so incremental skip (ozon_last_message_id)
+   * ensures already-processed chats are skipped on repeat appearances.
    */
   async getAllBuyerChats(): Promise<OzonChatListItem[]> {
     const allChats: OzonChatListItem[] = [];
     let cursor = '';
 
-    // Only fetch OPENED chats — CLOSED chats are archived and need no action.
-    // This reduces 156K total chats to a few thousand active ones.
     while (true) {
-      const page = await this.getChatList(cursor, 100, 'OPENED');
+      const page = await this.getChatList(cursor, 100, 'All', true); // unread_only=true
       const buyerChats = page.chats.filter(
         (c) => c.chat.chat_type === 'BUYER_SELLER'
       );
