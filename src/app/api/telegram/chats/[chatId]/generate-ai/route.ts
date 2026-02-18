@@ -76,6 +76,8 @@ export async function POST(
     const filteredMessages = messagesResult.rows.filter((m: any) => m.text && m.text.trim());
     const phase = detectConversationPhase(filteredMessages);
     const sellerMessageCount = filteredMessages.filter((m: any) => m.sender === 'seller').length;
+    const lastSellerMsg = [...filteredMessages].reverse().find((m: any) => m.sender === 'seller');
+    const lastSellerText = lastSellerMsg ? lastSellerMsg.text.slice(0, 200) : 'нет';
 
     // Build context string (matching web API format, marketplace-aware labels)
     const isOzon = chat.marketplace === 'ozon';
@@ -94,6 +96,7 @@ ${productRulesContext}
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
 **Сообщений от продавца:** ${sellerMessageCount}
+**Последнее сообщение продавца:** ${lastSellerText}
 
 **История переписки:**
 ${chatHistory}
@@ -111,16 +114,31 @@ ${chatHistory}
       storeInstructions: storeInstructions || undefined,
     });
 
+    // For OZON: enforce 1000-char limit by trimming at last sentence boundary
+    let draftText = result.text;
+    if (isOzon && draftText.length > 1000) {
+      const trimmed = draftText.slice(0, 1000);
+      const lastSentenceEnd = Math.max(
+        trimmed.lastIndexOf('. '),
+        trimmed.lastIndexOf('! '),
+        trimmed.lastIndexOf('? '),
+        trimmed.lastIndexOf('.\n'),
+      );
+      draftText = lastSentenceEnd > 800
+        ? trimmed.slice(0, lastSentenceEnd + 1).trim()
+        : trimmed.trim();
+    }
+
     // Save draft
     await dbHelpers.updateChat(chatId, {
-      draft_reply: result.text,
+      draft_reply: draftText,
       draft_reply_generated_at: new Date().toISOString(),
       draft_reply_edited: false,
     });
 
     return NextResponse.json({
       success: true,
-      draftReply: result.text,
+      draftReply: draftText,
     });
   } catch (error: any) {
     console.error('[TG-GENERATE] Error:', error.message);

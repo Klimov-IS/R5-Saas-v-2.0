@@ -57,7 +57,17 @@ export async function POST(
       }
 
       const client = createOzonClient(store.ozon_client_id, store.ozon_api_key);
-      await client.sendChatMessage(chatId, message.trim());
+      try {
+        await client.sendChatMessage(chatId, message.trim());
+      } catch (ozonErr: any) {
+        // OZON code 7: chat exists but buyer hasn't activated it yet
+        if (ozonErr.message?.includes('"code":7') || ozonErr.message?.includes('chat not started')) {
+          return NextResponse.json({
+            error: 'Покупатель ещё не принял чат. Отправить сообщение невозможно — дождитесь ответа покупателя.',
+          }, { status: 422 });
+        }
+        throw ozonErr;
+      }
     } else {
       // WB stores: use WB Chat API
       const token = store.chat_api_token || store.api_token;
