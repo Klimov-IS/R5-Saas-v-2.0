@@ -503,9 +503,9 @@ export default function Home() {
 
           <InteractiveKPICard
             icon={Package}
-            label="Активных товаров"
+            label="Товаров в работе"
             value={dashboardStats?.products.active ?? totalProducts}
-            subtitle={dashboardStats ? `${dashboardStats.products.activePercent}% от всех (${dashboardStats.products.total.toLocaleString('ru-RU')})` : undefined}
+            subtitle={dashboardStats ? `${dashboardStats.products.active.toLocaleString('ru-RU')} из ${dashboardStats.products.total.toLocaleString('ru-RU')}` : undefined}
             actionIcon={RefreshCw}
             actionTooltip="Синхронизировать товары"
             onClick={() => handleGlobalSync('products')}
@@ -520,7 +520,7 @@ export default function Home() {
             icon={Star}
             label="Отзывы 1-3 в работе"
             value={dashboardStats?.reviews.negative ?? totalReviews}
-            subtitle={dashboardStats ? `${dashboardStats.reviews.complaintPercent}% с жалобами` : undefined}
+            subtitle={dashboardStats ? `${dashboardStats.reviews.complaintPercent}% обработано (${dashboardStats.reviews.withComplaints.toLocaleString('ru-RU')} жалоб)` : undefined}
             subtitleColor={dashboardStats && dashboardStats.reviews.complaintPercent >= 80 ? 'var(--color-success, #22c55e)' : undefined}
             actionIcon={RefreshCw}
             actionTooltip="Обновить отзывы (Incremental)"
@@ -536,7 +536,7 @@ export default function Home() {
             icon={MessageSquare}
             label="На удаление"
             value={dashboardStats?.chats.activeDeletion ?? totalChats}
-            subtitle={dashboardStats ? `из ${dashboardStats.chats.total.toLocaleString('ru-RU')} всего` : undefined}
+            subtitle={dashboardStats ? `из ${dashboardStats.chats.total.toLocaleString('ru-RU')} наших диалогов` : undefined}
             actionIcon={RefreshCw}
             actionTooltip="Обновить диалоги"
             onClick={() => handleGlobalSync('chats')}

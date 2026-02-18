@@ -2841,30 +2841,54 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     ),
     product_stats AS (
       SELECT
-        COUNT(*) FILTER (WHERE is_active = true) AS active_products,
-        COUNT(*) AS total_products
-      FROM products
-      WHERE store_id IN (SELECT id FROM active_store_ids)
+        COUNT(DISTINCT p.id) FILTER (WHERE pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE) AS active_products,
+        COUNT(DISTINCT p.id) AS total_products
+      FROM products p
+      LEFT JOIN product_rules pr ON pr.product_id = p.id
+      WHERE p.store_id IN (SELECT id FROM active_store_ids)
+        AND p.is_active = TRUE
     ),
     review_stats AS (
       SELECT
-        COUNT(*) AS total_reviews,
-        COUNT(*) FILTER (WHERE rating BETWEEN 1 AND 3) AS negative_reviews,
-        COUNT(*) FILTER (WHERE rating BETWEEN 1 AND 3 AND has_complaint = true) AS negative_with_complaints
-      FROM reviews
-      WHERE store_id IN (SELECT id FROM active_store_ids)
+        COUNT(*) AS total_reviews_in_work,
+        COUNT(*) FILTER (WHERE rc.id IS NOT NULL) AS with_complaints
+      FROM reviews r
+      INNER JOIN products p ON r.product_id = p.id
+      INNER JOIN product_rules pr ON pr.product_id = p.id
+      LEFT JOIN review_complaints rc ON rc.review_id = r.id
+      WHERE r.store_id IN (SELECT id FROM active_store_ids)
+        AND r.marketplace = 'wb'
+        AND r.rating BETWEEN 1 AND 3
+        AND r.date >= '2023-10-01'
+        AND p.is_active = TRUE
+        AND pr.submit_complaints = TRUE
+        AND (
+          (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
+          (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
+          (r.rating = 3 AND pr.complaint_rating_3 = TRUE)
+        )
+        AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
     ),
     chat_stats AS (
       SELECT
-        COUNT(*) AS total_chats,
-        COUNT(*) FILTER (WHERE tag IN ('deletion_candidate','deletion_offered','deletion_agreed','deletion_confirmed','refund_requested') AND status != 'closed') AS active_deletion_chats,
-        COUNT(*) FILTER (WHERE tag = 'deletion_candidate' AND status != 'closed') AS deletion_candidates,
-        COUNT(*) FILTER (WHERE tag = 'deletion_offered' AND status != 'closed') AS deletion_offered,
-        COUNT(*) FILTER (WHERE tag = 'deletion_agreed' AND status != 'closed') AS deletion_agreed,
-        COUNT(*) FILTER (WHERE tag = 'deletion_confirmed' AND status != 'closed') AS deletion_confirmed,
-        COUNT(*) FILTER (WHERE tag = 'refund_requested' AND status != 'closed') AS refund_requested
-      FROM chats
-      WHERE store_id IN (SELECT id FROM active_store_ids)
+        COUNT(DISTINCT c.id) AS total_our_chats,
+        COUNT(DISTINCT c.id) FILTER (
+          WHERE c.tag IN ('deletion_candidate','deletion_offered','deletion_agreed','deletion_confirmed','refund_requested')
+          AND c.status != 'closed'
+        ) AS active_deletion_chats,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_candidate' AND c.status != 'closed') AS deletion_candidates,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_offered' AND c.status != 'closed') AS deletion_offered,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_agreed' AND c.status != 'closed') AS deletion_agreed,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_confirmed' AND c.status != 'closed') AS deletion_confirmed,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'refund_requested' AND c.status != 'closed') AS refund_requested
+      FROM chats c
+      INNER JOIN products p ON p.store_id = c.store_id AND (
+        (c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku))
+      )
+      INNER JOIN product_rules pr ON pr.product_id = p.id AND pr.work_in_chats = TRUE
+      WHERE c.store_id IN (SELECT id FROM active_store_ids)
+        AND c.product_nm_id IS NOT NULL
     )
     SELECT * FROM store_stats, product_stats, review_stats, chat_stats
   `;
@@ -2876,8 +2900,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   const activeProducts = toNum(row.active_products);
   const totalProducts = toNum(row.total_products);
-  const negativeReviews = toNum(row.negative_reviews);
-  const negativeWithComplaints = toNum(row.negative_with_complaints);
+  const reviewsInWork = toNum(row.total_reviews_in_work);
+  const withComplaints = toNum(row.with_complaints);
 
   return {
     stores: {
@@ -2891,13 +2915,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       activePercent: totalProducts > 0 ? Math.round((activeProducts / totalProducts) * 100) : 0,
     },
     reviews: {
-      total: toNum(row.total_reviews),
-      negative: negativeReviews,
-      withComplaints: negativeWithComplaints,
-      complaintPercent: negativeReviews > 0 ? Math.round((negativeWithComplaints / negativeReviews) * 100) : 0,
+      total: reviewsInWork,
+      negative: reviewsInWork,
+      withComplaints: withComplaints,
+      complaintPercent: reviewsInWork > 0 ? Math.round((withComplaints / reviewsInWork) * 100) : 0,
     },
     chats: {
-      total: toNum(row.total_chats),
+      total: toNum(row.total_our_chats),
       activeDeletion: toNum(row.active_deletion_chats),
       breakdown: {
         deletion_candidate: toNum(row.deletion_candidates),
