@@ -75,6 +75,7 @@ export async function POST(
     // Detect conversation phase for stage-aware AI replies
     const filteredMessages = messagesResult.rows.filter((m: any) => m.text && m.text.trim());
     const phase = detectConversationPhase(filteredMessages);
+    const sellerMessageCount = filteredMessages.filter((m: any) => m.sender === 'seller').length;
 
     // Build context string (matching web API format, marketplace-aware labels)
     const isOzon = chat.marketplace === 'ozon';
@@ -92,6 +93,7 @@ ${productRulesContext}
 
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
+**Сообщений от продавца:** ${sellerMessageCount}
 
 **История переписки:**
 ${chatHistory}
