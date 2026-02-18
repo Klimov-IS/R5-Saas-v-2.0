@@ -1,7 +1,5 @@
 'use client';
 
-import { formatDistanceToNow } from 'date-fns';
-import { ru } from 'date-fns/locale';
 
 const COMPLETION_REASONS: Record<string, string> = {
   review_deleted: 'Отзыв удален',
@@ -53,7 +51,15 @@ export default function TgQueueCard({
   onClick,
 }: TgQueueCardProps) {
   const timeAgo = lastMessageDate
-    ? formatDistanceToNow(new Date(lastMessageDate), { locale: ru, addSuffix: false })
+    ? (() => {
+        const d = new Date(lastMessageDate);
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        if (isToday) return time;
+        const date = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+        return `${date} ${time}`;
+      })()
     : '';
 
   const senderPrefix = lastMessageSender === 'seller' ? 'Вы: ' : lastMessageSender === 'client' ? 'Покупатель: ' : '';
