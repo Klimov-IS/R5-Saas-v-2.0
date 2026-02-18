@@ -45,7 +45,10 @@ export default function TgQueuePage() {
   }, []);
   const { isLoading: authLoading, isAuthenticated, isLinked, error: authError, apiFetch, stores } = useTelegramAuth();
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
+  // Restore last known counts from sessionStorage to prevent flash-to-zero on navigation
+  const [totalCount, setTotalCount] = useState<number>(() => {
+    try { return parseInt(sessionStorage.getItem('tg_total_count') || '0', 10); } catch { return 0; }
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +56,12 @@ export default function TgQueuePage() {
   const [activeStatus, setActiveStatus] = useState<string>(() => {
     try { return sessionStorage.getItem('tg_active_status') || 'inbox'; } catch { return 'inbox'; }
   });
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>(() => {
+    try {
+      const saved = sessionStorage.getItem('tg_status_counts');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
 
   // Store filter
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>(() => {
@@ -133,6 +141,11 @@ export default function TgQueuePage() {
       setQueue(data.data || []);
       setTotalCount(data.totalCount || 0);
       setStatusCounts(data.statusCounts || {});
+      // Cache counts in sessionStorage to restore on next mount (prevents flash-to-zero)
+      try {
+        sessionStorage.setItem('tg_total_count', String(data.totalCount || 0));
+        sessionStorage.setItem('tg_status_counts', JSON.stringify(data.statusCounts || {}));
+      } catch {}
     } catch (err: any) {
       setError(err.message);
     } finally {
