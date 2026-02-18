@@ -313,7 +313,31 @@ status: 'approved' | 'rejected'
 
 **Аутентификация:** WB API tokens (per store)
 
-### 2. Deepseek API
+### 2. OZON API
+
+| API | Endpoint Base | Назначение |
+|-----|---------------|------------|
+| Chat API | `api-seller.ozon.ru` | Диалоги BUYER_SELLER (Premium Plus required) |
+| Product API | `api-seller.ozon.ru` | Синхронизация товаров |
+
+**Аутентификация:** `Client-Id` (numeric) + `Api-Key` (UUID) headers
+
+**API клиент:** `src/lib/ozon-api.ts` — `OzonApiClient` class
+
+**Ключевой паттерн — Seller-Initiated Chats:**
+- OZON не передаёт информацию о товаре в списке чатов
+- `context.sku` в истории сообщений присутствует ТОЛЬКО в seller-initiated диалогах
+- Seller-initiated = продавец открывает чат из карточки отзыва для deletion outreach
+- Этот SKU записывается в `chats.product_nm_id` и является маркером для TG-фильтрации
+- Из ~317K OZON чатов только ~500 имеют `product_nm_id` (0.15%)
+
+**Hybrid sync strategy:**
+- Tier 1: Unread-only scan (каждые 5 мин) — быстро, ~0-20 API вызовов
+- Tier 2: Full scan safety net (ежечасно 9-20 МСК) — для чатов прочитанных в OZON dashboard
+
+**Подробнее:** [docs/domains/ozon-chats.md](../domains/ozon-chats.md)
+
+### 3. Deepseek API
 
 - **Model:** `deepseek-chat`
 - **Назначение:** Генерация текстов (жалобы, ответы)
@@ -372,6 +396,19 @@ Telegram Mini App для управления чатами с покупател
 Клиент отвечает → Dialogue Sync → TG Push → Менеджер открывает Mini App
 → Видит очередь → Тапает чат → 4 кнопки: Отправить / Заново / Закрыть / Пропустить
 ```
+
+**Фильтр очереди (`telegram-helpers.ts`):**
+```sql
+-- Показываем только чаты которые R5 активно обрабатывает:
+AND (
+  pr.work_in_chats = TRUE                                          -- WB: активные товары
+  OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL)     -- OZON: seller-initiated
+)
+```
+
+**Фильтр уведомлений:**
+- WB: только если `product_nm_id` есть в `activeNmIds` (work_in_chats=TRUE)
+- OZON: только если `existing.product_nm_id IS NOT NULL` (seller-initiated)
 
 **API endpoints:** `/api/telegram/*`
 
