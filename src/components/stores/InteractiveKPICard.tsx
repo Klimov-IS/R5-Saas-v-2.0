@@ -14,6 +14,8 @@ export interface InteractiveKPICardProps {
   iconColor: string;
   isLoading?: boolean;
   isSyncing?: boolean;
+  subtitle?: string;
+  subtitleColor?: string;
   extraAction?: {
     label: string;
     tooltip: string;
@@ -32,6 +34,8 @@ export function InteractiveKPICard({
   iconColor,
   isLoading = false,
   isSyncing = false,
+  subtitle,
+  subtitleColor,
   extraAction,
 }: InteractiveKPICardProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -120,6 +124,18 @@ export function InteractiveKPICard({
       <div className="kpi-content">
         <h3>{label}</h3>
         <p>{typeof value === 'number' ? value.toLocaleString('ru-RU') : value}</p>
+        {subtitle && (
+          <span style={{
+            fontSize: '12px',
+            fontWeight: 500,
+            color: subtitleColor || 'var(--color-muted)',
+            marginTop: '2px',
+            display: 'block',
+            lineHeight: 1.3,
+          }}>
+            {subtitle}
+          </span>
+        )}
       </div>
 
       {/* Extra action button (e.g. OZON) */}

@@ -12,7 +12,7 @@ import { AddOzonStoreModal } from '@/components/stores/AddOzonStoreModal';
 import { MarketplaceSelector } from '@/components/stores/MarketplaceSelector';
 import { EditStoreModal } from '@/components/stores/EditStoreModal';
 import { ProgressModal } from '@/components/sync/ProgressModal';
-import type { Store, StoreStatus } from '@/db/helpers';
+import type { Store, StoreStatus, DashboardStats } from '@/db/helpers';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/lib/toast';
 import { useSyncStore } from '@/lib/sync-store';
@@ -52,6 +52,23 @@ async function fetchStores(): Promise<Store[]> {
   return response.json();
 }
 
+// Fetch dashboard stats
+async function fetchDashboardStats(): Promise<DashboardStats> {
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+  const response = await fetch('/api/dashboard/stats', {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch dashboard stats: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export default function Home() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -81,6 +98,13 @@ export default function Home() {
   } = useQuery({
     queryKey: ['stores'],
     queryFn: fetchStores,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // Fetch dashboard stats
+  const { data: dashboardStats } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: fetchDashboardStats,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
@@ -464,8 +488,10 @@ export default function Home() {
         <div className="kpi-container">
           <InteractiveKPICard
             icon={StoreIcon}
-            label="Всего магазинов"
-            value={stores.length}
+            label="Активных клиентов"
+            value={dashboardStats?.stores.active ?? stores.filter(s => s.status === 'active' || s.status === 'trial').length}
+            subtitle={dashboardStats ? `+${dashboardStats.stores.newThisMonth} за месяц` : undefined}
+            subtitleColor={dashboardStats && dashboardStats.stores.newThisMonth > 0 ? 'var(--color-success, #22c55e)' : undefined}
             actionIcon={Plus}
             actionTooltip="Подключить магазин"
             onClick={() => setShowMarketplaceSelector(true)}
@@ -477,8 +503,9 @@ export default function Home() {
 
           <InteractiveKPICard
             icon={Package}
-            label="Всего товаров"
-            value={totalProducts}
+            label="Активных товаров"
+            value={dashboardStats?.products.active ?? totalProducts}
+            subtitle={dashboardStats ? `${dashboardStats.products.activePercent}% от всех (${dashboardStats.products.total.toLocaleString('ru-RU')})` : undefined}
             actionIcon={RefreshCw}
             actionTooltip="Синхронизировать товары"
             onClick={() => handleGlobalSync('products')}
@@ -491,8 +518,10 @@ export default function Home() {
 
           <InteractiveKPICard
             icon={Star}
-            label="Всего отзывов"
-            value={totalReviews}
+            label="Отзывы 1-3 в работе"
+            value={dashboardStats?.reviews.negative ?? totalReviews}
+            subtitle={dashboardStats ? `${dashboardStats.reviews.complaintPercent}% с жалобами` : undefined}
+            subtitleColor={dashboardStats && dashboardStats.reviews.complaintPercent >= 80 ? 'var(--color-success, #22c55e)' : undefined}
             actionIcon={RefreshCw}
             actionTooltip="Обновить отзывы (Incremental)"
             onClick={() => handleGlobalSync('reviews')}
@@ -505,8 +534,9 @@ export default function Home() {
 
           <InteractiveKPICard
             icon={MessageSquare}
-            label="Всего диалогов"
-            value={totalChats}
+            label="На удаление"
+            value={dashboardStats?.chats.activeDeletion ?? totalChats}
+            subtitle={dashboardStats ? `из ${dashboardStats.chats.total.toLocaleString('ru-RU')} всего` : undefined}
             actionIcon={RefreshCw}
             actionTooltip="Обновить диалоги"
             onClick={() => handleGlobalSync('chats')}

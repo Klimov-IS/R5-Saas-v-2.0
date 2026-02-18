@@ -2816,3 +2816,96 @@ export async function deleteStoreGuide(id: string): Promise<boolean> {
   );
   return (result.rowCount ?? 0) > 0;
 }
+
+// --- Dashboard Stats ---
+
+export interface DashboardStats {
+  stores: { active: number; newThisMonth: number; total: number };
+  products: { active: number; total: number; activePercent: number };
+  reviews: { total: number; negative: number; withComplaints: number; complaintPercent: number };
+  chats: { total: number; activeDeletion: number; breakdown: { deletion_candidate: number; deletion_offered: number; deletion_agreed: number; deletion_confirmed: number; refund_requested: number } };
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const sql = `
+    WITH
+    store_stats AS (
+      SELECT
+        COUNT(*) FILTER (WHERE status IN ('active', 'trial')) AS active_stores,
+        COUNT(*) FILTER (WHERE status IN ('active', 'trial') AND created_at >= date_trunc('month', CURRENT_DATE)) AS new_stores_this_month,
+        COUNT(*) AS total_stores
+      FROM stores
+    ),
+    active_store_ids AS (
+      SELECT id FROM stores WHERE status IN ('active', 'trial')
+    ),
+    product_stats AS (
+      SELECT
+        COUNT(*) FILTER (WHERE is_active = true) AS active_products,
+        COUNT(*) AS total_products
+      FROM products
+      WHERE store_id IN (SELECT id FROM active_store_ids)
+    ),
+    review_stats AS (
+      SELECT
+        COUNT(*) AS total_reviews,
+        COUNT(*) FILTER (WHERE rating BETWEEN 1 AND 3) AS negative_reviews,
+        COUNT(*) FILTER (WHERE rating BETWEEN 1 AND 3 AND has_complaint = true) AS negative_with_complaints
+      FROM reviews
+      WHERE store_id IN (SELECT id FROM active_store_ids)
+    ),
+    chat_stats AS (
+      SELECT
+        COUNT(*) AS total_chats,
+        COUNT(*) FILTER (WHERE tag IN ('deletion_candidate','deletion_offered','deletion_agreed','deletion_confirmed','refund_requested') AND status != 'closed') AS active_deletion_chats,
+        COUNT(*) FILTER (WHERE tag = 'deletion_candidate' AND status != 'closed') AS deletion_candidates,
+        COUNT(*) FILTER (WHERE tag = 'deletion_offered' AND status != 'closed') AS deletion_offered,
+        COUNT(*) FILTER (WHERE tag = 'deletion_agreed' AND status != 'closed') AS deletion_agreed,
+        COUNT(*) FILTER (WHERE tag = 'deletion_confirmed' AND status != 'closed') AS deletion_confirmed,
+        COUNT(*) FILTER (WHERE tag = 'refund_requested' AND status != 'closed') AS refund_requested
+      FROM chats
+      WHERE store_id IN (SELECT id FROM active_store_ids)
+    )
+    SELECT * FROM store_stats, product_stats, review_stats, chat_stats
+  `;
+
+  const result = await query(sql);
+  const row = result.rows[0];
+
+  const toNum = (v: any) => parseInt(v, 10) || 0;
+
+  const activeProducts = toNum(row.active_products);
+  const totalProducts = toNum(row.total_products);
+  const negativeReviews = toNum(row.negative_reviews);
+  const negativeWithComplaints = toNum(row.negative_with_complaints);
+
+  return {
+    stores: {
+      active: toNum(row.active_stores),
+      newThisMonth: toNum(row.new_stores_this_month),
+      total: toNum(row.total_stores),
+    },
+    products: {
+      active: activeProducts,
+      total: totalProducts,
+      activePercent: totalProducts > 0 ? Math.round((activeProducts / totalProducts) * 100) : 0,
+    },
+    reviews: {
+      total: toNum(row.total_reviews),
+      negative: negativeReviews,
+      withComplaints: negativeWithComplaints,
+      complaintPercent: negativeReviews > 0 ? Math.round((negativeWithComplaints / negativeReviews) * 100) : 0,
+    },
+    chats: {
+      total: toNum(row.total_chats),
+      activeDeletion: toNum(row.active_deletion_chats),
+      breakdown: {
+        deletion_candidate: toNum(row.deletion_candidates),
+        deletion_offered: toNum(row.deletion_offered),
+        deletion_agreed: toNum(row.deletion_agreed),
+        deletion_confirmed: toNum(row.deletion_confirmed),
+        refund_requested: toNum(row.refund_requested),
+      },
+    },
+  };
+}
