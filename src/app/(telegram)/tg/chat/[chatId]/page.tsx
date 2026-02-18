@@ -344,37 +344,39 @@ export default function TgChatPage() {
             ⏳ Генерация ИИ-ответа...
           </div>
         ) : (
-          <textarea
-            value={draftText}
-            onChange={e => {
-              setDraftText(e.target.value);
-              try { localStorage.setItem(`tg_draft_${chatId}`, e.target.value); } catch {}
-            }}
-            placeholder="Текст ответа..."
-            style={{
-              width: '100%',
-              minHeight: '80px',
-              maxHeight: '150px',
-              padding: '10px',
-              border: '1px solid rgba(0,0,0,0.12)',
-              borderRadius: '10px',
-              fontSize: '14px',
-              lineHeight: 1.4,
-              resize: 'vertical',
-              backgroundColor: 'var(--tg-secondary-bg)',
-              color: 'var(--tg-text)',
-              fontFamily: 'inherit',
-              boxSizing: 'border-box',
-            }}
-          />
-          <div style={{
-            textAlign: 'right',
-            fontSize: '11px',
-            marginTop: '2px',
-            color: draftText.length > 900 ? '#ef4444' : 'var(--tg-hint)',
-          }}>
-            {draftText.length}/1000
-          </div>
+          <>
+            <textarea
+              value={draftText}
+              onChange={e => {
+                setDraftText(e.target.value);
+                try { localStorage.setItem(`tg_draft_${chatId}`, e.target.value); } catch {}
+              }}
+              placeholder="Текст ответа..."
+              style={{
+                width: '100%',
+                minHeight: '80px',
+                maxHeight: '150px',
+                padding: '10px',
+                border: '1px solid rgba(0,0,0,0.12)',
+                borderRadius: '10px',
+                fontSize: '14px',
+                lineHeight: 1.4,
+                resize: 'vertical',
+                backgroundColor: 'var(--tg-secondary-bg)',
+                color: 'var(--tg-text)',
+                fontFamily: 'inherit',
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{
+              textAlign: 'right',
+              fontSize: '11px',
+              marginTop: '2px',
+              color: draftText.length > 900 ? '#ef4444' : 'var(--tg-hint)',
+            }}>
+              {draftText.length}/1000
+            </div>
+          </>
         )}
 
         {/* Feedback */}
