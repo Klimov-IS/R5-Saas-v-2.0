@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useTelegramAuth } from '@/lib/telegram-auth-context';
 
@@ -50,6 +50,7 @@ export default function TgChatPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Haptic feedback helper
   const haptic = useCallback((type: 'success' | 'error' | 'warning') => {
@@ -133,20 +134,33 @@ export default function TgChatPage() {
     fetchChat();
   }, [fetchChat]);
 
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const [messageSent, setMessageSent] = useState(false);
 
   // Send message
   const handleSend = async () => {
     if (!draftText.trim() || isSending) return;
+    const sentText = draftText.trim();
     setIsSending(true);
     setFeedback(null);
     try {
       const response = await apiFetch(`/api/telegram/chats/${chatId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: draftText.trim() }),
+        body: JSON.stringify({ message: sentText }),
       });
       if (!response.ok) throw new Error('Failed to send');
+      // Optimistic update: show sent message immediately without waiting for sync
+      setMessages(prev => [...prev, {
+        id: `optimistic-${Date.now()}`,
+        text: sentText,
+        sender: 'seller' as const,
+        timestamp: new Date().toISOString(),
+      }]);
       haptic('success');
       setFeedback('✅ Отправлено');
       setMessageSent(true);
@@ -268,7 +282,7 @@ export default function TgChatPage() {
         padding: '12px 14px',
         backgroundColor: 'var(--tg-secondary-bg)',
       }}>
-        {messages.slice(-10).map(msg => (
+        {messages.slice(-15).map(msg => (
           <div
             key={msg.id}
             style={{
@@ -302,6 +316,7 @@ export default function TgChatPage() {
             </div>
           </div>
         ))}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Draft area */}

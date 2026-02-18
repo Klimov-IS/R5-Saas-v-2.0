@@ -212,18 +212,13 @@ export async function getUnifiedChatQueue(
     : storeIds;
   if (effectiveStoreIds.length === 0) return [];
 
-  const conditions: string[] = [
-    'c.store_id = ANY($1::text[])',
-    "s.status = 'active'",
-    // WB: require active product rule; OZON: only seller-initiated chats (product_nm_id = context.sku)
-    "(pr.work_in_chats = TRUE OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL))",
-  ];
+  // UNION approach: separate WB and OZON branches to avoid scanning 317K OZON chats
+  // WB: INNER JOIN products+rules (only chats with work_in_chats=TRUE)
+  // OZON: no product join needed — seller-initiated = product_nm_id IS NOT NULL
   const params: any[] = [effectiveStoreIds];
-
-  if (status && status !== 'all') {
-    params.push(status);
-    conditions.push(`c.status = $${params.length}`);
-  }
+  const statusCondition = (status && status !== 'all')
+    ? (() => { params.push(status); return `AND c.status = $${params.length}`; })()
+    : '';
 
   params.push(limit);
   const limitIdx = params.length;
@@ -231,19 +226,37 @@ export async function getUnifiedChatQueue(
   const offsetIdx = params.length;
 
   const result = await query<QueueChat>(
-    `SELECT
-       c.id, c.store_id, s.name as store_name, c.marketplace,
-       c.client_name, c.product_name, c.product_nm_id,
-       c.last_message_text, c.last_message_date, c.last_message_sender,
-       c.draft_reply, c.status, c.tag, c.completion_reason
-     FROM chats c
-     JOIN stores s ON c.store_id = s.id
-     LEFT JOIN products p ON p.store_id = c.store_id
-       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
-         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
-     LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY c.last_message_date DESC NULLS LAST
+    `(
+       SELECT
+         c.id, c.store_id, s.name as store_name, c.marketplace,
+         c.client_name, c.product_name, c.product_nm_id,
+         c.last_message_text, c.last_message_date, c.last_message_sender,
+         c.draft_reply, c.status, c.tag, c.completion_reason
+       FROM chats c
+       JOIN stores s ON c.store_id = s.id
+       JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+       JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
+       WHERE c.store_id = ANY($1::text[])
+         AND c.marketplace = 'wb'
+         AND s.status = 'active'
+         ${statusCondition}
+     )
+     UNION ALL
+     (
+       SELECT
+         c.id, c.store_id, s.name as store_name, c.marketplace,
+         c.client_name, c.product_name, c.product_nm_id,
+         c.last_message_text, c.last_message_date, c.last_message_sender,
+         c.draft_reply, c.status, c.tag, c.completion_reason
+       FROM chats c
+       JOIN stores s ON c.store_id = s.id
+       WHERE c.store_id = ANY($1::text[])
+         AND c.marketplace = 'ozon'
+         AND c.product_nm_id IS NOT NULL
+         AND s.status = 'active'
+         ${statusCondition}
+     )
+     ORDER BY last_message_date DESC NULLS LAST
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     params
   );
@@ -265,28 +278,37 @@ export async function getUnifiedChatQueueCount(
     : storeIds;
   if (effectiveStoreIds.length === 0) return 0;
 
-  const conditions: string[] = [
-    'c.store_id = ANY($1::text[])',
-    "s.status = 'active'",
-    // WB: require active product rule; OZON: only seller-initiated chats (product_nm_id = context.sku)
-    "(pr.work_in_chats = TRUE OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL))",
-  ];
+  // UNION approach: same split as getUnifiedChatQueue for consistency
   const params: any[] = [effectiveStoreIds];
-
-  if (status && status !== 'all') {
-    params.push(status);
-    conditions.push(`c.status = $${params.length}`);
-  }
+  const statusCondition = (status && status !== 'all')
+    ? (() => { params.push(status); return `AND c.status = $${params.length}`; })()
+    : '';
 
   const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count
-     FROM chats c
-     JOIN stores s ON c.store_id = s.id
-     LEFT JOIN products p ON p.store_id = c.store_id
-       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
-         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
-     LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE ${conditions.join(' AND ')}`,
+    `SELECT COUNT(*) as count FROM (
+       (
+         SELECT c.id
+         FROM chats c
+         JOIN stores s ON c.store_id = s.id
+         JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+         JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
+         WHERE c.store_id = ANY($1::text[])
+           AND c.marketplace = 'wb'
+           AND s.status = 'active'
+           ${statusCondition}
+       )
+       UNION ALL
+       (
+         SELECT c.id
+         FROM chats c
+         JOIN stores s ON c.store_id = s.id
+         WHERE c.store_id = ANY($1::text[])
+           AND c.marketplace = 'ozon'
+           AND c.product_nm_id IS NOT NULL
+           AND s.status = 'active'
+           ${statusCondition}
+       )
+     ) t`,
     params
   );
   return parseInt(result.rows[0]?.count || '0', 10);
@@ -308,17 +330,29 @@ export async function getUnifiedChatQueueCountsByStatus(
   if (effectiveStoreIds.length === 0) return { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 };
 
   const result = await query<{ status: string; count: string }>(
-    `SELECT c.status, COUNT(*) as count
-     FROM chats c
-     JOIN stores s ON c.store_id = s.id
-     LEFT JOIN products p ON p.store_id = c.store_id
-       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
-         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
-     LEFT JOIN product_rules pr ON p.id = pr.product_id
-     WHERE c.store_id = ANY($1::text[])
-       AND s.status = 'active'
-       AND (pr.work_in_chats = TRUE OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL))
-     GROUP BY c.status`,
+    `SELECT status, COUNT(*) as count FROM (
+       (
+         SELECT c.status
+         FROM chats c
+         JOIN stores s ON c.store_id = s.id
+         JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+         JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
+         WHERE c.store_id = ANY($1::text[])
+           AND c.marketplace = 'wb'
+           AND s.status = 'active'
+       )
+       UNION ALL
+       (
+         SELECT c.status
+         FROM chats c
+         JOIN stores s ON c.store_id = s.id
+         WHERE c.store_id = ANY($1::text[])
+           AND c.marketplace = 'ozon'
+           AND c.product_nm_id IS NOT NULL
+           AND s.status = 'active'
+       )
+     ) t
+     GROUP BY status`,
     [effectiveStoreIds]
   );
 

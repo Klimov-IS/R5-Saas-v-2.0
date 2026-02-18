@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTelegramAuth } from '@/lib/telegram-auth-context';
 import TgQueueCard from '@/components/telegram/TgQueueCard';
@@ -44,12 +44,25 @@ export default function TgQueuePage() {
     return new URLSearchParams(window.location.search).get('dev_user');
   }, []);
   const { isLoading: authLoading, isAuthenticated, isLinked, error: authError, apiFetch, stores } = useTelegramAuth();
-  const [queue, setQueue] = useState<QueueItem[]>([]);
+  // Restore last known queue items from sessionStorage to prevent blank state on navigation back
+  const [queue, setQueue] = useState<QueueItem[]>(() => {
+    try {
+      const status = sessionStorage.getItem('tg_active_status') || 'inbox';
+      const saved = sessionStorage.getItem(`tg_queue_items_${status}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   // Restore last known counts from sessionStorage to prevent flash-to-zero on navigation
   const [totalCount, setTotalCount] = useState<number>(() => {
     try { return parseInt(sessionStorage.getItem('tg_total_count') || '0', 10); } catch { return 0; }
   });
-  const [isLoading, setIsLoading] = useState(true);
+  // If we have cached items, skip loading state to show them immediately
+  const [isLoading, setIsLoading] = useState(() => {
+    try {
+      const status = sessionStorage.getItem('tg_active_status') || 'inbox';
+      return !sessionStorage.getItem(`tg_queue_items_${status}`);
+    } catch { return true; }
+  });
   const [error, setError] = useState<string | null>(null);
 
   // Status tabs
@@ -141,10 +154,11 @@ export default function TgQueuePage() {
       setQueue(data.data || []);
       setTotalCount(data.totalCount || 0);
       setStatusCounts(data.statusCounts || {});
-      // Cache counts in sessionStorage to restore on next mount (prevents flash-to-zero)
+      // Cache in sessionStorage to restore on next mount (prevents blank state on navigation back)
       try {
         sessionStorage.setItem('tg_total_count', String(data.totalCount || 0));
         sessionStorage.setItem('tg_status_counts', JSON.stringify(data.statusCounts || {}));
+        sessionStorage.setItem(`tg_queue_items_${activeStatus}`, JSON.stringify(data.data || []));
       } catch {}
     } catch (err: any) {
       setError(err.message);
@@ -167,6 +181,26 @@ export default function TgQueuePage() {
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [isAuthenticated, isLinked, fetchQueue]);
+
+  // When tab changes: restore cached items for new status or show loading
+  const prevStatusRef = useRef(activeStatus);
+  useEffect(() => {
+    if (prevStatusRef.current === activeStatus) return; // skip on mount
+    prevStatusRef.current = activeStatus;
+    try {
+      const saved = sessionStorage.getItem(`tg_queue_items_${activeStatus}`);
+      if (saved) {
+        setQueue(JSON.parse(saved));
+        setIsLoading(false);
+      } else {
+        setQueue([]);
+        setIsLoading(true);
+      }
+    } catch {
+      setQueue([]);
+      setIsLoading(true);
+    }
+  }, [activeStatus]);
 
   // Reset selection mode when tab or store filter changes
   useEffect(() => {
@@ -540,8 +574,8 @@ export default function TgQueuePage() {
         })}
       </div>
 
-      {/* Loading state */}
-      {isLoading && (
+      {/* Loading state: show skeletons only when no cached items to display */}
+      {isLoading && sortedQueue.length === 0 && (
         <div>
           {[1, 2, 3].map(i => (
             <div key={i} style={{
@@ -581,7 +615,7 @@ export default function TgQueuePage() {
       )}
 
       {/* Empty state */}
-      {!isLoading && !error && sortedQueue.length === 0 && (
+      {!isLoading && !error && sortedQueue.length === 0 && !authLoading && (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh', padding: '20px' }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>
@@ -612,8 +646,8 @@ export default function TgQueuePage() {
         </div>
       )}
 
-      {/* Cards */}
-      {!isLoading && !error && sortedQueue.map(item => (
+      {/* Cards: show whenever we have items, even during background refresh */}
+      {!error && sortedQueue.map(item => (
         <TgQueueCard
           key={item.id}
           {...item}
