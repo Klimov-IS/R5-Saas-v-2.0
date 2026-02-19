@@ -33,12 +33,20 @@ const REVIEW_STATUS_OPTIONS = [
   { value: 'deleted', label: 'Удалён' },
 ];
 
+const CHAT_STATUS_OPTIONS = [
+  { value: 'unavailable', label: 'Недоступен' },
+  { value: 'available', label: 'Доступен' },
+  { value: 'opened', label: 'Открыт' },
+  { value: 'unknown', label: 'Неизвестно' },
+];
+
 export type FilterState = {
   search: string;
   ratings: number[];
   complaintStatuses: string[];  // [] = all
   productStatuses: string[];    // [] = all
   reviewStatusesWB: string[];   // [] = all
+  chatStatuses: string[];       // [] = all
   productIds: string[];         // [] = all products, array of nm_ids
 };
 
@@ -266,6 +274,17 @@ export const FilterCard: React.FC<Props> = ({
             options={REVIEW_STATUS_OPTIONS}
             selected={filters.reviewStatusesWB}
             onChange={(selected) => updateFilter('reviewStatusesWB', selected)}
+            allLabel="Все статусы"
+          />
+        </div>
+
+        {/* Chat Status */}
+        <div className="dropdown-group">
+          <label className="filter-label">Статус чата</label>
+          <MultiSelectDropdown
+            options={CHAT_STATUS_OPTIONS}
+            selected={filters.chatStatuses}
+            onChange={(selected) => updateFilter('chatStatuses', selected)}
             allLabel="Все статусы"
           />
         </div>

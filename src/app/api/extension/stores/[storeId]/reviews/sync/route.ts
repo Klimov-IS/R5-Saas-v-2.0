@@ -21,7 +21,7 @@ interface ReviewSyncPayload {
     // Extension-parsed statuses
     review_status_wb: 'visible' | 'unpublished' | 'excluded' | 'deleted' | 'unknown';
     product_status_by_review: 'purchased' | 'refused' | 'not_specified' | 'unknown';
-    chat_status_by_review: 'unavailable' | 'available' | 'unknown';
+    chat_status_by_review: 'unavailable' | 'available' | 'opened' | 'unknown';
     complaint_status: 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending';
 
     parsed_at: string;

@@ -27,6 +27,7 @@ interface ReviewStatusInput {
   reviewDate: string;       // ISO 8601 datetime
   statuses: string[];       // Array of status strings from WB
   canSubmitComplaint: boolean;
+  chatStatus?: string | null; // chat_not_activated | chat_available | chat_opened | null
 }
 
 interface PostRequestBody {
@@ -50,6 +51,18 @@ const COMPLAINT_STATUS_MAP: Record<string, string> = {
 
 // All complaint statuses that should clear drafts
 const COMPLAINT_STATUSES = Object.keys(COMPLAINT_STATUS_MAP);
+
+// Extension chatStatus → DB chat_status_by_review ENUM
+const CHAT_STATUS_MAP: Record<string, string> = {
+  'chat_not_activated': 'unavailable',
+  'chat_available': 'available',
+  'chat_opened': 'opened',
+};
+
+function mapChatStatus(extensionStatus: string | null | undefined): string | null {
+  if (!extensionStatus) return null;
+  return CHAT_STATUS_MAP[extensionStatus] || null;
+}
 
 /**
  * Get complaint_status from array of WB statuses
@@ -243,16 +256,17 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // UPSERT query
+        // UPSERT query (includes chat_status from extension)
         const result = await query(
           `INSERT INTO review_statuses_from_extension
-            (review_key, store_id, product_id, rating, review_date, statuses, can_submit_complaint, parsed_at)
+            (review_key, store_id, product_id, rating, review_date, statuses, can_submit_complaint, chat_status, parsed_at)
           VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8)
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           ON CONFLICT (review_key, store_id)
           DO UPDATE SET
             statuses = EXCLUDED.statuses,
             can_submit_complaint = EXCLUDED.can_submit_complaint,
+            chat_status = EXCLUDED.chat_status,
             parsed_at = EXCLUDED.parsed_at,
             updated_at = CURRENT_TIMESTAMP
           RETURNING (xmax = 0) as is_insert`,
@@ -264,6 +278,7 @@ export async function POST(request: NextRequest) {
             review.reviewDate,
             JSON.stringify(review.statuses || []),
             review.canSubmitComplaint ?? true,
+            review.chatStatus || null,
             parsedAt
           ]
         );
@@ -285,28 +300,54 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Extension ReviewStatuses] ✅ Processed: created=${created}, updated=${updated}, errors=${errors}`);
 
-    // 5. Sync statuses to reviews table
+    // 5. Sync statuses to reviews table (complaint statuses + chat statuses)
     let synced = 0;
+    let chatStatusSynced = 0;
     let syncErrors = 0;
     const syncErrorDetails: { reviewKey: string; error: string }[] = [];
 
     for (const review of reviews) {
-      // Skip if no statuses or missing required fields
-      if (!review.statuses || !review.productId || !review.rating || !review.reviewDate) {
+      // Skip if missing required fields
+      if (!review.productId || !review.rating || !review.reviewDate) {
         continue;
       }
 
-      // Check if review has any complaint status
-      if (!hasAnyComplaintStatus(review.statuses)) {
-        continue; // No complaint status, nothing to sync
+      const reviewsProductId = `${storeId}_${review.productId}`;
+
+      // 5a. Sync chat_status_by_review (always, if present)
+      const mappedChatStatus = mapChatStatus(review.chatStatus);
+      if (mappedChatStatus) {
+        try {
+          const chatSyncResult = await query(
+            `UPDATE reviews
+             SET
+               chat_status_by_review = $1::chat_status_by_review,
+               updated_at = NOW()
+             WHERE
+               store_id = $2
+               AND product_id = $3
+               AND rating = $4
+               AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
+             RETURNING id`,
+            [mappedChatStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
+          );
+          if (chatSyncResult.rowCount && chatSyncResult.rowCount > 0) {
+            chatStatusSynced++;
+          }
+        } catch (err: any) {
+          // Non-critical: log but don't count as sync error
+          console.error(`[Extension ReviewStatuses] ❌ Chat status sync error for ${review.reviewKey}:`, err.message);
+        }
+      }
+
+      // 5b. Sync complaint statuses (only if complaint status present)
+      if (!review.statuses || !hasAnyComplaintStatus(review.statuses)) {
+        continue;
       }
 
       try {
         const complaintStatus = getComplaintStatusFromStatuses(review.statuses);
         if (!complaintStatus) continue;
-
-        // Build product_id in reviews table format: {store_id}_{wb_product_id}
-        const reviewsProductId = `${storeId}_${review.productId}`;
 
         // Update reviews table:
         // - Set complaint_status
@@ -354,7 +395,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, syncErrors=${syncErrors}`);
+    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, chatStatusSynced=${chatStatusSynced}, syncErrors=${syncErrors}`);
 
     // 6. Return response
     const response: any = {
@@ -366,6 +407,7 @@ export async function POST(request: NextRequest) {
         errors,
         // Sync to reviews table
         synced,
+        chatStatusSynced,
         syncErrors
       },
       message: 'Статусы успешно синхронизированы'
@@ -509,6 +551,7 @@ export async function GET(request: NextRequest) {
         review_date,
         statuses,
         can_submit_complaint,
+        chat_status,
         parsed_at,
         created_at,
         updated_at
@@ -546,6 +589,7 @@ export async function GET(request: NextRequest) {
           reviewDate: row.review_date,
           statuses: row.statuses,
           canSubmitComplaint: row.can_submit_complaint,
+          chatStatus: row.chat_status,
           parsedAt: row.parsed_at,
           createdAt: row.created_at,
           updatedAt: row.updated_at

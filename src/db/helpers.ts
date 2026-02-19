@@ -1577,6 +1577,19 @@ function buildReviewFilterClauses(
     }
   }
 
+  if (options?.chatStatusByReview && options.chatStatusByReview !== 'all') {
+    const statuses = options.chatStatusByReview.split(',').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      whereClauses.push(`r.chat_status_by_review = $${paramIndex}`);
+      params.push(statuses[0]);
+      paramIndex++;
+    } else if (statuses.length > 1) {
+      whereClauses.push(`r.chat_status_by_review = ANY($${paramIndex})`);
+      params.push(statuses);
+      paramIndex++;
+    }
+  }
+
   return { whereClauses, params, nextParamIndex: paramIndex };
 }
 
@@ -1597,6 +1610,7 @@ export type ReviewsFilterOptions = {
   reviewStatusWB?: string; // 'all' | 'visible' | 'unpublished' | 'excluded'
   productStatusByReview?: string; // 'all' | 'purchased' | 'refused' | 'not_specified'
   complaintStatus?: string; // 'all' | 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending'
+  chatStatusByReview?: string; // 'all' | 'unavailable' | 'available' | 'opened' | 'unknown' (supports comma-separated)
 };
 
 export type ReviewsWithCount = {

@@ -33,7 +33,7 @@ export interface ExtensionReview {
   // ⚠️ Статусы приходят на английском из расширения!
   review_status_wb: 'visible' | 'unpublished' | 'excluded' | 'unknown';
   product_status_by_review: 'purchased' | 'refused' | 'not_specified' | 'unknown';
-  chat_status_by_review: 'available' | 'unavailable' | 'unknown';
+  chat_status_by_review: 'available' | 'unavailable' | 'opened' | 'unknown';
   complaint_status: 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending';
 
   parsed_at: string;

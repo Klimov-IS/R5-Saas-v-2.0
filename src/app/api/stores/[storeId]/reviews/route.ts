@@ -70,6 +70,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
     const reviewStatusWB = searchParams.get('reviewStatusWB') || 'all';
     const productStatusByReview = searchParams.get('productStatusByReview') || 'all';
     const complaintStatus = searchParams.get('complaintStatus') || 'all';
+    const chatStatusByReview = searchParams.get('chatStatusByReview') || 'all';
 
     try {
         // Get reviews with pagination, filters, AND total count in single optimized query
@@ -86,7 +87,8 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             search,
             reviewStatusWB,
             productStatusByReview,
-            complaintStatus
+            complaintStatus,
+            chatStatusByReview
         });
 
         // Format response (match old API structure with snake_case for consistency with Review type)

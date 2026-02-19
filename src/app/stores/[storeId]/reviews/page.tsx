@@ -45,6 +45,7 @@ async function fetchReviewsData(
     complaintStatus: filters.complaintStatuses.length > 0 ? filters.complaintStatuses.join(',') : 'all',
     productStatus: filters.productStatuses.length > 0 ? filters.productStatuses.join(',') : 'all',
     reviewStatusWB: filters.reviewStatusesWB.length > 0 ? filters.reviewStatusesWB.join(',') : 'all',
+    chatStatusByReview: filters.chatStatuses.length > 0 ? filters.chatStatuses.join(',') : 'all',
     search: filters.search,
     productIds: filters.productIds && filters.productIds.length > 0 ? filters.productIds.join(',') : 'all',
   });

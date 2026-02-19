@@ -19,8 +19,9 @@ export type ProductStatusByReview =
 
 // Chat availability status
 export type ChatStatusByReview =
-  | 'unavailable'  // Недоступен
-  | 'available'    // Доступен
+  | 'unavailable'  // Недоступен (кнопка disabled)
+  | 'available'    // Доступен (серая кнопка — можно открыть)
+  | 'opened'       // Открыт (чёрная кнопка — чат уже существует)
   | 'unknown';     // Неизвестно
 
 // Complaint processing status
@@ -107,7 +108,15 @@ export const PRODUCT_STATUS_LABELS: Record<ProductStatusByReview, string> = {
 export const CHAT_STATUS_LABELS: Record<ChatStatusByReview, string> = {
   unavailable: 'Чат: Недоступен',
   available: 'Чат: Доступен',
+  opened: 'Чат: Открыт',
   unknown: 'Чат: Неизвестно',
+};
+
+export const CHAT_STATUS_COLORS: Record<ChatStatusByReview, { bg: string; color: string; border: string }> = {
+  unavailable: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  available: { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
+  opened: { bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' },
+  unknown: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
 };
 
 export const COMPLAINT_STATUS_LABELS: Record<ComplaintStatus, string> = {

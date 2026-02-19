@@ -21,6 +21,7 @@ export type FilterState = {
   complaintStatuses: string[];
   productStatuses: string[];
   reviewStatusesWB: string[];
+  chatStatuses: string[];
   productIds: string[]; // Array of selected product nm_ids
 };
 
@@ -31,6 +32,7 @@ export const DEFAULT_FILTERS: FilterState = {
   complaintStatuses: [],  // [] = all statuses
   productStatuses: ['active'], // DEFAULT: active only
   reviewStatusesWB: [], // [] = all statuses
+  chatStatuses: [], // [] = all statuses
   productIds: [], // [] = all products
 };
 
@@ -60,6 +62,9 @@ export function getActiveFilterCount(filters: FilterState): number {
 
   // Review WB status is active if any selected
   if (filters.reviewStatusesWB.length > 0) count++;
+
+  // Chat status is active if any selected
+  if (filters.chatStatuses.length > 0) count++;
 
   // Product IDs is active if any selected
   if (filters.productIds && filters.productIds.length > 0) count++;
