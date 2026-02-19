@@ -93,11 +93,14 @@ export async function GET(
 
     // 3. Запрос жалоб с JOIN
     console.log(`[Extension Complaints] 🔍 Поиск жалоб в БД...`);
+    const startTime = Date.now();
 
     // IMPORTANT: Filter by BOTH rc.status AND r.complaint_status
     // rc.status='draft' means AI generated complaint text
     // r.complaint_status must be 'not_sent' or 'draft' (not already submitted to WB)
     // Exclude: 'rejected', 'approved', 'pending', 'reconsidered', 'sent'
+    // NOTE: rc.store_id = $1 is redundant with r.store_id = $1 but enables
+    // PostgreSQL to use idx_complaints_store_draft index for direct store lookup
     const complaintsResult = await query(
       `SELECT
         r.id,
@@ -109,11 +112,12 @@ export async function GET(
         rc.reason_id,
         rc.reason_name,
         rc.complaint_text
-      FROM reviews r
-      JOIN review_complaints rc ON r.id = rc.review_id
+      FROM review_complaints rc
+      JOIN reviews r ON r.id = rc.review_id
       JOIN products p ON r.product_id = p.id
-      WHERE r.store_id = $1
+      WHERE rc.store_id = $1
         AND rc.status = 'draft'
+        AND r.store_id = $1
         AND r.rating = ANY($2)
         AND p.work_status = 'active'
         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
@@ -125,51 +129,43 @@ export async function GET(
 
     const complaintsData = complaintsResult.rows;
 
-    console.log(`[Extension Complaints] ✅ Найдено ${complaintsData.length} жалоб`);
-
-    // 4. Статистика по рейтингам (только активные продукты + валидный статус жалобы)
-    const byRatingResult = await query<{ rating: number; count: string }>(
-      `SELECT r.rating, COUNT(*) as count
-       FROM reviews r
-       JOIN review_complaints rc ON r.id = rc.review_id
+    // 4. Stats: rating + article in a single query (one scan instead of two)
+    // Returns (rating, wb_product_id, count) grouped pairs — aggregated in JS
+    const statsResult = await query<{ rating: number; wb_product_id: string; count: string }>(
+      `SELECT r.rating, p.wb_product_id, COUNT(*) as count
+       FROM review_complaints rc
+       JOIN reviews r ON r.id = rc.review_id
        JOIN products p ON r.product_id = p.id
-       WHERE r.store_id = $1
+       WHERE rc.store_id = $1
          AND rc.status = 'draft'
+         AND r.store_id = $1
          AND p.work_status = 'active'
          AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
          AND r.review_status_wb != 'deleted'
-       GROUP BY r.rating`,
+       GROUP BY r.rating, p.wb_product_id`,
       [storeId]
     );
 
+    // Aggregate stats in JS from the single grouped result
     const ratingStats: Record<string, number> = {};
-    byRatingResult.rows.forEach(({ rating, count }) => {
-      ratingStats[rating.toString()] = parseInt(count, 10);
-    });
-
-    // 5. Статистика по артикулам (только активные продукты + валидный статус жалобы)
-    const byArticleResult = await query<{ wb_product_id: string; count: string }>(
-      `SELECT p.wb_product_id, COUNT(*) as count
-       FROM reviews r
-       JOIN review_complaints rc ON r.id = rc.review_id
-       JOIN products p ON r.product_id = p.id
-       WHERE r.store_id = $1
-         AND rc.status = 'draft'
-         AND p.work_status = 'active'
-         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-         AND r.review_status_wb != 'deleted'
-       GROUP BY p.wb_product_id
-       ORDER BY count DESC
-       LIMIT 20`,
-      [storeId]
-    );
-
-    const articleStats: Record<string, number> = {};
-    byArticleResult.rows.forEach(({ wb_product_id, count }) => {
-      if (wb_product_id) {
-        articleStats[wb_product_id] = parseInt(count, 10);
+    const articleTotals: Record<string, number> = {};
+    for (const row of statsResult.rows) {
+      const r = row.rating.toString();
+      const cnt = parseInt(row.count, 10);
+      ratingStats[r] = (ratingStats[r] || 0) + cnt;
+      if (row.wb_product_id) {
+        articleTotals[row.wb_product_id] = (articleTotals[row.wb_product_id] || 0) + cnt;
       }
-    });
+    }
+    // Top 20 articles by count
+    const articleStats: Record<string, number> = {};
+    Object.entries(articleTotals)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .forEach(([key, val]) => { articleStats[key] = val; });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[Extension Complaints] ✅ Найдено ${complaintsData.length} жалоб (${elapsed}ms, stats groups: ${statsResult.rows.length})`);
 
     // 6. Форматирование ответа
     const response = {
