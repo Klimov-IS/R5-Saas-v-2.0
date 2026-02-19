@@ -375,11 +375,17 @@ export async function getChatRulesForStore(
 
 /**
  * Try to extract WB chat ID from a chat URL.
- * Pattern: https://seller.wildberries.ru/feedback-and-questions/chats/{chatId}
+ * Supports two WB URL formats:
+ *   - /feedback-and-questions/chats/{chatId}
+ *   - /chat-with-clients?chatId={chatId}
  */
 export function extractChatIdFromUrl(chatUrl: string): string | null {
-  const match = chatUrl.match(/\/chats\/([^/?#]+)/);
-  return match?.[1] || null;
+  // Format 1: path-based /chats/{uuid}
+  const pathMatch = chatUrl.match(/\/chats\/([^/?#]+)/);
+  if (pathMatch?.[1]) return pathMatch[1];
+  // Format 2: query param ?chatId={uuid}
+  const paramMatch = chatUrl.match(/[?&]chatId=([^&#]+)/);
+  return paramMatch?.[1] || null;
 }
 
 /**
