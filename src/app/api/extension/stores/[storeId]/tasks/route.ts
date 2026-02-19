@@ -6,21 +6,29 @@
  * Returns ALL work items for a store, grouped by article (nmId).
  * The backend is the "brain" — extension just executes.
  *
- * 4 task types:
+ * 3 task types:
  *   - statusParses:  reviews needing full status parsing (chat/complaint/review statuses)
- *   - chatOpens:     reviews where complaint rejected + chat available → open new chat
- *   - chatLinks:     reviews where chat already opened but not linked in our DB
+ *   - chatOpens:     reviews needing chat action (type: "open" = new chat, "link" = bind existing)
  *   - complaints:    reviews with ready AI-generated complaint drafts
  *
  * Auth: Bearer token (user_settings.api_key)
  *
- * @version 1.0.0
+ * @version 1.1.0
  * @date 2026-02-19
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/db/client';
 import { getUserByApiToken } from '@/db/extension-helpers';
+
+// Helper: build reviewKey for DOM matching (nmId_rating_dateMinute)
+function buildReviewKey(nmId: string, rating: number, date: string): string {
+  // Truncate to minute: "2026-01-15T10:30:37.000Z" → "2026-01-15T10:30"
+  const d = new Date(date);
+  const iso = d.toISOString(); // "2026-01-15T10:30:37.000Z"
+  const minuteTrunc = iso.slice(0, 16); // "2026-01-15T10:30"
+  return `${nmId}_${rating}_${minuteTrunc}`;
+}
 
 // ============================================================================
 // GET /api/extension/stores/{storeId}/tasks
@@ -72,11 +80,12 @@ export async function GET(
       );
     }
 
-    // 3. Run all 4 queries in parallel
+    // 3. Run all 3 queries in parallel
     const [statusParsesResult, chatOpensResult, chatLinksResult, complaintsResult] = await Promise.all([
       // ── Query A: statusParses ──
       // Reviews that haven't been parsed by extension yet (chat_status unknown/null).
       // Only reviews matching product rules (complaint or chat ratings).
+      // Sorted by date ASC = oldest first (priority: parse stale reviews first).
       query<{
         id: string;
         wb_product_id: string;
@@ -113,13 +122,14 @@ export async function GET(
                (r.rating = 4 AND pr.chat_rating_4 = TRUE)
              ))
            )
-         ORDER BY p.wb_product_id, r.date DESC
+         ORDER BY p.wb_product_id, r.date ASC
          LIMIT 500`,
         [storeId]
       ),
 
-      // ── Query B: chatOpens ──
+      // ── Query B: chatOpens (type: "open") ──
       // Reviews where complaint was rejected, chat is available, no existing link.
+      // Sorted by date ASC = oldest rejected complaints first.
       query<{
         id: string;
         wb_product_id: string;
@@ -155,13 +165,14 @@ export async function GET(
                AND rcl.review_date BETWEEN r.date - interval '2 minutes'
                                         AND r.date + interval '2 minutes'
            )
-         ORDER BY r.id, p.wb_product_id, r.date DESC
+         ORDER BY r.id, r.date ASC
          LIMIT 200`,
         [storeId]
       ),
 
-      // ── Query C: chatLinks ──
+      // ── Query C: chatLinks (type: "link") ──
       // Reviews where chat is already opened but not linked in our DB.
+      // Sorted by date ASC = oldest unlinked chats first.
       query<{
         id: string;
         wb_product_id: string;
@@ -188,13 +199,14 @@ export async function GET(
                AND rcl.review_date BETWEEN r.date - interval '2 minutes'
                                         AND r.date + interval '2 minutes'
            )
-         ORDER BY p.wb_product_id, r.date DESC
+         ORDER BY p.wb_product_id, r.date ASC
          LIMIT 200`,
         [storeId]
       ),
 
       // ── Query D: complaints ──
       // Reviews with ready AI complaint drafts (existing logic from complaints endpoint).
+      // Sorted by date ASC = oldest reviews first.
       query<{
         id: string;
         wb_product_id: string;
@@ -217,24 +229,24 @@ export async function GET(
            AND p.work_status = 'active'
            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
            AND r.review_status_wb != 'deleted'
-         ORDER BY p.wb_product_id, r.date DESC
+         ORDER BY p.wb_product_id, r.date ASC
          LIMIT 500`,
         [storeId]
       ),
     ]);
 
     // 4. Group everything by article (nmId)
+    // chatOpens and chatLinks are merged into one array with type field
     const articles: Record<string, {
       nmId: string;
       statusParses: any[];
       chatOpens: any[];
-      chatLinks: any[];
       complaints: any[];
     }> = {};
 
     const ensureArticle = (nmId: string) => {
       if (!articles[nmId]) {
-        articles[nmId] = { nmId, statusParses: [], chatOpens: [], chatLinks: [], complaints: [] };
+        articles[nmId] = { nmId, statusParses: [], chatOpens: [], complaints: [] };
       }
       return articles[nmId];
     };
@@ -244,6 +256,7 @@ export async function GET(
       const article = ensureArticle(row.wb_product_id);
       article.statusParses.push({
         reviewId: row.id,
+        reviewKey: buildReviewKey(row.wb_product_id, row.rating, row.date),
         rating: row.rating,
         date: row.date,
         authorName: row.author,
@@ -254,11 +267,13 @@ export async function GET(
       });
     }
 
-    // chatOpens
+    // chatOpens (type: "open" — new chats to open)
     for (const row of chatOpensResult.rows) {
       const article = ensureArticle(row.wb_product_id);
       article.chatOpens.push({
+        type: 'open' as const,
         reviewId: row.id,
+        reviewKey: buildReviewKey(row.wb_product_id, row.rating, row.date),
         rating: row.rating,
         date: row.date,
         authorName: row.author,
@@ -266,11 +281,14 @@ export async function GET(
       });
     }
 
-    // chatLinks
+    // chatLinks (type: "link" — bind existing opened chats)
+    // Merged into chatOpens array, links go FIRST (higher priority — quick wins)
     for (const row of chatLinksResult.rows) {
       const article = ensureArticle(row.wb_product_id);
-      article.chatLinks.push({
+      article.chatOpens.unshift({
+        type: 'link' as const,
         reviewId: row.id,
+        reviewKey: buildReviewKey(row.wb_product_id, row.rating, row.date),
         rating: row.rating,
         date: row.date,
         authorName: row.author,
@@ -283,6 +301,7 @@ export async function GET(
       const article = ensureArticle(row.wb_product_id);
       article.complaints.push({
         reviewId: row.id,
+        reviewKey: buildReviewKey(row.wb_product_id, row.rating, row.date),
         rating: row.rating,
         text: row.text,
         authorName: row.author,
@@ -299,7 +318,8 @@ export async function GET(
 
     const totals = {
       statusParses: statusParsesResult.rows.length,
-      chatOpens: chatOpensResult.rows.length,
+      chatOpens: chatOpensResult.rows.length + chatLinksResult.rows.length,
+      chatOpensNew: chatOpensResult.rows.length,
       chatLinks: chatLinksResult.rows.length,
       complaints: complaintsResult.rows.length,
       articles: Object.keys(articles).length,
@@ -307,7 +327,7 @@ export async function GET(
 
     console.log(
       `[Extension Tasks] ✅ Задачи готовы (${elapsed}ms): ` +
-      `statusParses=${totals.statusParses}, chatOpens=${totals.chatOpens}, ` +
+      `statusParses=${totals.statusParses}, chatOpens=${totals.chatOpensNew}, ` +
       `chatLinks=${totals.chatLinks}, complaints=${totals.complaints}, ` +
       `articles=${totals.articles}`
     );
@@ -318,7 +338,9 @@ export async function GET(
       totals,
       limits: {
         maxChatsPerRun: 50,
+        maxComplaintsPerRun: 300,
         cooldownBetweenChatsMs: 3000,
+        cooldownBetweenComplaintsMs: 1000,
       },
     });
 
