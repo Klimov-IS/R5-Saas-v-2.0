@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       console.warn('[Extension Chat API] Review match failed:', err);
     }
 
-    // 5. Try to extract chat_id from URL
+    // 5. Extract chat_id from URL (FK dropped — stored directly as text reference)
     const chatId = extractChatIdFromUrl(chatUrl);
 
     // 6. Create or return existing link (idempotent)
@@ -118,7 +118,7 @@ export async function POST(request: NextRequest) {
 
     console.log(
       `[Extension Chat API] Chat ${created ? 'created' : 'exists'}: ` +
-      `store=${storeId} reviewKey=${reviewKey} reviewId=${reviewId || 'pending'} chatId=${chatId || 'pending'}`
+      `store=${storeId} reviewKey=${reviewKey} reviewId=${reviewId || 'pending'} chatId=${chatId || 'none'}`
     );
 
     return NextResponse.json(
