@@ -110,6 +110,11 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
             {review.review_status_wb !== 'unknown' && (
               <StatusBadge type="review_status" status={review.review_status_wb} />
             )}
+
+            {/* Chat status - hide if unknown */}
+            {review.chat_status_by_review && review.chat_status_by_review !== 'unknown' && (
+              <StatusBadge type="chat_status" status={review.chat_status_by_review} />
+            )}
           </div>
         </td>
 

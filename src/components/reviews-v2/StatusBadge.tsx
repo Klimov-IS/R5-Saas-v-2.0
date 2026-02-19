@@ -11,15 +11,19 @@ import {
   PRODUCT_STATUS_COLORS,
   COMPLAINT_STATUS_LABELS,
   COMPLAINT_STATUS_COLORS,
+  CHAT_STATUS_LABELS,
+  CHAT_STATUS_COLORS,
   type ReviewStatusWB,
   type ProductStatusByReview,
   type ComplaintStatus,
+  type ChatStatusByReview,
 } from '@/types/reviews';
 
 type Props =
   | { type: 'review_status'; status: ReviewStatusWB }
   | { type: 'product_status'; status: ProductStatusByReview }
-  | { type: 'complaint_status'; status: ComplaintStatus };
+  | { type: 'complaint_status'; status: ComplaintStatus }
+  | { type: 'chat_status'; status: ChatStatusByReview };
 
 export const StatusBadge: React.FC<Props> = ({ type, status }) => {
   let label: string;
@@ -37,6 +41,10 @@ export const StatusBadge: React.FC<Props> = ({ type, status }) => {
     case 'complaint_status':
       label = COMPLAINT_STATUS_LABELS[status];
       colors = COMPLAINT_STATUS_COLORS[status];
+      break;
+    case 'chat_status':
+      label = CHAT_STATUS_LABELS[status];
+      colors = CHAT_STATUS_COLORS[status];
       break;
   }
 
