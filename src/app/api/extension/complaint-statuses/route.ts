@@ -160,7 +160,7 @@ export async function POST(request: NextRequest) {
     // 4. Parse and validate all results, build bulk arrays
     const validItems: {
       productId: string; rating: number; dateMinute: string; dbStatus: string;
-      filedBy: string; complaintFiledDate: string | null;
+      filedBy: string | null; complaintFiledDate: string | null;
     }[] = [];
     const skipped: { reviewKey: string; reason: string }[] = [];
 
@@ -184,8 +184,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Normalize filedBy: "R5" → "r5", "Продавец" → "seller", missing → "r5" (default)
-      const filedBy = !item.filedBy || item.filedBy === 'R5' ? 'r5' : 'seller';
+      // Normalize filedBy: "R5" → "r5", "Продавец" → "seller", missing → null
+      const filedBy = item.filedBy === 'R5' ? 'r5' : item.filedBy === 'Продавец' ? 'seller' : null;
 
       // Parse complaintDate: "DD.MM.YYYY" → "YYYY-MM-DD" (ISO for PostgreSQL DATE)
       let complaintFiledDate: string | null = null;
