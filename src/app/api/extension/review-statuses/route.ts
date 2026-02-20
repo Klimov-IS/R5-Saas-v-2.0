@@ -8,8 +8,8 @@
  * This allows Backend to filter reviews before GPT complaint generation,
  * saving ~80% of GPT tokens.
  *
- * @version 1.0.0
- * @date 2026-02-01
+ * @version 1.2.0
+ * @date 2026-02-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -34,6 +34,7 @@ interface PostRequestBody {
   storeId: string;
   parsedAt: string;         // ISO 8601 datetime
   reviews: ReviewStatusInput[];
+  notFoundReviewKeys?: string[]; // reviewKeys from tasks that extension couldn't find on WB page (possibly deleted)
 }
 
 // ============================================
@@ -156,7 +157,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { storeId, parsedAt, reviews } = body;
+    const { storeId, parsedAt, reviews, notFoundReviewKeys } = body;
 
     // Validate required fields
     if (!storeId) {
@@ -305,6 +306,7 @@ export async function POST(request: NextRequest) {
     let chatStatusSynced = 0;
     let syncErrors = 0;
     const syncErrorDetails: { reviewKey: string; error: string }[] = [];
+    const unmatchedReviews: { reviewKey: string; productId: string; rating: number; reviewDate: string }[] = [];
 
     for (const review of reviews) {
       // Skip if missing required fields
@@ -333,6 +335,14 @@ export async function POST(request: NextRequest) {
           );
           if (chatSyncResult.rowCount && chatSyncResult.rowCount > 0) {
             chatStatusSynced++;
+          } else {
+            // Review not found in DB — extension sees it on WB but we don't have it
+            unmatchedReviews.push({
+              reviewKey: review.reviewKey,
+              productId: review.productId,
+              rating: review.rating,
+              reviewDate: review.reviewDate,
+            });
           }
         } catch (err: any) {
           // Non-critical: log but don't count as sync error
@@ -395,9 +405,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, chatStatusSynced=${chatStatusSynced}, syncErrors=${syncErrors}`);
+    // 6. Process notFoundReviewKeys — reviews extension couldn't find on WB (possibly deleted)
+    const notFoundCount = notFoundReviewKeys?.length || 0;
+    const notFoundDates: number[] = [];
+    if (notFoundCount > 0) {
+      console.log(`[Extension ReviewStatuses] 🗑️ ${notFoundCount} reviews not found on WB page (possibly deleted)`);
+      // Parse dates from reviewKey format: {nmId}_{rating}_{YYYY-MM-DDTHH:mm}
+      for (const key of notFoundReviewKeys!) {
+        const parts = key.split('_');
+        if (parts.length >= 3) {
+          const dateStr = parts.slice(2).join('_'); // everything after nmId_rating
+          const ts = new Date(dateStr).getTime();
+          if (!isNaN(ts)) notFoundDates.push(ts / 1000);
+        }
+      }
+    }
 
-    // 6. Return response
+    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, chatStatusSynced=${chatStatusSynced}, syncErrors=${syncErrors}, unmatched=${unmatchedReviews.length}, notFound=${notFoundCount}`);
+
+    // 7. Trigger targeted sync for unmatched OR notFound reviews (fire-and-forget)
+    // - unmatched: extension sees review on WB but it's not in our DB → sync will ADD it
+    // - notFound: extension doesn't see review on WB but it IS in our DB → sync will DETECT DELETION
+    // Both cases are resolved by the same full sync with deletion detection.
+    let syncTriggered = false;
+    const allSyncDates: number[] = [
+      ...unmatchedReviews.map(r => new Date(r.reviewDate).getTime() / 1000),
+      ...notFoundDates,
+    ];
+
+    if (allSyncDates.length > 0) {
+      const dateFrom = Math.floor(Math.min(...allSyncDates)) - 86400; // -1 day buffer
+      const dateTo = Math.ceil(Math.max(...allSyncDates)) + 86400;    // +1 day buffer
+
+      if (unmatchedReviews.length > 0) {
+        const missingNmIds = [...new Set(unmatchedReviews.map(r => r.productId))];
+        console.log(
+          `[Extension ReviewStatuses] ⚠️ ${unmatchedReviews.length} unmatched (not in DB), ` +
+          `articles: ${missingNmIds.slice(0, 5).join(', ')}`
+        );
+      }
+      if (notFoundCount > 0) {
+        console.log(
+          `[Extension ReviewStatuses] 🗑️ ${notFoundCount} notFound (possibly deleted from WB), ` +
+          `keys: ${notFoundReviewKeys!.slice(0, 3).join(', ')}`
+        );
+      }
+
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+        const syncUrl = `${baseUrl}/api/stores/${storeId}/reviews/update?mode=full&dateFrom=${dateFrom}&dateTo=${dateTo}`;
+        console.log(`[Extension ReviewStatuses] 🔄 Triggering targeted sync: ${new Date(dateFrom * 1000).toISOString().slice(0, 10)} → ${new Date(dateTo * 1000).toISOString().slice(0, 10)}`);
+        fetch(syncUrl, { method: 'POST' }).catch(err =>
+          console.error('[Extension ReviewStatuses] Targeted sync fetch error:', err.message)
+        );
+        syncTriggered = true;
+      } catch (err: any) {
+        console.error('[Extension ReviewStatuses] Targeted sync trigger error:', err.message);
+      }
+    }
+
+    // 8. Return response
     const response: any = {
       success: true,
       data: {
@@ -408,14 +475,23 @@ export async function POST(request: NextRequest) {
         // Sync to reviews table
         synced,
         chatStatusSynced,
-        syncErrors
+        syncErrors,
+        // Unmatched: extension sees on WB but not in our DB
+        unmatched: unmatchedReviews.length,
+        unmatchedArticles: unmatchedReviews.length > 0
+          ? [...new Set(unmatchedReviews.map(r => r.productId))]
+          : [],
+        // NotFound: extension doesn't see on WB but in our DB (possibly deleted)
+        notFound: notFoundCount,
+        // Sync triggered for either case
+        syncTriggered,
       },
       message: 'Статусы успешно синхронизированы'
     };
 
     // Include error details if any
     if (errorDetails.length > 0) {
-      response.data.errorDetails = errorDetails.slice(0, 10); // Limit to first 10 errors
+      response.data.errorDetails = errorDetails.slice(0, 10);
     }
     if (syncErrorDetails.length > 0) {
       response.data.syncErrorDetails = syncErrorDetails.slice(0, 10);

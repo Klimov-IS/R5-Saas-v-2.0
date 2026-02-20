@@ -13,8 +13,8 @@
  *
  * Auth: Bearer token (user_settings.api_key)
  *
- * @version 1.1.0
- * @date 2026-02-19
+ * @version 1.2.0
+ * @date 2026-02-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -80,8 +80,8 @@ export async function GET(
       );
     }
 
-    // 3. Run all 3 queries in parallel
-    const [statusParsesResult, chatOpensResult, chatLinksResult, complaintsResult] = await Promise.all([
+    // 3. Run all queries in parallel (4 data + 1 counts)
+    const [statusParsesResult, chatOpensResult, chatLinksResult, complaintsResult, totalCountsResult] = await Promise.all([
       // ── Query A: statusParses ──
       // Reviews that haven't been parsed by extension yet (chat_status unknown/null).
       // Only reviews matching product rules (complaint or chat ratings).
@@ -233,6 +233,89 @@ export async function GET(
          LIMIT 500`,
         [storeId]
       ),
+
+      // ── Query E: real total counts (no LIMIT) ──
+      // Allows extension to track true progress when pool > LIMIT
+      query<{
+        status_parses_total: string;
+        chat_opens_total: string;
+        chat_links_total: string;
+        complaints_total: string;
+      }>(
+        `SELECT
+          (SELECT COUNT(*) FROM reviews r
+           JOIN products p ON r.product_id = p.id
+           JOIN product_rules pr ON pr.product_id = p.id
+           WHERE r.store_id = $1
+             AND r.review_status_wb != 'deleted' AND r.marketplace = 'wb'
+             AND p.work_status = 'active'
+             AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+             AND (
+               (pr.submit_complaints = TRUE AND (
+                 (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
+                 (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
+                 (r.rating = 3 AND pr.complaint_rating_3 = TRUE) OR
+                 (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
+               ))
+               OR
+               (pr.work_in_chats = TRUE AND (
+                 (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+                 (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+                 (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+                 (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+               ))
+             )
+          ) as status_parses_total,
+          (SELECT COUNT(DISTINCT r.id) FROM reviews r
+           JOIN review_complaints rc ON rc.review_id = r.id
+           JOIN products p ON r.product_id = p.id
+           JOIN product_rules pr ON pr.product_id = p.id
+           WHERE r.store_id = $1
+             AND rc.status = 'rejected' AND pr.work_in_chats = TRUE
+             AND r.chat_status_by_review = 'available'
+             AND r.review_status_wb != 'deleted' AND r.marketplace = 'wb'
+             AND p.work_status = 'active'
+             AND (
+               (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+               (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+               (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+               (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM review_chat_links rcl
+               WHERE rcl.store_id = r.store_id
+                 AND rcl.review_nm_id = p.wb_product_id
+                 AND rcl.review_rating = r.rating
+                 AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                          AND r.date + interval '2 minutes'
+             )
+          ) as chat_opens_total,
+          (SELECT COUNT(*) FROM reviews r
+           JOIN products p ON r.product_id = p.id
+           JOIN product_rules pr ON pr.product_id = p.id
+           WHERE r.store_id = $1
+             AND r.chat_status_by_review = 'opened' AND pr.work_in_chats = TRUE
+             AND r.review_status_wb != 'deleted' AND r.marketplace = 'wb'
+             AND p.work_status = 'active'
+             AND NOT EXISTS (
+               SELECT 1 FROM review_chat_links rcl
+               WHERE rcl.store_id = r.store_id
+                 AND rcl.review_nm_id = p.wb_product_id
+                 AND rcl.review_rating = r.rating
+                 AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                          AND r.date + interval '2 minutes'
+             )
+          ) as chat_links_total,
+          (SELECT COUNT(*) FROM review_complaints rc
+           JOIN reviews r ON r.id = rc.review_id
+           JOIN products p ON r.product_id = p.id
+           WHERE rc.store_id = $1 AND rc.status = 'draft'
+             AND r.store_id = $1 AND p.work_status = 'active'
+             AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+             AND r.review_status_wb != 'deleted'
+          ) as complaints_total`,
+        [storeId]
+      ),
     ]);
 
     // 4. Group everything by article (nmId)
@@ -316,6 +399,7 @@ export async function GET(
 
     const elapsed = Date.now() - startTime;
 
+    const countsRow = totalCountsResult.rows[0];
     const totals = {
       statusParses: statusParsesResult.rows.length,
       chatOpens: chatOpensResult.rows.length + chatLinksResult.rows.length,
@@ -324,11 +408,20 @@ export async function GET(
       complaints: complaintsResult.rows.length,
       articles: Object.keys(articles).length,
     };
+    const totalCounts = {
+      statusParses: parseInt(countsRow?.status_parses_total || '0'),
+      chatOpens: parseInt(countsRow?.chat_opens_total || '0') + parseInt(countsRow?.chat_links_total || '0'),
+      chatOpensNew: parseInt(countsRow?.chat_opens_total || '0'),
+      chatLinks: parseInt(countsRow?.chat_links_total || '0'),
+      complaints: parseInt(countsRow?.complaints_total || '0'),
+    };
 
     console.log(
       `[Extension Tasks] ✅ Задачи готовы (${elapsed}ms): ` +
-      `statusParses=${totals.statusParses}, chatOpens=${totals.chatOpensNew}, ` +
-      `chatLinks=${totals.chatLinks}, complaints=${totals.complaints}, ` +
+      `statusParses=${totals.statusParses}/${totalCounts.statusParses}, ` +
+      `chatOpens=${totals.chatOpensNew}/${totalCounts.chatOpensNew}, ` +
+      `chatLinks=${totals.chatLinks}/${totalCounts.chatLinks}, ` +
+      `complaints=${totals.complaints}/${totalCounts.complaints}, ` +
       `articles=${totals.articles}`
     );
 
@@ -336,6 +429,7 @@ export async function GET(
       storeId,
       articles,
       totals,
+      totalCounts,
       limits: {
         maxChatsPerRun: 50,
         maxComplaintsPerRun: 300,
