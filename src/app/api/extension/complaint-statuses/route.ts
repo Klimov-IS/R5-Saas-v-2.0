@@ -245,7 +245,7 @@ export async function POST(request: NextRequest) {
              unnest($1::text[]) as review_id,
              unnest($2::text[]) as new_status
          ) v
-         WHERE rc.review_id = v.review_id::uuid
+         WHERE rc.review_id = v.review_id
            AND rc.status IN ('draft', 'sent', 'pending')`,
         [updatedIds, updatedStatuses]
       );
