@@ -6,10 +6,10 @@
  * Receives complaint statuses parsed from WB complaints page.
  * Optimized for speed: 2 bulk SQL queries per request (not per review).
  *
- * Input: reviewKey + Russian status string from WB page.
+ * Input: reviewKey + Russian status string from WB page + filedBy + complaintDate.
  * Backend maps statuses and updates reviews + review_complaints in bulk.
  *
- * @version 1.0.0
+ * @version 1.1.0
  * @date 2026-02-20
  */
 
@@ -22,8 +22,10 @@ import { getUserByApiToken } from '@/db/extension-helpers';
 // ============================================
 
 interface ComplaintStatusInput {
-  reviewKey: string;   // Format: {nmId}_{rating}_{YYYY-MM-DDTHH:mm}
-  status: string;      // Russian string from WB: "Жалоба одобрена", "Жалоба отклонена", etc.
+  reviewKey: string;       // Format: {nmId}_{rating}_{YYYY-MM-DDTHH:mm}
+  status: string;          // Russian string from WB: "Жалоба одобрена", "Жалоба отклонена", etc.
+  filedBy: string;         // "R5" — filed by R5 system, "Продавец" — filed by seller directly
+  complaintDate: string | null;  // Date complaint was filed, DD.MM.YYYY format. null if filed by seller
 }
 
 interface PostRequestBody {
@@ -156,12 +158,21 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Parse and validate all results, build bulk arrays
-    const validItems: { productId: string; rating: number; dateMinute: string; dbStatus: string }[] = [];
+    const validItems: {
+      productId: string; rating: number; dateMinute: string; dbStatus: string;
+      filedBy: string; complaintFiledDate: string | null;
+    }[] = [];
     const skipped: { reviewKey: string; reason: string }[] = [];
 
     for (const item of results) {
       if (!item.reviewKey || !item.status) {
         skipped.push({ reviewKey: item.reviewKey || 'unknown', reason: 'missing fields' });
+        continue;
+      }
+
+      // filedBy is required
+      if (!item.filedBy) {
+        skipped.push({ reviewKey: item.reviewKey, reason: 'missing filedBy' });
         continue;
       }
 
@@ -177,11 +188,25 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // Normalize filedBy: "R5" → "r5", "Продавец" → "seller"
+      const filedBy = item.filedBy === 'R5' ? 'r5' : 'seller';
+
+      // Parse complaintDate: "DD.MM.YYYY" → "YYYY-MM-DD" (ISO for PostgreSQL DATE)
+      let complaintFiledDate: string | null = null;
+      if (item.complaintDate) {
+        const parts = item.complaintDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+        if (parts) {
+          complaintFiledDate = `${parts[3]}-${parts[2]}-${parts[1]}`; // YYYY-MM-DD
+        }
+      }
+
       validItems.push({
         productId: `${storeId}_${parsed.nmId}`,
         rating: parsed.rating,
         dateMinute: parsed.dateMinute,
         dbStatus,
+        filedBy,
+        complaintFiledDate,
       });
     }
 
@@ -197,16 +222,20 @@ export async function POST(request: NextRequest) {
     // 5. BULK UPDATE reviews table — one query for all items
     //    Uses unnest arrays to match reviews by (store_id, product_id, rating, date minute in MSK)
     //    Extension sends dates as shown on WB (Moscow time), so we convert DB dates to MSK for matching
+    //    Idempotent: updates complaint_status + filed_by + filed_date even for already-processed reviews
     const productIds = validItems.map(v => v.productId);
     const ratings = validItems.map(v => v.rating);
     const dateMinutes = validItems.map(v => v.dateMinute);
     const statuses = validItems.map(v => v.dbStatus);
+    const filedBys = validItems.map(v => v.filedBy);
+    const filedDates = validItems.map(v => v.complaintFiledDate);
 
-    const bulkUpdateResult = await query<{ id: string; new_status: string }>(
+    const bulkUpdateResult = await query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(
       `UPDATE reviews r
        SET
          complaint_status = v.new_status::complaint_status,
-         complaint_text = NULL,
+         complaint_filed_by = v.filed_by,
+         complaint_filed_date = v.filed_date::date,
          has_complaint_draft = false,
          has_complaint = true,
          updated_at = NOW()
@@ -215,39 +244,46 @@ export async function POST(request: NextRequest) {
            unnest($2::text[]) as product_id,
            unnest($3::int[]) as rating,
            unnest($4::text[]) as date_minute,
-           unnest($5::text[]) as new_status
+           unnest($5::text[]) as new_status,
+           unnest($6::text[]) as filed_by,
+           unnest($7::text[]) as filed_date
        ) v
        WHERE r.store_id = $1
          AND r.product_id = v.product_id
          AND r.rating = v.rating
          AND to_char(r.date AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD"T"HH24:MI') = v.date_minute
-         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft', 'sent', 'pending'))
-       RETURNING r.id, v.new_status`,
-      [storeId, productIds, ratings, dateMinutes, statuses]
+       RETURNING r.id, v.new_status, v.filed_by, v.filed_date`,
+      [storeId, productIds, ratings, dateMinutes, statuses, filedBys, filedDates]
     );
 
     const reviewsUpdated = bulkUpdateResult.rowCount || 0;
     console.log(`[Extension ComplaintStatuses] 📝 Reviews updated: ${reviewsUpdated}`);
 
-    // 6. BULK UPDATE review_complaints table — set status for all affected reviews
+    // 6. BULK UPDATE review_complaints table — set status + filed_by + filed_date
     let complaintsUpdated = 0;
     if (reviewsUpdated > 0) {
       const updatedIds = bulkUpdateResult.rows.map(r => r.id);
       const updatedStatuses = bulkUpdateResult.rows.map(r => r.new_status);
+      const updatedFiledBys = bulkUpdateResult.rows.map(r => r.filed_by);
+      const updatedFiledDates = bulkUpdateResult.rows.map(r => r.filed_date);
 
       const rcResult = await query(
         `UPDATE review_complaints rc
          SET
            status = v.new_status,
+           filed_by = v.filed_by,
+           complaint_filed_date = v.filed_date::date,
+           moderated_at = COALESCE(rc.moderated_at, NOW()),
            updated_at = NOW()
          FROM (
            SELECT
              unnest($1::text[]) as review_id,
-             unnest($2::text[]) as new_status
+             unnest($2::text[]) as new_status,
+             unnest($3::text[]) as filed_by,
+             unnest($4::text[]) as filed_date
          ) v
-         WHERE rc.review_id = v.review_id
-           AND rc.status IN ('draft', 'sent', 'pending')`,
-        [updatedIds, updatedStatuses]
+         WHERE rc.review_id = v.review_id`,
+        [updatedIds, updatedStatuses, updatedFiledBys, updatedFiledDates]
       );
       complaintsUpdated = rcResult.rowCount || 0;
       console.log(`[Extension ComplaintStatuses] 📝 Review complaints updated: ${complaintsUpdated}`);

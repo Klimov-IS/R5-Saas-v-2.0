@@ -362,7 +362,7 @@ Authorization: Bearer wbrm_XXXXXXXXXXXXXXXXXXXXX
 POST /api/extension/complaint-statuses
 ```
 
-Специализированный эндпоинт для расширения-чекера жалоб. **Минимальный контракт, максимальная скорость:** всего 2 поля на отзыв, 2 SQL-запроса на весь батч.
+Специализированный эндпоинт для расширения-чекера жалоб. **4 поля на отзыв, 2 SQL-запроса на весь батч.**
 
 **Headers:**
 ```
@@ -375,10 +375,10 @@ Content-Type: application/json
 {
   "storeId": "7kKX9WgLvOPiXYIHk6hi",
   "results": [
-    { "reviewKey": "766104062_1_2026-01-15T10:30", "status": "Жалоба одобрена" },
-    { "reviewKey": "766104062_2_2026-01-20T14:15", "status": "Жалоба отклонена" },
-    { "reviewKey": "123456789_1_2026-02-01T09:45", "status": "Проверяем жалобу" },
-    { "reviewKey": "123456789_3_2026-02-05T16:22", "status": "Жалоба пересмотрена" }
+    { "reviewKey": "766104062_1_2026-01-15T10:30", "status": "Жалоба одобрена", "filedBy": "R5", "complaintDate": "15.01.2026" },
+    { "reviewKey": "766104062_2_2026-01-20T14:15", "status": "Жалоба отклонена", "filedBy": "R5", "complaintDate": "18.01.2026" },
+    { "reviewKey": "123456789_1_2026-02-01T09:45", "status": "Проверяем жалобу", "filedBy": "R5", "complaintDate": "05.02.2026" },
+    { "reviewKey": "123456789_3_2026-02-05T16:22", "status": "Жалоба пересмотрена", "filedBy": "Продавец", "complaintDate": null }
   ]
 }
 ```
@@ -391,8 +391,12 @@ Content-Type: application/json
 | `results` | array | Да | Массив результатов (макс. **500** шт.) |
 | `results[].reviewKey` | string | Да | Ключ отзыва: `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}` |
 | `results[].status` | string | Да | **Русская строка** статуса жалобы с WB |
+| `results[].filedBy` | string | Да | `"R5"` — жалобу подала R5, `"Продавец"` — подал продавец напрямую |
+| `results[].complaintDate` | string \| null | Да | Дата подачи жалобы `DD.MM.YYYY`. `null` если подал продавец (дата недоступна) |
 
-> **Всего 2 поля на отзыв!** reviewKey уже содержит артикул, рейтинг и дату — бэкенд парсит их сам.
+> **reviewKey** содержит артикул, рейтинг и дату отзыва — бэкенд парсит их сам.
+>
+> **Логика определения filedBy:** если в строке WB текст содержит "Жалоба от DD.MM" — значит подала R5. Иначе — продавец подал сам.
 
 ### Формирование reviewKey
 
@@ -457,9 +461,10 @@ buildReviewKey("766104062", 1, "2026-01-15T10:30:37Z")
 
 ### Что происходит на бэкенде
 
-1. **Один bulk UPDATE** на таблицу `reviews`: устанавливает `complaint_status`, очищает черновик
-2. **Один bulk UPDATE** на таблицу `review_complaints`: синхронизирует статус жалобы
+1. **Один bulk UPDATE** на таблицу `reviews`: устанавливает `complaint_status`, `complaint_filed_by`, `complaint_filed_date`
+2. **Один bulk UPDATE** на таблицу `review_complaints`: синхронизирует статус + `filed_by` + `complaint_filed_date`
 3. Итого: **2 SQL-запроса** на весь батч (а не N * 4 как в старом эндпоинте)
+4. **Идемпотентно:** повторный запрос обновляет `filed_by`/`complaint_filed_date` даже для уже approved/rejected отзывов
 
 ### Сравнение с POST /api/extension/review-statuses
 
