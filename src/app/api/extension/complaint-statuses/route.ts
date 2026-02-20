@@ -170,11 +170,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // filedBy is required
-      if (!item.filedBy) {
-        skipped.push({ reviewKey: item.reviewKey, reason: 'missing filedBy' });
-        continue;
-      }
+      // filedBy: optional during transition, defaults to 'r5'
 
       const dbStatus = STATUS_MAP[item.status];
       if (!dbStatus) {
@@ -188,8 +184,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Normalize filedBy: "R5" → "r5", "Продавец" → "seller"
-      const filedBy = item.filedBy === 'R5' ? 'r5' : 'seller';
+      // Normalize filedBy: "R5" → "r5", "Продавец" → "seller", missing → "r5" (default)
+      const filedBy = !item.filedBy || item.filedBy === 'R5' ? 'r5' : 'seller';
 
       // Parse complaintDate: "DD.MM.YYYY" → "YYYY-MM-DD" (ISO for PostgreSQL DATE)
       let complaintFiledDate: string | null = null;
@@ -210,12 +206,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    console.log(
+      `[Extension ComplaintStatuses] 🔍 Parsed: valid=${validItems.length}, skipped=${skipped.length}` +
+      (skipped.length > 0 ? ` reasons: ${skipped.slice(0, 5).map(s => s.reason).join(', ')}` : '')
+    );
+
     if (validItems.length === 0) {
+      const elapsed = Date.now() - startTime;
+      console.log(`[Extension ComplaintStatuses] ⚠️ All items skipped, returning early (${elapsed}ms)`);
       return NextResponse.json({
         success: true,
         data: { received: results.length, updated: 0, complaintsUpdated: 0, skipped: skipped.length },
-        skipped: skipped.slice(0, 20),
-        elapsed: Date.now() - startTime,
+        skippedDetails: skipped.slice(0, 20),
+        elapsed,
       }, { headers: corsHeaders });
     }
 
