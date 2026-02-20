@@ -1,7 +1,7 @@
 # Chrome Extension API Documentation
 
-**Version:** 2.0.0
-**Last Updated:** 2026-01-28
+**Version:** 2.1.0
+**Last Updated:** 2026-02-20
 **Production URL:** http://158.160.217.236
 
 ---
@@ -390,6 +390,91 @@ The API supports CORS for Chrome Extensions:
 
 ---
 
+### 4. POST /api/extension/complaint-details
+
+Receive full approved complaint data from Chrome Extension. Called after each successful screenshot of an approved complaint. Source of truth for billing, client reporting, AI training.
+
+**URL:** `POST /api/extension/complaint-details`
+
+**Request Example:**
+```http
+POST /api/extension/complaint-details
+Authorization: Bearer your_api_token_here
+Content-Type: application/json
+
+{
+  "storeId": "store_123",
+  "complaint": {
+    "checkDate": "20.02.2026",
+    "cabinetName": "МойМагазин",
+    "articul": "149325538",
+    "reviewId": "",
+    "feedbackRating": 1,
+    "feedbackDate": "18 февр. 2026 г. в 21:45",
+    "complaintSubmitDate": "15.02.2026",
+    "status": "Одобрена",
+    "hasScreenshot": true,
+    "fileName": "149325538_18.02.26_21-45.png",
+    "driveLink": "https://drive.google.com/file/d/abc123/view",
+    "complaintCategory": "Отзыв не относится к товару",
+    "complaintText": "Жалоба от: 20.02.2026\n\nОтзыв покупателя не содержит оценки качества..."
+  }
+}
+```
+
+**Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `checkDate` | string | Yes | Дата проверки, DD.MM.YYYY |
+| `cabinetName` | string | Yes | Название магазина WB |
+| `articul` | string | Yes | Артикул WB (nmId) |
+| `reviewId` | string | No | ID отзыва (зарезервировано, пока пустая строка) |
+| `feedbackRating` | number/string | Yes | Рейтинг отзыва 1-5 |
+| `feedbackDate` | string | Yes | Дата отзыва в оригинальном формате WB |
+| `complaintSubmitDate` | string | No | Дата подачи жалобы DD.MM.YYYY или DD.MM |
+| `status` | string | No | Всегда "Одобрена" |
+| `hasScreenshot` | boolean | No | Всегда true |
+| `fileName` | string | Yes | Имя файла скриншота |
+| `driveLink` | string | No | Ссылка на скриншот в Google Drive |
+| `complaintCategory` | string | Yes | Категория жалобы WB |
+| `complaintText` | string | Yes | Полный текст жалобы |
+
+**Deduplication:** `storeId` + `articul` + `feedbackDate` + `fileName`
+
+**filed_by detection:** If `complaintText` starts with "Жалоба от:" → `r5`, otherwise → `seller`.
+
+**Response — Created:**
+```json
+{
+  "success": true,
+  "data": {
+    "created": true
+  }
+}
+```
+
+**Response — Duplicate:**
+```json
+{
+  "success": true,
+  "data": {
+    "created": false,
+    "reason": "duplicate"
+  }
+}
+```
+
+**Response Codes:**
+- `200` - Success (created or duplicate)
+- `400` - Invalid request body or missing required fields
+- `401` - Invalid or missing API token
+- `403` - Token doesn't have access to this store
+- `404` - Store not found
+- `500` - Internal server error
+
+---
+
 ## Support
 
 **Issues:** Report bugs or request features via GitHub Issues
@@ -400,12 +485,15 @@ The API supports CORS for Chrome Extensions:
 
 ## Changelog
 
+### Version 2.1.0 (2026-02-20)
+- POST /api/extension/complaint-details — approved complaint data from extension (source of truth for billing/reporting)
+
 ### Version 2.0.0 (2026-01-28)
-- ✅ GET /api/stores/:storeId/complaints endpoint
-- ✅ POST /api/stores/:storeId/reviews/:reviewId/complaint/sent endpoint
-- ✅ Bearer token authentication
-- ✅ Rate limiting (100 req/min per token)
-- ✅ CORS support for Chrome Extensions
-- ✅ Enhanced health check endpoint
-- ✅ ISO 8601 date format for reviewDate field
-- ✅ Markdown-wrapped JSON for complaintText field
+- GET /api/stores/:storeId/complaints endpoint
+- POST /api/stores/:storeId/reviews/:reviewId/complaint/sent endpoint
+- Bearer token authentication
+- Rate limiting (100 req/min per token)
+- CORS support for Chrome Extensions
+- Enhanced health check endpoint
+- ISO 8601 date format for reviewDate field
+- Markdown-wrapped JSON for complaintText field

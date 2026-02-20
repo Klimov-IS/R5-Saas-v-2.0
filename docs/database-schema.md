@@ -613,6 +613,72 @@ ADD CONSTRAINT check_review_date_after_cutoff CHECK (review_date >= '2023-10-01'
 
 ---
 
+### `complaint_details`
+
+**Purpose:** Source of truth for actually filed & WB-approved complaints. Mirrors Google Sheets "Жалобы V 2.0". Populated by Chrome Extension via `POST /api/extension/complaint-details`.
+
+**Created by:** Migration 021
+
+**Key difference from `review_complaints`:**
+- `review_complaints` tracks what we **intend** to submit (AI draft → sent → moderated)
+- `complaint_details` tracks what WB **actually approved** — with exact text, category, and screenshot proof
+
+**Use cases:** AI training (real approved complaint texts), billing (R5-filed approved = billable), client reporting.
+
+```sql
+CREATE TABLE complaint_details (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id              TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  owner_id              TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+  -- Mirror of Google Sheets "Жалобы V 2.0" columns (A–M)
+  check_date            DATE NOT NULL,                     -- A: Дата проверки
+  cabinet_name          TEXT NOT NULL,                     -- B: Кабинет (WB store name)
+  articul               TEXT NOT NULL,                     -- C: Артикул WB (nmId)
+  review_ext_id         TEXT,                              -- D: ID отзыва (reserved)
+  feedback_rating       INTEGER NOT NULL,                  -- E: Рейтинг (1-5)
+  feedback_date         TEXT NOT NULL,                     -- F: Дата отзыва (WB original format string)
+  complaint_submit_date TEXT,                              -- G: Дата подачи жалобы
+  status                TEXT NOT NULL DEFAULT 'approved',  -- H: Статус
+  has_screenshot        BOOLEAN NOT NULL DEFAULT TRUE,     -- I: Скриншот
+  file_name             TEXT NOT NULL,                     -- J: Имя файла скриншота
+  drive_link            TEXT,                              -- K: Google Drive ссылка
+  complaint_category    TEXT NOT NULL,                     -- L: Категория жалобы
+  complaint_text        TEXT NOT NULL,                     -- M: Полный текст жалобы
+
+  -- Derived
+  filed_by              TEXT,                              -- 'r5' | 'seller'
+
+  -- Optional links to internal entities
+  review_id             TEXT REFERENCES reviews(id) ON DELETE SET NULL,
+  review_complaint_id   TEXT REFERENCES review_complaints(id) ON DELETE SET NULL,
+
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE(store_id, articul, feedback_date, file_name)
+);
+```
+
+**Key Fields:**
+- `feedback_date` — WB locale format string (e.g. "18 февр. 2026 г. в 21:45"), stored as-is
+- `filed_by` — derived from `complaint_text` prefix: starts with "Жалоба от:" → `'r5'`, otherwise `'seller'`
+- `review_id` / `review_complaint_id` — nullable, for future async matching to internal data
+
+**Indexes:**
+```sql
+CREATE INDEX idx_cd_store ON complaint_details(store_id);
+CREATE INDEX idx_cd_store_date ON complaint_details(store_id, check_date DESC);
+CREATE INDEX idx_cd_articul ON complaint_details(store_id, articul);
+CREATE INDEX idx_cd_category ON complaint_details(complaint_category);
+CREATE INDEX idx_cd_filed_by ON complaint_details(filed_by) WHERE filed_by IS NOT NULL;
+CREATE INDEX idx_cd_review ON complaint_details(review_id) WHERE review_id IS NOT NULL;
+```
+
+**Dedup:** `UNIQUE(store_id, articul, feedback_date, file_name)` — same store + product + review + screenshot = same record.
+
+---
+
 ## Communication Tables
 
 ### `chats`
@@ -1151,7 +1217,10 @@ users (1) ───── (N) stores
   │                  │        ├─── (1) product_rules (1:1)
   │                  │        └─── (N) reviews
   │                  │                  │
-  │                  │                  └─── (1) review_complaints (1:1)
+  │                  │                  ├─── (1) review_complaints (1:1)
+  │                  │                  └─── (N) complaint_details (approved complaints, source of truth)
+  │                  │
+  │                  ├─── (N) complaint_details (via store_id)
   │                  │
   │                  ├─── (N) chats
   │                  │        ├─── (N) chat_messages
@@ -1305,6 +1374,8 @@ Key migrations:
 13. `014_optimize_draft_complaints_index.sql` - Partial index for extension stores API draft count optimization
 14. `015_deletion_detection.sql` - `review_status_wb` enum, `deleted_from_wb_at` column, resurrection logic
 15. `016_review_chat_links.sql` - Review↔Chat linking table for Chrome Extension (Sprint 002)
+16. `020_add_complaint_filed_info.sql` - `filed_by` + `complaint_filed_date` on review_complaints and reviews
+17. `021_complaint_details.sql` - `complaint_details` table — source of truth for approved complaints (mirrors Google Sheets)
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
@@ -1486,7 +1557,7 @@ CREATE TABLE invites (
 
 ---
 
-**Last Updated:** 2026-02-16
+**Last Updated:** 2026-02-20
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials
