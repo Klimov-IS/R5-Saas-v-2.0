@@ -201,6 +201,59 @@ export async function POST(request: NextRequest) {
     const dateMinutes = validItems.map(v => v.dateMinute);
     const statuses = validItems.map(v => v.dbStatus);
 
+    // DEBUG: log first 3 items to verify matching data
+    console.log(`[Extension ComplaintStatuses] 🔍 Debug: first 3 items:`);
+    validItems.slice(0, 3).forEach(v =>
+      console.log(`  productId=${v.productId}, rating=${v.rating}, dateMinute=${v.dateMinute}, status=${v.dbStatus}`)
+    );
+
+    // First, check how many reviews exist (without status filter) for debugging
+    const debugMatchResult = await query<{ cnt: string }>(
+      `SELECT COUNT(*) as cnt
+       FROM reviews r
+       JOIN (
+         SELECT
+           unnest($2::text[]) as product_id,
+           unnest($3::int[]) as rating,
+           unnest($4::text[]) as date_minute
+       ) v ON r.product_id = v.product_id
+           AND r.rating = v.rating
+           AND to_char(r.date AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI') = v.date_minute
+       WHERE r.store_id = $1`,
+      [storeId, productIds, ratings, dateMinutes]
+    );
+    const matchedWithoutFilter = parseInt(debugMatchResult.rows[0]?.cnt || '0');
+    console.log(`[Extension ComplaintStatuses] 🔍 Debug: matched WITHOUT status filter: ${matchedWithoutFilter}/${validItems.length}`);
+
+    if (matchedWithoutFilter === 0 && validItems.length > 0) {
+      // Check if any review exists with these product_ids at all
+      const debugProductResult = await query<{ product_id: string; cnt: string }>(
+        `SELECT r.product_id, COUNT(*) as cnt
+         FROM reviews r
+         WHERE r.store_id = $1 AND r.product_id = ANY($2::text[])
+         GROUP BY r.product_id
+         LIMIT 5`,
+        [storeId, [...new Set(productIds.slice(0, 10))]]
+      );
+      console.log(`[Extension ComplaintStatuses] 🔍 Debug: reviews with matching product_ids:`);
+      debugProductResult.rows.forEach(r => console.log(`  ${r.product_id}: ${r.cnt} reviews`));
+
+      // Check a sample date match
+      if (validItems.length > 0) {
+        const sample = validItems[0];
+        const debugDateResult = await query<{ date_raw: string; date_key: string }>(
+          `SELECT r.date::text as date_raw,
+                  to_char(r.date AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI') as date_key
+           FROM reviews r
+           WHERE r.store_id = $1 AND r.product_id = $2 AND r.rating = $3
+           LIMIT 3`,
+          [storeId, sample.productId, sample.rating]
+        );
+        console.log(`[Extension ComplaintStatuses] 🔍 Debug: dates for ${sample.productId} rating=${sample.rating} (ext sends: ${sample.dateMinute}):`);
+        debugDateResult.rows.forEach(r => console.log(`  raw=${r.date_raw}, key=${r.date_key}`));
+      }
+    }
+
     const bulkUpdateResult = await query<{ id: string; new_status: string }>(
       `UPDATE reviews r
        SET
