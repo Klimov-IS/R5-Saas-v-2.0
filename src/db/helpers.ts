@@ -1598,7 +1598,9 @@ function buildReviewFilterClauses(
  */
 export type ReviewsFilterOptions = {
   limit?: number;
-  offset?: number;
+  offset?: number; // deprecated: use cursor instead
+  cursor?: string; // ISO date string for keyset pagination (date of last review on previous page)
+  cursorId?: string; // review ID for tie-breaking when dates match
   rating?: string; // 'all' | '1,2,3' (comma-separated) | '1-2' | '3' | '4-5'
   hasAnswer?: string; // 'all' | 'yes' | 'no'
   hasComplaint?: string; // 'all' | 'with' | 'draft' | 'without'
@@ -1616,6 +1618,13 @@ export type ReviewsFilterOptions = {
 export type ReviewsWithCount = {
   reviews: Review[];
   totalCount: number;
+};
+
+export type ReviewsCursorResult = {
+  reviews: Review[];
+  nextCursor: string | null; // date of last review, or null if no more
+  nextCursorId: string | null; // id of last review for tie-breaking
+  hasMore: boolean;
 };
 
 /**
@@ -1677,6 +1686,72 @@ export async function getReviewsByStoreWithPagination(
   const reviews = dataResult.rows as Review[];
 
   return { reviews, totalCount };
+}
+
+/**
+ * Get reviews with keyset (cursor-based) pagination — no COUNT, no OFFSET.
+ * O(1) performance regardless of page depth. Uses (date, id) compound cursor.
+ *
+ * Requests limit+1 rows to determine hasMore without a COUNT query.
+ */
+export async function getReviewsWithCursor(
+  storeId: string,
+  options?: ReviewsFilterOptions
+): Promise<ReviewsCursorResult> {
+  const dataFilter = buildReviewFilterClauses(storeId, options, false);
+  const dataParams = [...dataFilter.params];
+  let paramIdx = dataFilter.nextParamIndex;
+
+  // Add keyset cursor condition: WHERE (r.date, r.id) < ($cursor, $cursorId)
+  if (options?.cursor) {
+    if (options.cursorId) {
+      dataFilter.whereClauses.push(`(r.date, r.id) < ($${paramIdx}, $${paramIdx + 1})`);
+      dataParams.push(options.cursor, options.cursorId);
+      paramIdx += 2;
+    } else {
+      dataFilter.whereClauses.push(`r.date < $${paramIdx}`);
+      dataParams.push(options.cursor);
+      paramIdx++;
+    }
+  }
+
+  const limit = options?.limit || 50;
+  const fetchLimit = limit + 1; // +1 to detect hasMore
+
+  const dataSql = `
+    SELECT
+      r.*,
+      rc.id as complaint_id,
+      rc.complaint_text,
+      rc.reason_id as complaint_reason_id,
+      rc.reason_name as complaint_category,
+      COALESCE(r.complaint_status::text, rc.status, 'not_sent') as complaint_status,
+      rc.generated_at as complaint_generated_at,
+      rc.sent_at as complaint_sent_date,
+      rc.regenerated_count
+    FROM reviews r
+    LEFT JOIN review_complaints rc ON r.id = rc.review_id
+    WHERE ${dataFilter.whereClauses.join(' AND ')}
+    ORDER BY r.date DESC, r.id DESC
+    LIMIT $${paramIdx}
+  `;
+  dataParams.push(fetchLimit);
+
+  const dataResult = await query<Review>(dataSql, dataParams);
+  const allRows = dataResult.rows as Review[];
+
+  const hasMore = allRows.length > limit;
+  const reviews = hasMore ? allRows.slice(0, limit) : allRows;
+
+  let nextCursor: string | null = null;
+  let nextCursorId: string | null = null;
+  if (hasMore && reviews.length > 0) {
+    const last = reviews[reviews.length - 1];
+    nextCursor = typeof last.date === 'string' ? last.date : new Date(last.date).toISOString();
+    nextCursorId = last.id;
+  }
+
+  return { reviews, nextCursor, nextCursorId, hasMore };
 }
 
 /**

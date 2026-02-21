@@ -1,13 +1,13 @@
 /**
- * Reviews Page V2
- * Complete redesign with professional filter system and complaint management
+ * Reviews Page V2 — Keyset (cursor) pagination + "Load More"
+ * No COUNT query, no OFFSET — O(1) performance at any depth.
  */
 
 'use client';
 
-import { useState } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { RefreshCw } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { useQuery, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
+import { RefreshCw, ChevronDown } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import type { Review } from '@/types/reviews';
@@ -24,22 +24,23 @@ type Product = {
   photo_links?: string[];
 };
 
-type ReviewsResponse = {
+type CursorReviewsResponse = {
   data: Review[];
-  totalCount: number;
+  nextCursor: string | null;
+  nextCursorId: string | null;
+  hasMore: boolean;
 };
 
-async function fetchReviewsData(
-  storeId: string,
-  skip: number,
-  take: number,
-  filters: FilterState
-): Promise<{ reviews: Review[]; totalCount: number }> {
-  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
-  // Build query params (empty array = 'all')
+async function fetchReviewsPage(
+  storeId: string,
+  take: number,
+  filters: FilterState,
+  cursor?: string,
+  cursorId?: string,
+): Promise<CursorReviewsResponse> {
   const params = new URLSearchParams({
-    skip: skip.toString(),
     take: take.toString(),
     rating: filters.ratings.length > 0 ? filters.ratings.join(',') : 'all',
     complaintStatus: filters.complaintStatuses.length > 0 ? filters.complaintStatuses.join(',') : 'all',
@@ -50,53 +51,24 @@ async function fetchReviewsData(
     productIds: filters.productIds && filters.productIds.length > 0 ? filters.productIds.join(',') : 'all',
   });
 
-  // Load reviews and products in parallel
-  const [reviewsRes, productsRes] = await Promise.all([
-    fetch(`/api/stores/${storeId}/reviews?${params}`, {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(15000),
-    }),
-    fetch(`/api/stores/${storeId}/products`, {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(15000),
-    })
-  ]);
+  if (cursor) params.set('cursor', cursor);
+  if (cursorId) params.set('cursorId', cursorId);
 
-  if (!reviewsRes.ok || !productsRes.ok) {
-    throw new Error(`Failed to fetch data`);
-  }
-
-  const reviewsData: ReviewsResponse = await reviewsRes.json();
-  const productsData: Product[] = await productsRes.json();
-
-  // Create products map
-  const productsMap: Record<string, Product> = {};
-  productsData.forEach((p: Product) => {
-    productsMap[p.id] = p;
+  const res = await fetch(`/api/stores/${storeId}/reviews?${params}`, {
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
+    signal: AbortSignal.timeout(15000),
   });
 
-  // Enrich reviews with product data
-  const enrichedReviews = reviewsData.data.map(review => ({
-    ...review,
-    product: productsMap[review.product_id] || null,
-  }));
-
-  return {
-    reviews: enrichedReviews as Review[],
-    totalCount: reviewsData.totalCount
-  };
+  if (!res.ok) throw new Error('Failed to fetch reviews');
+  return res.json();
 }
 
 export default function ReviewsPageV2() {
   const params = useParams();
   const storeId = params?.storeId as string;
 
-  // Pagination state
-  const [skip, setSkip] = useState(0);
   const [take, setTake] = useState(50);
 
-  // Filter state with session persistence
-  // Filters are preserved on page refresh and when switching stores
   const {
     filters,
     setFilters: setFiltersBase,
@@ -104,84 +76,105 @@ export default function ReviewsPageV2() {
     activeFilterCount,
   } = usePersistedFilters();
 
-  // Wrap setFilters to reset pagination when filters change
   const setFilters = (newFilters: FilterState) => {
     setFiltersBase(newFilters);
-    setSkip(0); // Reset to first page when filters change
   };
 
-  // Wrap resetFilters to also reset pagination
   const resetFilters = () => {
     resetFiltersBase();
-    setSkip(0); // Reset to first page
   };
 
   const [selectedReviews, setSelectedReviews] = useState<Set<string>>(new Set());
 
-  // Fetch reviews data
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['reviews-v2', storeId, skip, take, filters],
-    queryFn: () => fetchReviewsData(storeId, skip, take, filters),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    placeholderData: keepPreviousData, // Show old data while loading new page/filters
-    enabled: !!storeId,
-  });
-
-  // Fetch rating statistics separately (independent of filters)
-  // This shows TOTAL counts for ALL reviews, not just filtered ones
-  const { data: statsData } = useQuery({
-    queryKey: ['review-stats', storeId],
-    queryFn: async () => {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
-      const response = await fetch(`/api/stores/${storeId}/reviews/stats`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      });
-      if (!response.ok) throw new Error('Failed to fetch stats');
-      return response.json() as Promise<{ ratingCounts: Record<number, number> }>;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    enabled: !!storeId,
-  });
-
-  // Fetch products list for dropdown filter (cached independently)
+  // Products list (cached independently)
   const { data: productsData } = useQuery({
     queryKey: ['store-products', storeId],
     queryFn: async () => {
-      const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
-      const response = await fetch(`/api/stores/${storeId}/products`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
+      const res = await fetch(`/api/stores/${storeId}/products`, {
+        headers: { 'Authorization': `Bearer ${API_KEY}` },
         signal: AbortSignal.timeout(15000),
       });
-      if (!response.ok) throw new Error('Failed to fetch products');
-      return response.json() as Promise<Product[]>;
+      if (!res.ok) throw new Error('Failed to fetch products');
+      return res.json() as Promise<Product[]>;
     },
-    staleTime: 10 * 60 * 1000, // 10 minutes - products change less frequently
+    staleTime: 10 * 60 * 1000,
     enabled: !!storeId,
   });
 
-  // Use stats from API (or fallback to zeros)
+  // Products map for enrichment
+  const productsMap: Record<string, Product> = {};
+  productsData?.forEach((p: Product) => { productsMap[p.id] = p; });
+
+  // Rating stats (global, independent of filters)
+  const { data: statsData } = useQuery({
+    queryKey: ['review-stats', storeId],
+    queryFn: async () => {
+      const res = await fetch(`/api/stores/${storeId}/reviews/stats`, {
+        headers: { 'Authorization': `Bearer ${API_KEY}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      return res.json() as Promise<{ ratingCounts: Record<number, number> }>;
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: !!storeId,
+  });
+
+  // Infinite query with cursor pagination
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isFetchingNextPage,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ['reviews-v2', storeId, take, filters],
+    queryFn: ({ pageParam }) =>
+      fetchReviewsPage(
+        storeId,
+        take,
+        filters,
+        pageParam?.cursor,
+        pageParam?.cursorId,
+      ),
+    initialPageParam: undefined as { cursor: string; cursorId: string } | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore && lastPage.nextCursor
+        ? { cursor: lastPage.nextCursor, cursorId: lastPage.nextCursorId || '' }
+        : undefined,
+    staleTime: 5 * 60 * 1000,
+    enabled: !!storeId,
+  });
+
+  // Flatten all pages into a single reviews array + enrich with products
+  const allReviews: Review[] = (data?.pages ?? []).flatMap(page =>
+    page.data.map(review => ({
+      ...review,
+      product: productsMap[review.product_id] || null,
+    }))
+  ) as Review[];
+
   const ratingCounts = statsData?.ratingCounts || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
 
-  // Handle review selection
+  // Selection handlers
   const handleSelectReview = (id: string, selected: boolean) => {
     const newSelected = new Set(selectedReviews);
-    if (selected) {
-      newSelected.add(id);
-    } else {
-      newSelected.delete(id);
-    }
+    if (selected) newSelected.add(id);
+    else newSelected.delete(id);
     setSelectedReviews(newSelected);
   };
 
   const handleSelectAll = (selected: boolean) => {
-    if (selected && data?.reviews) {
-      setSelectedReviews(new Set(data.reviews.map(r => r.id)));
+    if (selected) {
+      setSelectedReviews(new Set(allReviews.map(r => r.id)));
     } else {
       setSelectedReviews(new Set());
     }
   };
 
-  // Handle sync
+  // Sync handlers
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<'incremental' | 'full'>('incremental');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -189,35 +182,21 @@ export default function ReviewsPageV2() {
   const handleSync = async () => {
     setIsSyncing(true);
     setSyncMode('incremental');
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
-
     const syncToast = toast.loading('Синхронизация отзывов...');
-
     try {
       const response = await fetch(`/api/stores/${storeId}/reviews/update?mode=incremental`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
       });
-
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Ошибка синхронизации');
+        const err = await response.json();
+        throw new Error(err.error || 'Ошибка синхронизации');
       }
-
       const result = await response.json();
-      toast.success(`Синхронизация завершена. Обновлено: ${result.newReviews || 0} отзывов`, {
-        id: syncToast,
-      });
-
-      // Refresh data
+      toast.success(`Синхронизация завершена. Обновлено: ${result.newReviews || 0} отзывов`, { id: syncToast });
       refetch();
-    } catch (error: any) {
-      toast.error(error.message || 'Не удалось синхронизировать отзывы', {
-        id: syncToast,
-      });
+    } catch (err: any) {
+      toast.error(err.message || 'Не удалось синхронизировать отзывы', { id: syncToast });
     } finally {
       setIsSyncing(false);
     }
@@ -226,54 +205,33 @@ export default function ReviewsPageV2() {
   const handleFullSync = async () => {
     setIsSyncing(true);
     setSyncMode('full');
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
-
     const syncToast = toast.loading('Полная синхронизация отзывов...');
-
     try {
       const response = await fetch(`/api/stores/${storeId}/reviews/update?mode=full`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
       });
-
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Ошибка полной синхронизации');
+        const err = await response.json();
+        throw new Error(err.error || 'Ошибка полной синхронизации');
       }
-
       const result = await response.json();
-      toast.success(`Полная синхронизация завершена. Загружено: ${result.newReviews || 0} отзывов`, {
-        id: syncToast,
-      });
-
-      // Refresh data
+      toast.success(`Полная синхронизация завершена. Загружено: ${result.newReviews || 0} отзывов`, { id: syncToast });
       refetch();
-    } catch (error: any) {
-      toast.error(error.message || 'Не удалось выполнить полную синхронизацию', {
-        id: syncToast,
-      });
+    } catch (err: any) {
+      toast.error(err.message || 'Не удалось выполнить полную синхронизацию', { id: syncToast });
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Get eligible reviews for complaint generation
-  // Rules: no 5-star reviews, no reviews with complaint_status other than null/not_sent/draft
+  // Complaint generation
   const getEligibleReviewIds = (): string[] => {
-    if (!data?.reviews) return [];
-
     const eligibleStatuses = [null, undefined, 'not_sent', 'draft'];
-
-    return data.reviews
+    return allReviews
       .filter(review => {
-        // Skip if not selected
         if (!selectedReviews.has(review.id)) return false;
-        // Skip 5-star reviews
         if (review.rating === 5) return false;
-        // Skip reviews with complaint in progress
         if (!eligibleStatuses.includes(review.complaint_status as any)) return false;
         return true;
       })
@@ -282,44 +240,28 @@ export default function ReviewsPageV2() {
 
   const handleGenerateComplaints = async () => {
     const eligibleIds = getEligibleReviewIds();
-
     if (eligibleIds.length === 0) {
       toast.error('Нет отзывов, подходящих для генерации жалоб');
       return;
     }
-
     setIsGenerating(true);
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
-
     const generateToast = toast.loading(`Генерация жалоб для ${eligibleIds.length} отзывов...`);
-
     try {
       const response = await fetch(`/api/extension/stores/${storeId}/reviews/generate-complaints-batch`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ review_ids: eligibleIds }),
       });
-
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Ошибка генерации жалоб');
+        const err = await response.json();
+        throw new Error(err.error || 'Ошибка генерации жалоб');
       }
-
       const result = await response.json();
-      toast.success(`Сгенерировано жалоб: ${result.stats?.generated || 0}`, {
-        id: generateToast,
-      });
-
-      // Clear selection and refresh data
+      toast.success(`Сгенерировано жалоб: ${result.stats?.generated || 0}`, { id: generateToast });
       setSelectedReviews(new Set());
       refetch();
-    } catch (error: any) {
-      toast.error(error.message || 'Не удалось сгенерировать жалобы', {
-        id: generateToast,
-      });
+    } catch (err: any) {
+      toast.error(err.message || 'Не удалось сгенерировать жалобы', { id: generateToast });
     } finally {
       setIsGenerating(false);
     }
@@ -353,22 +295,21 @@ export default function ReviewsPageV2() {
       {/* Results Bar */}
       <div className="results-bar">
         <div className="results-count">
-          Всего: <strong>{(data?.totalCount || 0).toLocaleString('ru-RU')} отзывов</strong> |
-          Показано: <strong>{(data?.reviews.length || 0).toLocaleString('ru-RU')}</strong>
-          {isFetching && !isLoading && <span className="refetch-indicator">Обновление...</span>}
+          Загружено: <strong>{allReviews.length.toLocaleString('ru-RU')} отзывов</strong>
+          {hasNextPage && <span className="has-more-hint"> (есть ещё)</span>}
+          {isFetching && !isLoading && !isFetchingNextPage && <span className="refetch-indicator">Обновление...</span>}
         </div>
         <div className="page-size-selector">
-          <label>На странице:</label>
+          <label>Загружать по:</label>
           <select value={take} onChange={(e) => setTake(parseInt(e.target.value))}>
             <option value="50">50</option>
             <option value="100">100</option>
             <option value="200">200</option>
-            <option value="500">500</option>
           </select>
         </div>
       </div>
 
-      {/* Loading/Error States */}
+      {/* Loading State (initial) */}
       {isLoading && (
         <div className="loading-state">
           <RefreshCw className="spinner" style={{ width: '24px', height: '24px' }} />
@@ -378,20 +319,20 @@ export default function ReviewsPageV2() {
 
       {error && (
         <div className="error-state">
-          ❌ Ошибка загрузки: {(error as Error).message}
+          Ошибка загрузки: {(error as Error).message}
         </div>
       )}
 
       {/* Reviews Table */}
-      {!isLoading && !error && data && (
-        <div className="reviews-table-wrapper" style={{ opacity: isFetching ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+      {!isLoading && !error && allReviews.length > 0 && (
+        <div className="reviews-table-wrapper" style={{ opacity: (isFetching && !isFetchingNextPage) ? 0.6 : 1, transition: 'opacity 0.2s' }}>
           <table className="reviews-table">
             <thead>
               <tr>
                 <th>
                   <input
                     type="checkbox"
-                    checked={selectedReviews.size === data.reviews.length && data.reviews.length > 0}
+                    checked={selectedReviews.size === allReviews.length && allReviews.length > 0}
                     onChange={(e) => handleSelectAll(e.target.checked)}
                   />
                 </th>
@@ -403,7 +344,7 @@ export default function ReviewsPageV2() {
               </tr>
             </thead>
             <tbody>
-              {data.reviews.map((review) => (
+              {allReviews.map((review) => (
                 <ReviewRow
                   key={review.id}
                   review={review}
@@ -413,38 +354,48 @@ export default function ReviewsPageV2() {
               ))}
             </tbody>
           </table>
-
-          {data.reviews.length === 0 && (
-            <div className="empty-state">
-              <p>Отзывов не найдено</p>
-              <p className="empty-state-hint">
-                Попробуйте изменить фильтры или синхронизировать данные
-              </p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Pagination */}
-      {data && data.totalCount > take && (
-        <div className="pagination">
+      {/* Empty State */}
+      {!isLoading && !error && allReviews.length === 0 && (
+        <div className="empty-state-wrapper">
+          <div className="empty-state">
+            <p>Отзывов не найдено</p>
+            <p className="empty-state-hint">
+              Попробуйте изменить фильтры или синхронизировать данные
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Load More Button */}
+      {hasNextPage && (
+        <div className="load-more">
           <button
-            className="pagination-btn"
-            disabled={skip === 0}
-            onClick={() => setSkip(Math.max(0, skip - take))}
+            className="load-more-btn"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
           >
-            ← Назад
+            {isFetchingNextPage ? (
+              <>
+                <RefreshCw className="spinner" style={{ width: '16px', height: '16px' }} />
+                Загрузка...
+              </>
+            ) : (
+              <>
+                <ChevronDown style={{ width: '16px', height: '16px' }} />
+                Загрузить ещё {take}
+              </>
+            )}
           </button>
-          <span className="pagination-info">
-            Страница {Math.floor(skip / take) + 1} из {Math.ceil(data.totalCount / take)}
-          </span>
-          <button
-            className="pagination-btn"
-            disabled={skip + take >= data.totalCount}
-            onClick={() => setSkip(skip + take)}
-          >
-            Вперёд →
-          </button>
+        </div>
+      )}
+
+      {/* End of List */}
+      {!hasNextPage && allReviews.length > 0 && !isLoading && (
+        <div className="end-of-list">
+          Все отзывы загружены ({allReviews.length.toLocaleString('ru-RU')})
         </div>
       )}
 
@@ -469,6 +420,11 @@ export default function ReviewsPageV2() {
         .results-count strong {
           color: var(--color-foreground);
           font-weight: 600;
+        }
+
+        .has-more-hint {
+          color: var(--color-primary);
+          font-size: var(--font-size-xs);
         }
 
         .refetch-indicator {
@@ -567,6 +523,13 @@ export default function ReviewsPageV2() {
           padding: var(--spacing-md) 0;
         }
 
+        .empty-state-wrapper {
+          background: white;
+          border: 1px solid var(--color-border-light);
+          border-radius: var(--radius-lg);
+          box-shadow: var(--shadow-sm);
+        }
+
         .empty-state {
           padding: var(--spacing-4xl);
           text-align: center;
@@ -582,39 +545,44 @@ export default function ReviewsPageV2() {
           font-size: var(--font-size-sm);
         }
 
-        .pagination {
+        .load-more {
           display: flex;
-          align-items: center;
           justify-content: center;
-          gap: var(--spacing-sm);
           margin-top: var(--spacing-2xl);
           padding: var(--spacing-lg);
         }
 
-        .pagination-btn {
-          padding: var(--spacing-sm) var(--spacing-md);
+        .load-more-btn {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+          padding: var(--spacing-md) var(--spacing-2xl);
           background: white;
           border: 1px solid var(--color-border);
           border-radius: var(--radius-base);
           font-size: var(--font-size-sm);
+          font-weight: 500;
+          color: var(--color-foreground);
           cursor: pointer;
           transition: all 0.15s;
         }
 
-        .pagination-btn:hover:not(:disabled) {
+        .load-more-btn:hover:not(:disabled) {
           background: var(--color-border-light);
           border-color: var(--color-primary);
+          color: var(--color-primary);
         }
 
-        .pagination-btn:disabled {
-          opacity: 0.5;
+        .load-more-btn:disabled {
+          opacity: 0.6;
           cursor: not-allowed;
         }
 
-        .pagination-info {
+        .end-of-list {
+          text-align: center;
+          padding: var(--spacing-xl);
           font-size: var(--font-size-sm);
           color: var(--color-muted);
-          margin: 0 var(--spacing-md);
         }
       `}</style>
     </div>
