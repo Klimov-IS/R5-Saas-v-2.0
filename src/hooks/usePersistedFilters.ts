@@ -23,6 +23,7 @@ export type FilterState = {
   reviewStatusesWB: string[];
   chatStatuses: string[];
   productIds: string[]; // Array of selected product nm_ids
+  hideRatingExcluded: boolean; // Hide reviews excluded from WB rating
 };
 
 // Default filter values
@@ -34,6 +35,7 @@ export const DEFAULT_FILTERS: FilterState = {
   reviewStatusesWB: [], // [] = all statuses
   chatStatuses: [], // [] = all statuses
   productIds: [], // [] = all products
+  hideRatingExcluded: false, // show all by default
 };
 
 /**
@@ -68,6 +70,9 @@ export function getActiveFilterCount(filters: FilterState): number {
 
   // Product IDs is active if any selected
   if (filters.productIds && filters.productIds.length > 0) count++;
+
+  // Rating excluded filter is active if enabled
+  if (filters.hideRatingExcluded) count++;
 
   return count;
 }

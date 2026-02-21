@@ -98,6 +98,22 @@ export const ReviewRow: React.FC<Props> = ({ review, isSelected, onSelect }) => 
         {/* Status Badges (3 columns) */}
         <td>
           <div className="status-badges">
+            {/* Rating excluded indicator (WB transparent rating) */}
+            {review.rating_excluded && (
+              <span className="badge" style={{
+                background: '#dcfce7',
+                color: '#166534',
+                border: '1px solid #86efac',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+              }}>
+                Исключён из рейтинга
+              </span>
+            )}
+
             {/* Complaint status always visible (first) */}
             <StatusBadge type="complaint_status" status={review.complaint_status} />
 

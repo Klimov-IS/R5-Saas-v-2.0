@@ -4,7 +4,7 @@
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
 **Marketplaces:** Wildberries, OZON
-**Last Updated:** 2026-02-12
+**Last Updated:** 2026-02-20
 
 ---
 
@@ -18,6 +18,7 @@
    - [products](#products)
    - [reviews](#reviews)
    - [review_complaints](#review_complaints)
+   - [complaint_details](#complaint_details)
 4. [Communication Tables](#communication-tables)
    - [chats](#chats)
    - [chat_messages](#chat_messages)
@@ -437,6 +438,9 @@ CREATE TABLE reviews (
 
   -- Deletion detection (added migration 015)
   deleted_from_wb_at         TIMESTAMPTZ NULL,  -- When review was detected as deleted from WB
+
+  -- WB transparent rating (added migration 022)
+  rating_excluded            BOOLEAN NOT NULL DEFAULT FALSE,  -- WB excluded review from product rating calculation
 
   -- OZON-specific fields (migration 013)
   ozon_review_status         TEXT NULL,          -- 'PROCESSED' | 'UNPROCESSED'
@@ -1376,6 +1380,7 @@ Key migrations:
 15. `016_review_chat_links.sql` - Review↔Chat linking table for Chrome Extension (Sprint 002)
 16. `020_add_complaint_filed_info.sql` - `filed_by` + `complaint_filed_date` on review_complaints and reviews
 17. `021_complaint_details.sql` - `complaint_details` table — source of truth for approved complaints (mirrors Google Sheets)
+18. `022_rating_excluded.sql` - `rating_excluded` BOOLEAN on reviews + review_statuses_from_extension (WB transparent rating)
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 

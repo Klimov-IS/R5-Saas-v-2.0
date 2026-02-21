@@ -2,8 +2,8 @@
 
 > **Backend API для интеграции с Chrome Extension (R5 Complaints System)**
 
-**Версия:** 1.1.0
-**Дата обновления:** 2026-02-01
+**Версия:** 2.1.0
+**Дата обновления:** 2026-02-20
 **Статус:** Production Ready
 
 ---
@@ -23,6 +23,8 @@ WB Reputation Manager работает в паре с Chrome Extension для а
 │  │  3. Получает готовые жалобы (complaints)                    │    │
 │  │  4. Подает жалобы в WB                                      │    │
 │  │  5. Обновляет статусы после подачи                          │    │
+│  │  6. Проверяет статусы жалоб (complaint-statuses)            │    │
+│  │  7. Скриншотит одобренные и шлёт детали (complaint-details) │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 │                              │                                       │
 │                              ▼                                       │
@@ -32,10 +34,12 @@ WB Reputation Manager работает в паре с Chrome Extension для а
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Backend API                                  │
 │  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  - /api/extension/review-statuses   (статусы отзывов)       │    │
-│  │  - /api/extension/stores            (список магазинов)      │    │
+│  │  - /api/extension/review-statuses     (статусы отзывов)     │    │
+│  │  - /api/extension/stores              (список магазинов)    │    │
 │  │  - /api/extension/stores/:id/complaints (очередь жалоб)     │    │
-│  │  - /api/extension/stores/:id/stats  (статистика)            │    │
+│  │  - /api/extension/stores/:id/stats    (статистика)          │    │
+│  │  - /api/extension/complaint-statuses  (статусы жалоб WB)    │    │
+│  │  - /api/extension/complaint-details   (одобренные жалобы)   │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 │                              │                                       │
 │                              ▼                                       │
@@ -43,7 +47,9 @@ WB Reputation Manager работает в паре с Chrome Extension для а
 │  │  PostgreSQL:                                                 │    │
 │  │  - review_statuses_from_extension (статусы от Extension)     │    │
 │  │  - reviews (основная таблица отзывов)                       │    │
-│  │  - review_complaints (жалобы)                               │    │
+│  │  - review_complaints (AI-черновики жалоб)                   │    │
+│  │  - complaint_details (одобренные жалобы — source of truth)  │    │
+│  │  - review_chat_links (связка отзыв↔чат)                    │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -95,11 +101,17 @@ Authorization: Bearer wbrm_<token>
       "rating": 1,
       "reviewDate": "2026-01-07T20:09:37.000Z",
       "statuses": ["Жалоба отклонена", "Выкуп"],
-      "canSubmitComplaint": false
+      "canSubmitComplaint": false,
+      "chatStatus": "chat_available",
+      "ratingExcluded": false
     }
   ]
 }
 ```
+
+**Fields:**
+- `ratingExcluded` (boolean, optional, default: false) — WB transparent rating: `true` = review excluded from product rating calculation. Reviews with `ratingExcluded: true` are removed from all task queues.
+- `chatStatus` (string, optional) — Chat button state: `chat_not_activated` | `chat_available` | `chat_opened`
 
 **Response 200:**
 
@@ -156,6 +168,7 @@ Authorization: Bearer wbrm_<token>
         "reviewDate": "2026-01-07T20:09:37.000Z",
         "statuses": ["Жалоба отклонена", "Выкуп"],
         "canSubmitComplaint": false,
+        "ratingExcluded": false,
         "parsedAt": "2026-02-01T12:00:00.000Z",
         "createdAt": "2026-02-01T12:00:01.000Z",
         "updatedAt": "2026-02-01T12:00:01.000Z"
@@ -424,7 +437,8 @@ curl -X POST "http://158.160.217.236/api/extension/review-statuses" \
         "rating": 1,
         "reviewDate": "2026-01-07T20:09:37.000Z",
         "statuses": ["Жалоба отклонена"],
-        "canSubmitComplaint": false
+        "canSubmitComplaint": false,
+        "ratingExcluded": true
       }
     ]
   }'
@@ -475,6 +489,117 @@ curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaint
                     ▼
 7. POST /api/extension/stores/:id/reviews/:id/complaint/sent
    (Extension отмечает жалобы как отправленные)
+          │
+          ▼
+8. Extension Complaint Checker проверяет статусы жалоб на WB
+          │
+          ▼
+9. POST /api/extension/complaint-statuses
+   (Extension передаёт статусы всех жалоб + кто подавал)
+          │
+          ▼
+10. При одобрении — Extension делает скриншот
+          │
+          ▼
+11. POST /api/extension/complaint-details
+    (Extension передаёт полные данные одобренной жалобы)
+```
+
+---
+
+### 6. Complaint Statuses (Bulk Status Sync)
+
+#### POST /api/extension/complaint-statuses
+
+Массовое обновление статусов жалоб. Расширение парсит страницу жалоб WB и передаёт текущие статусы.
+
+**Request:**
+
+```json
+{
+  "storeId": "store_123",
+  "results": [
+    {
+      "reviewKey": "149325538_1_2026-02-18T21:45",
+      "status": "Жалоба одобрена",
+      "filedBy": "R5",
+      "complaintDate": "15.02.2026"
+    }
+  ]
+}
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| reviewKey | string | `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}` |
+| status | string | "Жалоба одобрена" / "Жалоба отклонена" / "Проверяем жалобу" / "Жалоба пересмотрена" |
+| filedBy | string | "R5" или "Продавец" |
+| complaintDate | string\|null | Дата подачи DD.MM.YYYY, null если подал продавец |
+
+**Что обновляет:**
+- `reviews.complaint_status` + `complaint_filed_by` + `complaint_filed_date`
+- `review_complaints.status` + `filed_by` + `complaint_filed_date`
+
+**Response 200:**
+```json
+{
+  "success": true,
+  "data": {
+    "received": 50,
+    "valid": 48,
+    "reviewsUpdated": 45,
+    "complaintsUpdated": 40,
+    "skipped": 2
+  },
+  "elapsed": 234
+}
+```
+
+---
+
+### 7. Complaint Details (Approved Complaint Data)
+
+#### POST /api/extension/complaint-details
+
+Полные данные одобренной жалобы. Вызывается после каждого скриншота. Зеркало Google Sheets "Жалобы V 2.0".
+
+**Назначение:** Биллинг, отчётность клиентам, обучение AI на реальных одобренных кейсах.
+
+**Request:**
+
+```json
+{
+  "storeId": "store_123",
+  "complaint": {
+    "checkDate": "20.02.2026",
+    "cabinetName": "МойМагазин",
+    "articul": "149325538",
+    "reviewId": "",
+    "feedbackRating": 1,
+    "feedbackDate": "18 февр. 2026 г. в 21:45",
+    "complaintSubmitDate": "15.02.2026",
+    "status": "Одобрена",
+    "hasScreenshot": true,
+    "fileName": "149325538_18.02.26_21-45.png",
+    "driveLink": "https://drive.google.com/file/d/abc123/view",
+    "complaintCategory": "Отзыв не относится к товару",
+    "complaintText": "Жалоба от: 20.02.2026\n\nОтзыв покупателя не содержит..."
+  }
+}
+```
+
+**Дедупликация:** `store_id + articul + feedbackDate + fileName`
+
+**filed_by автодетекция:** complaintText начинается с "Жалоба от:" → `r5`, иначе → `seller`
+
+**Response (created):**
+```json
+{ "success": true, "data": { "created": true } }
+```
+
+**Response (duplicate):**
+```json
+{ "success": true, "data": { "created": false, "reason": "duplicate" } }
 ```
 
 ---
@@ -508,6 +633,27 @@ curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaint
 ---
 
 ## Changelog
+
+### v2.1.0 (2026-02-20)
+
+**Data Collection Pipeline**
+
+- POST /api/extension/complaint-statuses — массовый sync статусов жалоб + filed_by + complaintDate
+- POST /api/extension/complaint-details — полные данные одобренных жалоб (source of truth для биллинга)
+- Новая таблица `complaint_details` (migration 021) — зеркало Google Sheets "Жалобы V 2.0"
+- Поля `filed_by` + `complaint_filed_date` на reviews + review_complaints (migration 020)
+- Автодетекция filed_by из текста жалобы ("Жалоба от:" → r5)
+
+### v2.0.0 (2026-02-16)
+
+**Sprint 002: Review-Chat Linking**
+
+- POST /api/extension/chat/opened — фиксация открытия чата из страницы отзывов
+- POST /api/extension/chat/:id/anchor — фиксация системного сообщения
+- POST /api/extension/chat/:id/message-sent — отправка стартового сообщения
+- POST /api/extension/chat/:id/error — логирование ошибок
+- GET /api/extension/chat/stores — список магазинов с chat-workflow
+- GET /api/extension/chat/stores/:id/rules — правила чат-обработки
 
 ### v1.1.0 (2026-02-01)
 
@@ -549,5 +695,5 @@ curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaint
 
 ---
 
-**Последнее обновление:** 2026-02-01
+**Последнее обновление:** 2026-02-20
 **Автор:** R5 Backend Team

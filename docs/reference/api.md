@@ -735,9 +735,39 @@ API для Chrome Extension.
 
 ---
 
+### POST /api/extension/review-statuses
+
+Приём статусов отзывов от Chrome Extension (парсинг страницы ЛК WB).
+
+**Request:**
+```json
+{
+  "storeId": "7kKX9WgLvOPiXYIHk6hi",
+  "parsedAt": "2026-02-01T12:00:00.000Z",
+  "reviews": [
+    {
+      "reviewKey": "649502497_1_2026-01-07T20:09",
+      "productId": "649502497",
+      "rating": 1,
+      "reviewDate": "2026-01-07T20:09:37.000Z",
+      "statuses": ["Жалоба отклонена", "Выкуп"],
+      "canSubmitComplaint": false,
+      "chatStatus": "chat_available",
+      "ratingExcluded": false
+    }
+  ]
+}
+```
+
+Поля:
+- `ratingExcluded` (boolean, optional) — WB прозрачный рейтинг: отзыв исключён из расчёта рейтинга товара. Если `true`, отзыв убирается из всех очередей задач.
+- `chatStatus` — состояние кнопки чата: `chat_not_activated` | `chat_available` | `chat_opened`
+
+---
+
 ### POST /api/extension/stores/:storeId/reviews/sync
 
-Синхронизировать статусы отзывов из extension.
+Синхронизировать статусы отзывов из extension (legacy).
 
 **Request:**
 ```json
@@ -789,6 +819,56 @@ API для Chrome Extension.
 ### PUT /api/extension/stores/:storeId/reviews/:reviewId/complaint/sent
 
 Отметить жалобу как отправленную (из extension).
+
+---
+
+### POST /api/extension/complaint-statuses
+
+Массовый sync статусов жалоб от Complaint Checker Extension. Обновляет `reviews` + `review_complaints` (status, filed_by, complaint_filed_date).
+
+**Request:**
+```json
+{
+  "storeId": "store_123",
+  "results": [
+    {
+      "reviewKey": "149325538_1_2026-02-18T21:45",
+      "status": "Жалоба одобрена",
+      "filedBy": "R5",
+      "complaintDate": "15.02.2026"
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/extension/complaint-details
+
+Полные данные одобренной жалобы (зеркало Google Sheets "Жалобы V 2.0"). Source of truth для биллинга и отчётности.
+
+**Request:**
+```json
+{
+  "storeId": "store_123",
+  "complaint": {
+    "checkDate": "20.02.2026",
+    "cabinetName": "МойМагазин",
+    "articul": "149325538",
+    "feedbackRating": 1,
+    "feedbackDate": "18 февр. 2026 г. в 21:45",
+    "complaintSubmitDate": "15.02.2026",
+    "status": "Одобрена",
+    "hasScreenshot": true,
+    "fileName": "149325538_18.02.26_21-45.png",
+    "driveLink": "https://drive.google.com/file/d/abc123/view",
+    "complaintCategory": "Отзыв не относится к товару",
+    "complaintText": "Жалоба от: 20.02.2026\n\n..."
+  }
+}
+```
+
+**Response:** `{ "success": true, "data": { "created": true } }` или `{ "created": false, "reason": "duplicate" }`
 
 ---
 
@@ -1254,4 +1334,4 @@ Proxy к WB Questions API.
 
 ---
 
-**Last Updated:** 2026-02-16
+**Last Updated:** 2026-02-20

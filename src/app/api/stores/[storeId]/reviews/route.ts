@@ -31,6 +31,7 @@ function formatReview(review: any) {
         parsed_at: review.parsed_at || null,
         page_number: review.page_number || null,
         is_product_active: review.is_product_active !== undefined ? review.is_product_active : true,
+        rating_excluded: review.rating_excluded ?? false,
     };
 }
 
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
     const productStatusByReview = searchParams.get('productStatusByReview') || 'all';
     const complaintStatus = searchParams.get('complaintStatus') || 'all';
     const chatStatusByReview = searchParams.get('chatStatusByReview') || 'all';
+    const hideRatingExcluded = searchParams.get('hideRatingExcluded') === 'true';
 
     // Legacy offset pagination support (deprecated)
     const skip = searchParams.get('skip');
@@ -74,6 +76,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
         productStatusByReview,
         complaintStatus,
         chatStatusByReview,
+        hideRatingExcluded,
     };
 
     try {

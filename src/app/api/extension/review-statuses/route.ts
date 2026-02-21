@@ -28,6 +28,7 @@ interface ReviewStatusInput {
   statuses: string[];       // Array of status strings from WB
   canSubmitComplaint: boolean;
   chatStatus?: string | null; // chat_not_activated | chat_available | chat_opened | null
+  ratingExcluded?: boolean;   // WB transparent rating: review excluded from rating calculation
 }
 
 interface PostRequestBody {
@@ -257,17 +258,18 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // UPSERT query (includes chat_status from extension)
+        // UPSERT query (includes chat_status + rating_excluded from extension)
         const result = await query(
           `INSERT INTO review_statuses_from_extension
-            (review_key, store_id, product_id, rating, review_date, statuses, can_submit_complaint, chat_status, parsed_at)
+            (review_key, store_id, product_id, rating, review_date, statuses, can_submit_complaint, chat_status, rating_excluded, parsed_at)
           VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (review_key, store_id)
           DO UPDATE SET
             statuses = EXCLUDED.statuses,
             can_submit_complaint = EXCLUDED.can_submit_complaint,
             chat_status = EXCLUDED.chat_status,
+            rating_excluded = EXCLUDED.rating_excluded,
             parsed_at = EXCLUDED.parsed_at,
             updated_at = CURRENT_TIMESTAMP
           RETURNING (xmax = 0) as is_insert`,
@@ -280,6 +282,7 @@ export async function POST(request: NextRequest) {
             JSON.stringify(review.statuses || []),
             review.canSubmitComplaint ?? true,
             review.chatStatus || null,
+            review.ratingExcluded ?? false,
             parsedAt
           ]
         );
@@ -350,7 +353,28 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 5b. Sync complaint statuses (only if complaint status present)
+      // 5b. Sync rating_excluded to reviews table
+      if (review.ratingExcluded === true || review.ratingExcluded === false) {
+        try {
+          await query(
+            `UPDATE reviews
+             SET
+               rating_excluded = $1,
+               updated_at = NOW()
+             WHERE
+               store_id = $2
+               AND product_id = $3
+               AND rating = $4
+               AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
+               AND rating_excluded != $1`,
+            [review.ratingExcluded, storeId, reviewsProductId, review.rating, review.reviewDate]
+          );
+        } catch (err: any) {
+          console.error(`[Extension ReviewStatuses] ❌ rating_excluded sync error for ${review.reviewKey}:`, err.message);
+        }
+      }
+
+      // 5c. Sync complaint statuses (only if complaint status present)
       if (!review.statuses || !hasAnyComplaintStatus(review.statuses)) {
         continue;
       }
@@ -628,6 +652,7 @@ export async function GET(request: NextRequest) {
         statuses,
         can_submit_complaint,
         chat_status,
+        rating_excluded,
         parsed_at,
         created_at,
         updated_at
@@ -666,6 +691,7 @@ export async function GET(request: NextRequest) {
           statuses: row.statuses,
           canSubmitComplaint: row.can_submit_complaint,
           chatStatus: row.chat_status,
+          ratingExcluded: row.rating_excluded,
           parsedAt: row.parsed_at,
           createdAt: row.created_at,
           updatedAt: row.updated_at

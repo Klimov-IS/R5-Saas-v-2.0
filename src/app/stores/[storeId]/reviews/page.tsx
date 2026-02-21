@@ -49,6 +49,7 @@ async function fetchReviewsPage(
     chatStatusByReview: filters.chatStatuses.length > 0 ? filters.chatStatuses.join(',') : 'all',
     search: filters.search,
     productIds: filters.productIds && filters.productIds.length > 0 ? filters.productIds.join(',') : 'all',
+    ...(filters.hideRatingExcluded ? { hideRatingExcluded: 'true' } : {}),
   });
 
   if (cursor) params.set('cursor', cursor);

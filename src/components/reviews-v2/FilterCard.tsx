@@ -48,6 +48,7 @@ export type FilterState = {
   reviewStatusesWB: string[];   // [] = all
   chatStatuses: string[];       // [] = all
   productIds: string[];         // [] = all products, array of nm_ids
+  hideRatingExcluded: boolean;  // hide reviews excluded from WB rating
 };
 
 type ProductOption = {
@@ -288,6 +289,18 @@ export const FilterCard: React.FC<Props> = ({
             allLabel="Все статусы"
           />
         </div>
+      </div>
+
+      {/* Rating Excluded Toggle */}
+      <div className="filter-section" style={{ marginTop: 'var(--spacing-md)' }}>
+        <label className="filter-checkbox" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          <input
+            type="checkbox"
+            checked={filters.hideRatingExcluded}
+            onChange={(e) => updateFilter('hideRatingExcluded', e.target.checked)}
+          />
+          <span style={{ fontSize: '13px', color: 'var(--color-foreground-muted)' }}>Скрыть исключённые из рейтинга</span>
+        </label>
       </div>
 
       <style jsx>{`

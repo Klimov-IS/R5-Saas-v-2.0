@@ -76,6 +76,7 @@ export type Review = {
   parsed_at: string | null;
   page_number: number | null;
   deleted_from_wb_at: string | null;
+  rating_excluded: boolean;
 
   // Denormalized flags
   has_answer: boolean;

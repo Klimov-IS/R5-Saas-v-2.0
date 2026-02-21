@@ -1590,6 +1590,11 @@ function buildReviewFilterClauses(
     }
   }
 
+  // Filter: hide reviews excluded from WB rating
+  if (options?.hideRatingExcluded) {
+    whereClauses.push(`r.rating_excluded = FALSE`);
+  }
+
   return { whereClauses, params, nextParamIndex: paramIndex };
 }
 
@@ -1613,6 +1618,7 @@ export type ReviewsFilterOptions = {
   productStatusByReview?: string; // 'all' | 'purchased' | 'refused' | 'not_specified'
   complaintStatus?: string; // 'all' | 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending'
   chatStatusByReview?: string; // 'all' | 'unavailable' | 'available' | 'opened' | 'unknown' (supports comma-separated)
+  hideRatingExcluded?: boolean; // filter out reviews with rating_excluded = true
 };
 
 export type ReviewsWithCount = {
