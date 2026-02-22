@@ -410,11 +410,20 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
       }
     }
 
-    // Step 5a-tg: Send Telegram notifications for OZON client replies
+    // Step 5a-tg: Send Telegram notifications for OZON client replies (review-linked only)
     if (clientRepliedChats.length > 0) {
       try {
-        await sendTelegramNotifications(storeId, store.name || storeId, ownerId, clientRepliedChats);
-        console.log(`[OZON-CHATS] TG notifications sent for ${clientRepliedChats.length} client replies`);
+        // Filter: only notify for review-linked chats
+        const linkedResult = await query<{ chat_id: string }>(
+            `SELECT chat_id FROM review_chat_links WHERE store_id = $1 AND chat_id IS NOT NULL`,
+            [storeId]
+        );
+        const reviewLinkedChatIds = new Set(linkedResult.rows.map(r => r.chat_id));
+        const linkedClientChats = clientRepliedChats.filter(c => reviewLinkedChatIds.has(c.chatId));
+        if (linkedClientChats.length > 0) {
+          await sendTelegramNotifications(storeId, store.name || storeId, ownerId, linkedClientChats);
+        }
+        console.log(`[OZON-CHATS] TG notifications: ${linkedClientChats.length}/${clientRepliedChats.length} review-linked`);
       } catch (tgErr: any) {
         console.error(`[OZON-CHATS] TG notification error (non-critical): ${tgErr.message}`);
       }

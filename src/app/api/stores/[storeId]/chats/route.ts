@@ -92,6 +92,7 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
     const tag = searchParams.get('tag') || 'all';
     const search = searchParams.get('search') || '';
     const hasDraft = searchParams.get('hasDraft') === 'true';
+    const reviewLinkedOnly = searchParams.get('reviewLinkedOnly') === 'true';
 
     try {
         // Get chats with pagination and filters
@@ -102,7 +103,8 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             sender: sender !== 'all' ? sender : undefined,
             tag,
             search,
-            hasDraft
+            hasDraft,
+            reviewLinkedOnly,
         });
 
         // Get total count with same filters
@@ -111,7 +113,8 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             sender: sender !== 'all' ? sender : undefined,
             tag,
             search,
-            hasDraft
+            hasDraft,
+            reviewLinkedOnly,
         });
 
         // Format response

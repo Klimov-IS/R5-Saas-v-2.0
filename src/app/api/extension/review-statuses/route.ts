@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/db/client';
 import { getUserByApiToken } from '@/db/extension-helpers';
+import { refreshReviewsForStore } from '@/lib/review-sync';
 
 // ============================================
 // Types
@@ -551,11 +552,13 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        const syncUrl = `${baseUrl}/api/stores/${storeId}/reviews/update?mode=full&dateFrom=${dateFrom}&dateTo=${dateTo}`;
         console.log(`[Extension ReviewStatuses] 🔄 Triggering targeted sync: ${new Date(dateFrom * 1000).toISOString().slice(0, 10)} → ${new Date(dateTo * 1000).toISOString().slice(0, 10)}`);
-        fetch(syncUrl, { method: 'POST' }).catch(err =>
-          console.error('[Extension ReviewStatuses] Targeted sync fetch error:', err.message)
+        // Direct function call (fire-and-forget) — no HTTP, no auth needed
+        refreshReviewsForStore(storeId, 'full', {
+          from: new Date(dateFrom * 1000),
+          to: new Date(dateTo * 1000),
+        }).catch(err =>
+          console.error('[Extension ReviewStatuses] Targeted sync error:', err.message)
         );
         syncTriggered = true;
       } catch (err: any) {

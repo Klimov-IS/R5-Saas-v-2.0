@@ -1791,7 +1791,7 @@ export async function getReviewsCount(
  */
 export async function getChatsByStoreWithPagination(
   storeId: string,
-  options?: { limit?: number; offset?: number; status?: ChatStatus; sender?: 'client' | 'seller'; tag?: string; search?: string; hasDraft?: boolean }
+  options?: { limit?: number; offset?: number; status?: ChatStatus; sender?: 'client' | 'seller'; tag?: string; search?: string; hasDraft?: boolean; reviewLinkedOnly?: boolean }
 ): Promise<Chat[]> {
   const whereClauses: string[] = ['c.store_id = $1'];
   const params: any[] = [storeId];
@@ -1827,6 +1827,10 @@ export async function getChatsByStoreWithPagination(
     paramIndex++;
   }
 
+  const reviewLinkedJoin = options?.reviewLinkedOnly
+    ? `INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id`
+    : '';
+
   let sql = `
     SELECT
       c.*,
@@ -1834,6 +1838,7 @@ export async function getChatsByStoreWithPagination(
       p.vendor_code as product_vendor_code,
       (SELECT COUNT(*)::int FROM chat_messages WHERE chat_id = c.id) as message_count
     FROM chats c
+    ${reviewLinkedJoin}
     LEFT JOIN products p ON p.store_id = c.store_id
       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
@@ -1866,42 +1871,47 @@ export async function getChatsCount(
     tag?: string;
     search?: string;
     hasDraft?: boolean;
+    reviewLinkedOnly?: boolean;
   }
 ): Promise<number> {
-  const whereClauses: string[] = ['store_id = $1'];
+  const whereClauses: string[] = ['c.store_id = $1'];
   const params: any[] = [storeId];
   let paramIndex = 2;
 
   // Filter by status (NEW - Kanban)
   if (options?.status) {
-    whereClauses.push(`status = $${paramIndex++}`);
+    whereClauses.push(`c.status = $${paramIndex++}`);
     params.push(options.status);
   }
 
   // Filter by last message sender (NEW - for sender filter)
   if (options?.sender && options.sender !== 'all') {
-    whereClauses.push(`last_message_sender = $${paramIndex++}`);
+    whereClauses.push(`c.last_message_sender = $${paramIndex++}`);
     params.push(options.sender);
   }
 
   // Filter by tag (AI classification)
   if (options?.tag && options.tag !== 'all') {
-    whereClauses.push(`tag = $${paramIndex++}`);
+    whereClauses.push(`c.tag = $${paramIndex++}`);
     params.push(options.tag);
   }
 
   // Filter by draft reply (NEW - for draft filter)
   if (options?.hasDraft) {
-    whereClauses.push(`draft_reply IS NOT NULL AND draft_reply != ''`);
+    whereClauses.push(`c.draft_reply IS NOT NULL AND c.draft_reply != ''`);
   }
 
   // Search in last message text
   if (options?.search && options.search.trim()) {
-    whereClauses.push(`last_message_text ILIKE $${paramIndex++}`);
+    whereClauses.push(`c.last_message_text ILIKE $${paramIndex++}`);
     params.push(`%${options.search.trim()}%`);
   }
 
-  const sql = `SELECT COUNT(*) as count FROM chats WHERE ${whereClauses.join(' AND ')}`;
+  const reviewLinkedJoin = options?.reviewLinkedOnly
+    ? `INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id`
+    : '';
+
+  const sql = `SELECT COUNT(*) as count FROM chats c ${reviewLinkedJoin} WHERE ${whereClauses.join(' AND ')}`;
   const result = await query<{ count: string }>(sql, params);
   return parseInt(result.rows[0].count, 10);
 }

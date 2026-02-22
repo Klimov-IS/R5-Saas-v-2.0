@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { query } from '@/db/client';
 import { verifyApiKey } from '@/lib/server-utils';
 import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
@@ -267,14 +268,19 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
 
             // --- Step 5a-tg: Send Telegram notifications for new client replies ---
             try {
+                // Only notify for review-linked chats (chats we opened for complaint follow-up)
+                const linkedResult = await query<{ chat_id: string }>(
+                    `SELECT chat_id FROM review_chat_links WHERE store_id = $1 AND chat_id IS NOT NULL`,
+                    [storeId]
+                );
+                const reviewLinkedChatIds = new Set(linkedResult.rows.map(r => r.chat_id));
+
                 const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
                 for (const chatId in latestMessagesPerChat) {
                     if (latestMessagesPerChat[chatId].sender === 'client') {
+                        // Filter: only notify for review-linked chats (synced with TG queue filter)
+                        if (!reviewLinkedChatIds.has(chatId)) continue;
                         const chatInfo = existingChatMap.get(chatId);
-                        const nmId = chatInfo?.product_nm_id;
-                        // Filter: only notify for chats with active products (synced with TG queue filter)
-                        // Chats without product_nm_id are also excluded — they're not visible in queue either
-                        if (!nmId || !activeNmIds.has(nmId)) continue;
                         const msgText = latestMessagesPerChat[chatId].message?.text || null;
                         clientRepliedChats.push({
                             chatId,
