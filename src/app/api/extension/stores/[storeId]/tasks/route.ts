@@ -194,6 +194,12 @@ export async function GET(
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
            AND p.work_status = 'active'
+           AND (
+             (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+             (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+             (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+             (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+           )
            AND NOT EXISTS (
              SELECT 1 FROM review_chat_links rcl
              WHERE rcl.store_id = r.store_id
@@ -301,6 +307,12 @@ export async function GET(
              AND r.chat_status_by_review = 'opened' AND pr.work_in_chats = TRUE
              AND r.review_status_wb != 'deleted' AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
              AND p.work_status = 'active'
+             AND (
+               (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+               (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+               (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+               (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+             )
              AND NOT EXISTS (
                SELECT 1 FROM review_chat_links rcl
                WHERE rcl.store_id = r.store_id
