@@ -15,6 +15,8 @@ interface Chat {
   status: ChatStatus;
   messageCount?: number;
   completionReason?: CompletionReason | null;
+  reviewRating?: number | null;
+  reviewDate?: string | null;
 }
 
 interface KanbanColumnProps {
@@ -123,6 +125,8 @@ export default function KanbanColumn({
               onSelect={onSelectChat}
               completionReason={chat.completionReason}
               onChatClick={onChatClick}
+              reviewRating={chat.reviewRating}
+              reviewDate={chat.reviewDate}
             />
           ))
         )}

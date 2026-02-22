@@ -23,6 +23,8 @@ interface Chat {
   status: ChatStatus;
   messageCount?: number;
   completionReason?: CompletionReason | null;
+  reviewRating?: number | null;
+  reviewDate?: string | null;
 }
 
 interface KanbanBoardViewProps {
@@ -406,6 +408,8 @@ const KanbanBoardView = forwardRef<KanbanBoardViewRef, KanbanBoardViewProps>(
                 status={activeChat.status}
                 messageCount={activeChat.messageCount}
                 completionReason={activeChat.completionReason}
+                reviewRating={activeChat.reviewRating}
+                reviewDate={activeChat.reviewDate}
               />
             </div>
           )}

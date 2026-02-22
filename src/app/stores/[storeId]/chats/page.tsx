@@ -294,6 +294,8 @@ export default function ChatsPage() {
                 status: chat.status || 'inbox',
                 messageCount: chat.messageCount || 0,
                 completionReason: chat.completionReason || null,
+                reviewRating: chat.reviewRating ?? null,
+                reviewDate: chat.reviewDate ?? null,
               }))}
               storeId={storeId}
               onChatClick={(chatId) => setPreviewChatId(chatId)}

@@ -31,6 +31,7 @@ interface ChatDetail {
   compensationType?: string | null;
   compensationBy?: string | null;
   chatStrategy?: string | null;
+  reviewText?: string | null;
 }
 
 const COMPLETION_REASONS = [
@@ -79,6 +80,7 @@ export default function TgChatPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [reviewTextExpanded, setReviewTextExpanded] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -334,7 +336,7 @@ export default function TgChatPage() {
         )}
 
         {/* Expandable details section */}
-        {(chat.productStatus || chat.complaintStatus || chat.chatStrategy || chat.offerCompensation) && (
+        {(chat.productStatus || chat.complaintStatus || chat.chatStrategy || chat.offerCompensation || chat.reviewText) && (
           <>
             <button
               onClick={() => setShowDetails(!showDetails)}
@@ -399,6 +401,39 @@ export default function TgChatPage() {
                   }}>
                     Кешбек {chat.maxCompensation}₽ {chat.compensationBy === 'r5' ? '(R5)' : chat.compensationBy === 'seller' ? '(продавец)' : ''}
                   </span>
+                )}
+                {chat.reviewText && (
+                  <div style={{ width: '100%', marginTop: '4px' }}>
+                    <button
+                      onClick={() => setReviewTextExpanded(!reviewTextExpanded)}
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--tg-hint)',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {reviewTextExpanded ? '▲ Скрыть отзыв' : '▼ Текст отзыва'}
+                    </button>
+                    {reviewTextExpanded && (
+                      <div style={{
+                        marginTop: '4px',
+                        padding: '6px 8px',
+                        backgroundColor: 'rgba(0,0,0,0.04)',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        color: 'var(--tg-text)',
+                        lineHeight: '1.4',
+                        maxHeight: '120px',
+                        overflowY: 'auto',
+                      }}>
+                        {chat.reviewText}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}

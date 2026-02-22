@@ -132,7 +132,17 @@ export async function GET(request: NextRequest, { params }: { params: { storeId:
             tag: chat.tag,
             status: chat.status, // NEW: Kanban status
             draftReply: chat.draft_reply || null,
-            messageCount: chat.message_count || 0, // NEW: Real message count
+            messageCount: chat.message_count || 0,
+            reviewRating: chat.review_rating ?? null,
+            reviewDate: chat.review_date ?? null,
+            reviewText: chat.review_text ?? null,
+            complaintStatus: chat.complaint_status ?? null,
+            productStatus: chat.product_status ?? null,
+            offerCompensation: chat.offer_compensation ?? null,
+            maxCompensation: chat.max_compensation ?? null,
+            compensationType: chat.compensation_type ?? null,
+            compensationBy: chat.compensation_by ?? null,
+            chatStrategy: chat.chat_strategy ?? null,
         }));
 
         // Get tag statistics from store

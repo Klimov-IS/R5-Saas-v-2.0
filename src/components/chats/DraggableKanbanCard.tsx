@@ -20,6 +20,8 @@ interface DraggableKanbanCardProps {
   onSelect?: (id: string, selected: boolean) => void;
   completionReason?: CompletionReason | null;
   onChatClick?: (chatId: string) => void;
+  reviewRating?: number | null;
+  reviewDate?: string | null;
 }
 
 export default function DraggableKanbanCard(props: DraggableKanbanCardProps) {

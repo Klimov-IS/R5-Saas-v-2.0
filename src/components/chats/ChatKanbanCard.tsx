@@ -18,6 +18,8 @@ interface ChatKanbanCardProps {
   selected?: boolean;
   onSelect?: (id: string, selected: boolean) => void;
   completionReason?: CompletionReason | null;
+  reviewRating?: number | null;
+  reviewDate?: string | null;
 }
 
 const STATUS_LABELS: Record<ChatStatus, string> = {
@@ -58,6 +60,8 @@ export default function ChatKanbanCard({
   selected = false,
   onSelect,
   completionReason,
+  reviewRating,
+  reviewDate,
 }: ChatKanbanCardProps) {
   const [draftExpanded, setDraftExpanded] = useState(false);
   const [messageExpanded, setMessageExpanded] = useState(false);
@@ -98,8 +102,22 @@ export default function ChatKanbanCard({
         <div className="flex-1 font-semibold text-sm text-gray-900">
           {clientName}
         </div>
+        {reviewRating != null && (
+          <span
+            className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+              reviewRating <= 2 ? 'bg-red-100 text-red-700' :
+              reviewRating === 3 ? 'bg-orange-100 text-orange-700' :
+              reviewRating === 4 ? 'bg-yellow-100 text-yellow-700' :
+              'bg-green-100 text-green-700'
+            }`}
+          >
+            {'★'.repeat(reviewRating)}
+          </span>
+        )}
         <div className="text-xs text-gray-500 whitespace-nowrap">
-          {timeSince}
+          {reviewDate
+            ? new Date(reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
+            : timeSince}
         </div>
       </div>
 

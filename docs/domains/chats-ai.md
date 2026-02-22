@@ -807,26 +807,29 @@ JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
 - Dialogue sync — продолжает синхронизировать ВСЕ чаты (нужно для reconciliation)
 - Extension tasks API — уже правильно фильтрует
 
-### TG Mini App — обогащённые данные чатов (Sprint 002, фаза 2)
+### Обогащённые данные чатов (Review Enrichment)
 
-Карточка чата в TG мини-апп и детальный вид обогащены данными из `review_chat_links`, `reviews` и `product_rules`.
+Чаты, привязанные к отзывам через `review_chat_links`, обогащены данными из `reviews` и `product_rules`. Работает в **основном ПО** и **TG мини-апп**.
 
-**В очереди (карточка TgQueueCard):**
-- Рейтинг отзыва (цветные звёзды: 1★ красный → 5★ зелёный)
-- Дата + время отзыва
+**Доступные поля (10 полей):**
+- `reviewRating` — рейтинг отзыва (1-5)
+- `reviewDate` — дата отзыва
+- `reviewText` — текст самого отзыва
+- `complaintStatus` — статус жалобы
+- `productStatus` — статус товара (purchased/refused/returned)
+- `offerCompensation` — предлагать кешбек (boolean)
+- `maxCompensation` — макс. сумма
+- `compensationType` — тип
+- `compensationBy` — кто платит (r5/seller)
+- `chatStrategy` — стратегия (upgrade_to_5/delete/both)
 
-**В детальном виде чата (раскрываемая секция "Детали"):**
-- Статус по товару: `purchased` / `refused` / `returned` / `return_requested`
-- Статус жалобы: `not_sent` / `draft` / `sent` / `approved` / `rejected` / `pending`
-- Стратегия: `upgrade_to_5` / `delete` / `both`
-- Кешбек: `offer_compensation` + `max_compensation` + `compensation_by`
-
-**SQL (из `telegram-helpers.ts`):**
+**SQL (из `helpers.ts` и `telegram-helpers.ts`):**
 ```sql
 -- Из review_chat_links:
 rcl.review_rating, rcl.review_date
 
 -- Из reviews (LEFT JOIN через rcl.review_id):
+r.text as review_text,
 r.complaint_status, r.product_status_by_review as product_status
 
 -- Из product_rules (LEFT JOIN через products):
@@ -835,12 +838,32 @@ pr.compensation_type, pr.compensation_by,
 pr.chat_strategy::text as chat_strategy
 ```
 
+**Основное ПО (вкладка Чаты):**
+- **Kanban карточка** (`ChatKanbanCard.tsx`) — рейтинг (цветные звёзды) + дата отзыва
+- **ChatPreviewModal** — рейтинг + дата в хедере, раскрываемая секция "Детали" (стратегия, кешбек, жалоба, текст отзыва)
+- **SQL:** `getChatsByStoreWithPagination()` — всегда LEFT JOIN rcl (INNER при `reviewLinkedOnly=true`)
+- **API list:** `/api/stores/:storeId/chats` — 10 полей в response
+- **API detail:** `/api/stores/:storeId/chats/:chatId` — inline SQL с JOINs + 10 полей
+
+**TG мини-апп:**
+- **Карточка** (`TgQueueCard.tsx`) — рейтинг + дата
+- **Детальный вид** (`tg/chat/[chatId]/page.tsx`) — раскрываемые чипсы + текст отзыва
+- **SQL:** `getUnifiedChatQueue()` — INNER JOIN rcl + LEFT JOIN reviews/product_rules
+- **API queue:** `/api/telegram/queue` — все 10 полей + `reviewText`
+- **API detail:** `/api/telegram/chats/:chatId` — все 10 полей + `reviewText`
+
 **Файлы:**
-- `src/db/telegram-helpers.ts` — SQL запросы с LEFT JOINs
-- `src/app/api/telegram/queue/route.ts` — API маппинг snake_case → camelCase
-- `src/app/api/telegram/chats/[chatId]/route.ts` — то же для деталей чата
-- `src/components/telegram/TgQueueCard.tsx` — UI карточка (рейтинг + дата)
-- `src/app/(telegram)/tg/chat/[chatId]/page.tsx` — UI деталей (раскрываемые чипсы)
+- `src/db/helpers.ts` — SQL: LEFT JOIN rcl + reviews + product_rules, Chat interface
+- `src/db/telegram-helpers.ts` — SQL: INNER JOIN rcl, QueueChat interface
+- `src/app/api/stores/[storeId]/chats/route.ts` — API list маппинг
+- `src/app/api/stores/[storeId]/chats/[chatId]/route.ts` — API detail (inline SQL)
+- `src/app/api/telegram/queue/route.ts` — TG queue маппинг
+- `src/app/api/telegram/chats/[chatId]/route.ts` — TG detail маппинг
+- `src/types/chats.ts` — Frontend Chat interface (10 optional fields)
+- `src/components/chats/ChatKanbanCard.tsx` — UI: рейтинг badge
+- `src/components/chats/ChatPreviewModal.tsx` — UI: expandable "Детали"
+- `src/components/telegram/TgQueueCard.tsx` — TG UI карточка
+- `src/app/(telegram)/tg/chat/[chatId]/page.tsx` — TG UI деталей
 
 ### Будущие возможности (Фаза 3)
 

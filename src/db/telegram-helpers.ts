@@ -51,6 +51,7 @@ export interface QueueChat {
   // Review data (from review_chat_links + reviews)
   review_rating: number | null;
   review_date: string | null;
+  review_text: string | null;
   complaint_status: string | null;
   product_status: string | null;
   // Product rules (from product_rules)
@@ -244,6 +245,7 @@ export async function getUnifiedChatQueue(
          c.last_message_text, c.last_message_date, c.last_message_sender,
          c.draft_reply, c.status, c.tag, c.completion_reason,
          rcl.review_rating, rcl.review_date,
+         r.text as review_text,
          r.complaint_status, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
          pr.compensation_type, pr.compensation_by,
@@ -267,6 +269,7 @@ export async function getUnifiedChatQueue(
          c.last_message_text, c.last_message_date, c.last_message_sender,
          c.draft_reply, c.status, c.tag, c.completion_reason,
          rcl.review_rating, rcl.review_date,
+         r.text as review_text,
          r.complaint_status, r.product_status_by_review as product_status,
          NULL::boolean as offer_compensation, NULL::text as max_compensation,
          NULL::text as compensation_type, NULL::text as compensation_by,

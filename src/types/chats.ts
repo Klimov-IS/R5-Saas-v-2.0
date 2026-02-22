@@ -44,6 +44,17 @@ export interface Chat {
   completionReason?: string | null;
   draftReply: string | null;
   product?: Product;
+  // Review enrichment data (from review_chat_links + reviews + product_rules)
+  reviewRating?: number | null;
+  reviewDate?: string | null;
+  reviewText?: string | null;
+  complaintStatus?: string | null;
+  productStatus?: string | null;
+  offerCompensation?: boolean | null;
+  maxCompensation?: string | null;
+  compensationType?: string | null;
+  compensationBy?: string | null;
+  chatStrategy?: string | null;
 }
 
 export type MessageStatus = 'sent' | 'sending' | 'failed';

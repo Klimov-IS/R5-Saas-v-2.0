@@ -27,6 +27,7 @@ export async function GET(
     const chatResult = await query(
       `SELECT c.*, s.name as store_name,
          rcl.review_rating, rcl.review_date,
+         r.text as review_text,
          r.complaint_status, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
          pr.compensation_type, pr.compensation_by,
@@ -110,6 +111,7 @@ export async function GET(
         compensationType: chat.compensation_type ?? null,
         compensationBy: chat.compensation_by ?? null,
         chatStrategy: chat.chat_strategy ?? null,
+        reviewText: chat.review_text ?? null,
       },
       messages,
     });

@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
         compensationType: c.compensation_type,
         compensationBy: c.compensation_by,
         chatStrategy: c.chat_strategy,
+        reviewText: c.review_text ?? null,
       })),
       totalCount,
       statusCounts,

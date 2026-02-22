@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatById, getChatMessages, updateChatTag } from '@/db/helpers';
+import { getChatMessages, updateChatTag } from '@/db/helpers';
 import type { ChatTag } from '@/db/helpers';
+import { query } from '@/db/client';
 
 /**
  * GET /api/stores/[storeId]/chats/[chatId]
@@ -13,7 +14,32 @@ export async function GET(
   try {
     const { chatId } = params;
 
-    const chat = await getChatById(chatId);
+    // Inline SQL with JOINs for review data enrichment
+    const chatResult = await query(`
+      SELECT c.*,
+        p.name as product_name,
+        p.vendor_code as product_vendor_code,
+        rcl.review_rating,
+        rcl.review_date,
+        r.text as review_text,
+        r.complaint_status,
+        r.product_status_by_review as product_status,
+        pr.offer_compensation,
+        pr.max_compensation,
+        pr.compensation_type,
+        pr.compensation_by,
+        pr.chat_strategy::text as chat_strategy
+      FROM chats c
+      LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+      LEFT JOIN reviews r ON rcl.review_id = r.id
+      LEFT JOIN products p ON p.store_id = c.store_id
+        AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+          OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
+      LEFT JOIN product_rules pr ON p.id = pr.product_id
+      WHERE c.id = $1
+    `, [chatId]);
+
+    const chat = chatResult.rows[0];
 
     if (!chat) {
       return NextResponse.json(
@@ -48,6 +74,17 @@ export async function GET(
       draftReplyEdited: chat.draft_reply_edited,
       createdAt: chat.created_at,
       updatedAt: chat.updated_at,
+      // Review enrichment data
+      reviewRating: chat.review_rating ?? null,
+      reviewDate: chat.review_date ?? null,
+      reviewText: chat.review_text ?? null,
+      complaintStatus: chat.complaint_status ?? null,
+      productStatus: chat.product_status ?? null,
+      offerCompensation: chat.offer_compensation ?? null,
+      maxCompensation: chat.max_compensation ?? null,
+      compensationType: chat.compensation_type ?? null,
+      compensationBy: chat.compensation_by ?? null,
+      chatStrategy: chat.chat_strategy ?? null,
     };
 
     // 🐛 DEBUG: Log draft status from DB

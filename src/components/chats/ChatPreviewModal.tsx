@@ -48,6 +48,8 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
   const [optimisticStatus, setOptimisticStatus] = useState<ChatStatus | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [reviewTextExpanded, setReviewTextExpanded] = useState(false);
 
   const { data, isLoading, error } = useChatMessages(storeId, open ? chatId : null);
 
@@ -226,6 +228,85 @@ export function ChatPreviewModal({ storeId, chatId, open, onOpenChange }: ChatPr
                   <div className="text-sm text-slate-500 mt-1 flex items-center gap-1">
                     <Package className="w-3.5 h-3.5" />
                     {chat.productName}
+                  </div>
+                )}
+                {/* Review rating + date inline */}
+                {(chat.reviewRating != null || chat.reviewDate) && (
+                  <div className="flex items-center gap-2 mt-1">
+                    {chat.reviewRating != null && (
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                        chat.reviewRating <= 2 ? 'bg-red-100 text-red-700' :
+                        chat.reviewRating === 3 ? 'bg-orange-100 text-orange-700' :
+                        chat.reviewRating === 4 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>
+                        {'★'.repeat(chat.reviewRating)}
+                      </span>
+                    )}
+                    {chat.reviewDate && (
+                      <span className="text-xs text-slate-400">
+                        {new Date(chat.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* Expandable details button */}
+                {(chat.chatStrategy || chat.offerCompensation || chat.complaintStatus || chat.productStatus || chat.reviewText) && (
+                  <div className="mt-1.5">
+                    <button
+                      onClick={() => setShowDetails(!showDetails)}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
+                        showDetails ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-transparent text-slate-400 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      {showDetails ? '▲ Скрыть' : '▼ Детали'}
+                    </button>
+                    {showDetails && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified' && (
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                            chat.productStatus === 'refused' ? 'bg-red-100 text-red-600' :
+                            chat.productStatus === 'purchased' ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {chat.productStatus === 'refused' ? 'Возврат' : chat.productStatus === 'purchased' ? 'Выкуплен' : chat.productStatus}
+                          </span>
+                        )}
+                        {chat.complaintStatus && chat.complaintStatus !== 'not_sent' && (
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                            chat.complaintStatus === 'rejected' ? 'bg-red-100 text-red-600' :
+                            chat.complaintStatus === 'approved' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
+                          }`}>
+                            Жалоба: {chat.complaintStatus === 'rejected' ? 'отклонена' : chat.complaintStatus === 'approved' ? 'одобрена' : chat.complaintStatus}
+                          </span>
+                        )}
+                        {chat.chatStrategy && (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-blue-100 text-blue-600">
+                            {chat.chatStrategy === 'upgrade_to_5' ? 'Дополнить до 5' : chat.chatStrategy === 'delete' ? 'Удаление' : chat.chatStrategy === 'both' ? 'Удаление/Дополнение' : chat.chatStrategy}
+                          </span>
+                        )}
+                        {chat.offerCompensation && chat.maxCompensation && (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-purple-100 text-purple-600">
+                            Кешбек {chat.maxCompensation}₽ {chat.compensationBy === 'r5' ? '(R5)' : chat.compensationBy === 'seller' ? '(продавец)' : ''}
+                          </span>
+                        )}
+                        {/* Review text expandable */}
+                        {chat.reviewText && (
+                          <div className="w-full mt-1">
+                            <button
+                              onClick={() => setReviewTextExpanded(!reviewTextExpanded)}
+                              className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 transition-colors"
+                            >
+                              {reviewTextExpanded ? '▲ Скрыть отзыв' : '▼ Текст отзыва'}
+                            </button>
+                            {reviewTextExpanded && (
+                              <div className="mt-1 p-2 bg-slate-100 rounded-md text-xs text-slate-700 leading-relaxed max-h-32 overflow-y-auto">
+                                {chat.reviewText}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

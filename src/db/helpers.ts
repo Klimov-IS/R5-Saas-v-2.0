@@ -186,6 +186,17 @@ export interface Chat {
   ozon_last_message_id?: string | null;
   created_at: string;
   updated_at: string;
+  // Review enrichment (from LEFT JOINs, optional)
+  review_rating?: number | null;
+  review_date?: string | null;
+  review_text?: string | null;
+  complaint_status?: string | null;
+  product_status?: string | null;
+  offer_compensation?: boolean | null;
+  max_compensation?: string | null;
+  compensation_type?: string | null;
+  compensation_by?: string | null;
+  chat_strategy?: string | null;
 }
 
 export interface ChatMessage {
@@ -1827,21 +1838,34 @@ export async function getChatsByStoreWithPagination(
     paramIndex++;
   }
 
-  const reviewLinkedJoin = options?.reviewLinkedOnly
+  // reviewLinkedOnly: INNER JOIN (filter); otherwise LEFT JOIN (data only)
+  const rclJoin = options?.reviewLinkedOnly
     ? `INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id`
-    : '';
+    : `LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id`;
 
   let sql = `
     SELECT
       c.*,
       p.name as product_name,
       p.vendor_code as product_vendor_code,
-      (SELECT COUNT(*)::int FROM chat_messages WHERE chat_id = c.id) as message_count
+      (SELECT COUNT(*)::int FROM chat_messages WHERE chat_id = c.id) as message_count,
+      rcl.review_rating,
+      rcl.review_date,
+      r.text as review_text,
+      r.complaint_status,
+      r.product_status_by_review as product_status,
+      pr.offer_compensation,
+      pr.max_compensation,
+      pr.compensation_type,
+      pr.compensation_by,
+      pr.chat_strategy::text as chat_strategy
     FROM chats c
-    ${reviewLinkedJoin}
+    ${rclJoin}
+    LEFT JOIN reviews r ON rcl.review_id = r.id
     LEFT JOIN products p ON p.store_id = c.store_id
       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
+    LEFT JOIN product_rules pr ON p.id = pr.product_id
     WHERE ${whereClauses.join(' AND ')}
     ORDER BY c.last_message_date DESC NULLS LAST
   `;

@@ -351,14 +351,31 @@ HMAC-SHA256 валидация с BOT_TOKEN. initData содержит `user.id`
 Получить чаты магазина.
 
 **Query params:**
+- `status` — фильтр по статусу (inbox, awaiting_reply, in_progress, closed, all)
+- `sender` — фильтр по отправителю (client, seller, all)
 - `tag` — фильтр по тегу (active, no_reply, completed, untagged)
+- `search` — поиск по имени клиента, товару, сообщению
+- `hasDraft` — только чаты с черновиком (true/false)
+- `reviewLinkedOnly` — только чаты привязанные к отзывам через review_chat_links (true)
 - `skip`, `take` — пагинация
+
+**Review enrichment fields** (в каждом объекте чата, если есть привязка к отзыву):
+- `reviewRating` — рейтинг отзыва (1-5)
+- `reviewDate` — дата отзыва
+- `reviewText` — текст отзыва
+- `complaintStatus` — статус жалобы (not_sent, pending, approved, rejected)
+- `productStatus` — статус товара по отзыву (purchased, refused, unknown)
+- `offerCompensation` — предлагать кешбек (boolean)
+- `maxCompensation` — макс. сумма кешбека
+- `compensationType` — тип кешбека
+- `compensationBy` — кто платит (r5, seller)
+- `chatStrategy` — стратегия (upgrade_to_5, delete, both)
 
 ---
 
 ### GET /api/stores/:storeId/chats/:chatId
 
-Получить чат с историей сообщений.
+Получить чат с историей сообщений. Включает review enrichment данные (рейтинг, дата, текст отзыва, стратегия, кешбек) через JOINs с review_chat_links, reviews, product_rules.
 
 ---
 
@@ -1164,7 +1181,8 @@ API для TG Mini App. Все endpoints аутентифицируются че
       "maxCompensation": "500",
       "compensationType": "cashback",
       "compensationBy": "r5",
-      "chatStrategy": "both"
+      "chatStrategy": "both",
+      "reviewText": "Ужасный товар..."
     }
   ],
   "totalCount": 42,
@@ -1205,7 +1223,8 @@ API для TG Mini App. Все endpoints аутентифицируются че
     "maxCompensation": "500",
     "compensationType": "cashback",
     "compensationBy": "r5",
-    "chatStrategy": "both"
+    "chatStrategy": "both",
+    "reviewText": "Ужасный товар, не рекомендую..."
   },
   "messages": [
     {
