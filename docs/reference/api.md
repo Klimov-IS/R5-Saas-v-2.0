@@ -8,13 +8,25 @@
 
 ## Аутентификация
 
-Все endpoints требуют Bearer token в заголовке:
+### JWT Auth (основное ПО)
+
+JWT token в httpOnly cookie `r5_token` (HS256, 7-day expiry). Устанавливается при `POST /api/auth/login`.
+
+### Bearer Auth (Extension API)
 
 ```http
 Authorization: Bearer wbrm_xxxxxxxxxxxxxxxxxxxxx
 ```
 
 **Формат токена:** `wbrm_*` (хранится в `user_settings.api_key`)
+
+### Telegram Auth (Mini App API)
+
+```http
+X-Telegram-Init-Data: <initData string>
+```
+
+HMAC-SHA256 валидация с BOT_TOKEN. initData содержит `user.id` → lookup `telegram_users`.
 
 ---
 
@@ -1047,6 +1059,221 @@ API для связки отзывов с чатами через Chrome Extensi
 
 ---
 
+## Auth API (JWT Authentication)
+
+Invite-only регистрация, JWT аутентификация (HS256, httpOnly cookie `r5_token`).
+
+### POST /api/auth/login
+
+Авторизация по email + password.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+**Response:** Sets `r5_token` cookie (7 days), returns user + org info.
+
+---
+
+### POST /api/auth/register
+
+Регистрация по invite-токену.
+
+**Request:**
+```json
+{
+  "email": "new@example.com",
+  "password": "password123",
+  "displayName": "Имя Фамилия",
+  "token": "invite-token-uuid"
+}
+```
+
+---
+
+### GET /api/auth/me
+
+Получить текущего пользователя (из JWT cookie).
+
+**Response:**
+```json
+{
+  "user": { "id": "...", "email": "...", "displayName": "..." },
+  "org": { "id": "...", "name": "...", "role": "admin" }
+}
+```
+
+---
+
+### POST /api/auth/logout
+
+Очистить JWT cookie.
+
+---
+
+### GET /api/auth/invite-info?token=xxx
+
+Информация об инвайте (для UI страницы регистрации).
+
+---
+
+## Telegram Mini App API
+
+API для TG Mini App. Все endpoints аутентифицируются через Telegram `initData` (HMAC-SHA256 с BOT_TOKEN).
+
+**Auth header:** `X-Telegram-Init-Data: <initData string>`
+
+### GET /api/telegram/queue
+
+Очередь чатов (cross-store, review-linked only для WB).
+
+**Query params:**
+- `status` — фильтр по статусу (default: `inbox`, `all` для всех)
+- `storeIds` — comma-separated store IDs
+- `limit` — max items (default: 50, max: 100)
+- `offset` — пагинация
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "chat_id",
+      "storeId": "store_id",
+      "storeName": "Store Name",
+      "marketplace": "wb",
+      "clientName": "Екатерина",
+      "productName": "Футболка мужская",
+      "lastMessageText": "Добрый день...",
+      "lastMessageDate": "2026-02-22T10:00:00Z",
+      "lastMessageSender": "client",
+      "hasDraft": true,
+      "draftPreview": "Здравствуйте! Благодарим...",
+      "status": "inbox",
+      "tag": "deletion_candidate",
+      "completionReason": null,
+      "reviewRating": 2,
+      "reviewDate": "2026-02-20T15:30:00Z",
+      "complaintStatus": "rejected",
+      "productStatus": "purchased",
+      "offerCompensation": true,
+      "maxCompensation": "500",
+      "compensationType": "cashback",
+      "compensationBy": "r5",
+      "chatStrategy": "both"
+    }
+  ],
+  "totalCount": 42,
+  "statusCounts": {
+    "inbox": 20,
+    "in_progress": 5,
+    "awaiting_reply": 15,
+    "closed": 2
+  }
+}
+```
+
+---
+
+### GET /api/telegram/chats/:chatId
+
+Детали чата + последние 50 сообщений.
+
+**Response:**
+```json
+{
+  "chat": {
+    "id": "chat_id",
+    "storeId": "store_id",
+    "storeName": "Store Name",
+    "marketplace": "wb",
+    "clientName": "Екатерина",
+    "productName": "Футболка",
+    "status": "inbox",
+    "tag": "deletion_candidate",
+    "draftReply": "Здравствуйте! ...",
+    "completionReason": null,
+    "reviewRating": 2,
+    "reviewDate": "2026-02-20T15:30:00Z",
+    "complaintStatus": "rejected",
+    "productStatus": "purchased",
+    "offerCompensation": true,
+    "maxCompensation": "500",
+    "compensationType": "cashback",
+    "compensationBy": "r5",
+    "chatStrategy": "both"
+  },
+  "messages": [
+    {
+      "id": "msg_id",
+      "text": "Добрый день!",
+      "sender": "client",
+      "timestamp": "2026-02-22T10:00:00Z",
+      "isAutoReply": false
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/telegram/chats/:chatId/send
+
+Отправить сообщение через WB/OZON API.
+
+**Request:**
+```json
+{
+  "text": "Текст сообщения"
+}
+```
+
+---
+
+### PATCH /api/telegram/chats/:chatId/status
+
+Изменить статус/тег чата.
+
+**Request:**
+```json
+{
+  "status": "closed",
+  "completionReason": "review_deleted"
+}
+```
+
+---
+
+### POST /api/telegram/chats/:chatId/generate-ai
+
+Сгенерировать AI ответ (перегенерировать draft_reply).
+
+---
+
+### POST /api/telegram/auth/login
+
+Привязать TG аккаунт к R5 пользователю.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+---
+
+### POST /api/telegram/auth/verify
+
+Проверить статус привязки TG аккаунта.
+
+---
+
 ## Admin API
 
 ### GET /api/admin/metrics/auto-complaints
@@ -1334,4 +1561,4 @@ Proxy к WB Questions API.
 
 ---
 
-**Last Updated:** 2026-02-20
+**Last Updated:** 2026-02-22

@@ -1,8 +1,8 @@
 # Домен: Жалобы (Complaints)
 
-**Дата:** 2026-02-08
-**Версия:** 1.0
-**Source of Truth:** `review_complaints` таблица
+**Дата:** 2026-02-20
+**Версия:** 2.0
+**Source of Truth:** `review_complaints` (AI-черновики) + `complaint_details` (реально одобренные WB)
 
 ---
 
@@ -55,6 +55,110 @@ status = 'approved' | 'rejected'
 **Примечание:** Статус `sent` удалён — используется `pending` напрямую.
 
 **Примечание:** Статус `not_applicable` автоматически выставляется при детекции удалённого отзыва (migration 015). Черновик жалобы на удалённый отзыв автоматически отменяется.
+
+---
+
+## Две таблицы — два назначения
+
+В R5 жалобы хранятся в **двух таблицах** с разным назначением:
+
+| | `review_complaints` | `complaint_details` |
+|---|---|---|
+| **Что хранит** | AI-черновики (что мы **хотим** подать) | Реально одобренные WB (что **было** подано и одобрено) |
+| **Источник данных** | AI (Deepseek) + template-генератор | Chrome Extension (парсинг страницы жалоб WB) |
+| **Когда создаётся** | При sync/backfill отзывов | После скриншота одобренной жалобы |
+| **Текст жалобы** | Наш AI-сгенерированный текст | Реально поданный текст (может отличаться) |
+| **Использование** | Очередь подачи → Extension | Биллинг, отчётность клиентам, обучение AI |
+| **Source of Truth для** | Workflow подачи жалоб | Факт одобрения WB |
+
+### Почему две таблицы, а не одна
+
+1. **Текст может отличаться** — продавец может отредактировать жалобу перед подачей
+2. **Разные авторы** — R5 генерирует AI-черновики, но продавец тоже подаёт жалобы самостоятельно
+3. **Разные жизненные циклы** — `review_complaints` живёт от draft до модерации, `complaint_details` фиксирует уже свершившийся факт
+4. **Категория может отличаться** — AI предлагает reason_id, но реально подана может быть другая категория
+
+---
+
+## Сбор данных от Chrome Extension (Data Collection Pipeline)
+
+### Обзор
+
+Расширение R5 собирает данные с WB seller cabinet на **двух этапах**:
+
+```
+                    Chrome Extension
+                          │
+          ┌───────────────┼───────────────┐
+          ▼                               ▼
+  Этап 1: Проверка                 Этап 2: Скриншот
+  всех жалоб                       одобренных жалоб
+          │                               │
+          ▼                               ▼
+POST /api/extension/          POST /api/extension/
+  complaint-statuses            complaint-details
+          │                               │
+          ▼                               ▼
+Обновляет reviews +            Создаёт запись в
+review_complaints              complaint_details
+(filed_by, status,             (полный текст, категория,
+ complaint_date)                скриншот, Drive-ссылка)
+```
+
+### Этап 1: Статусы всех жалоб (`complaint-statuses`)
+
+**Endpoint:** `POST /api/extension/complaint-statuses`
+**Когда:** При каждой проверке жалоб (сканирование страницы жалоб WB)
+**Что передаёт:** Статус каждой жалобы + кто подавал + дата подачи
+
+**Данные (на каждый отзыв):**
+- `reviewKey` — `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}`
+- `status` — "Жалоба одобрена" / "Жалоба отклонена" / "Проверяем жалобу" / "Жалоба пересмотрена"
+- `filedBy` — "R5" или "Продавец"
+- `complaintDate` — дата подачи DD.MM.YYYY
+
+**Что обновляется в БД:**
+- `reviews.complaint_status` — mapped status (approved/rejected/pending/reconsidered)
+- `reviews.complaint_filed_by` — 'r5' / 'seller'
+- `reviews.complaint_filed_date` — дата подачи
+- `review_complaints.status` — аналогично
+- `review_complaints.filed_by` — аналогично
+- `review_complaints.complaint_filed_date` — аналогично
+
+### Этап 2: Детали одобренных жалоб (`complaint-details`)
+
+**Endpoint:** `POST /api/extension/complaint-details`
+**Когда:** После каждого скриншота одобренной жалобы
+**Что передаёт:** Полные данные одобренной жалобы (зеркало Google Sheets "Жалобы V 2.0")
+
+**Данные:**
+- Кабинет, артикул, рейтинг, дата отзыва
+- Полный текст жалобы (реально поданный)
+- Категория жалобы (реально выбранная)
+- Скриншот (file name + Google Drive link)
+- Дата проверки, дата подачи
+
+**filed_by автодетекция:** Если текст начинается с "Жалоба от:" → `r5`, иначе → `seller`
+
+**Дедупликация:** `UNIQUE(store_id, articul, feedback_date, file_name)`
+
+### Текущая статистика (2026-02-20)
+
+```
+=== reviews с filed_by ===
+approved  | r5: 48    | seller: 1   | NULL: 2402
+rejected  | r5: 808   | seller: 25  | NULL: 21282
+pending   | NULL: 6353
+reconsidered | NULL: 151
+
+=== review_complaints с filed_by ===
+approved  | r5: 30    | NULL: 1822
+rejected  | r5: 654   | seller: 23  | NULL: 19099
+pending   | NULL: 6670
+```
+
+**NULL = исторические данные** до введения поля `filed_by` (миграция 020, 2026-02-20).
+При следующих полных проверках данные будут дозаполняться.
 
 ---
 
@@ -257,12 +361,21 @@ CREATE INDEX idx_complaints_product ON review_complaints(product_id, status);
 
 ## API Endpoints
 
+### Workflow (подготовка и подача)
+
 | Метод | Endpoint | Назначение |
 |-------|----------|------------|
 | GET | `/api/stores/:id/complaints` | Список жалоб |
-| POST | `/api/stores/:id/reviews/:reviewId/generate-complaint` | Генерация |
+| POST | `/api/stores/:id/reviews/:reviewId/generate-complaint` | Генерация AI-черновика |
 | PUT | `/api/stores/:id/reviews/:reviewId/complaint/sent` | Отметить отправленной |
 | POST | `/api/extension/stores/:id/reviews/generate-complaints-batch` | Batch генерация |
+
+### Data Collection (сбор данных от Extension)
+
+| Метод | Endpoint | Назначение |
+|-------|----------|------------|
+| POST | `/api/extension/complaint-statuses` | Статусы всех жалоб (одобрена/отклонена/проверяем) + кто подавал + дата |
+| POST | `/api/extension/complaint-details` | Полные данные одобренных жалоб (текст, категория, скриншот) |
 
 ---
 
@@ -367,13 +480,13 @@ WHERE generated_at >= CURRENT_DATE;
 
 ## Связанные документы
 
-- [Database Schema](../database-schema.md) — полная схема review_complaints
+- [Database Schema](../database-schema.md) — полная схема review_complaints + complaint_details
+- [Extension API Documentation](../reference/EXTENSION_API_DOCUMENTATION.md) — контракты complaint-statuses и complaint-details
 - [CRON Jobs](../CRON_JOBS.md) — автоматизация
-- [complaint-auto-generation-rules.md](../complaint-auto-generation-rules.md) — детальные правила
-- [complaints-table-schema.md](../complaints-table-schema.md) — детальная схема таблицы
-- [AUTO_COMPLAINT_STRATEGY.md](../AUTO_COMPLAINT_STRATEGY.md) — стратегия
-- [Табы кабинета](../product/client-tabs.md) — UI для отзывов
+- [complaint-auto-generation-rules.md](complaint-auto-generation-rules.md) — детальные правила
+- [complaints-table-schema.md](complaints-table-schema.md) — детальная схема таблицы
+- [AUTO_COMPLAINT_STRATEGY.md](AUTO_COMPLAINT_STRATEGY.md) — стратегия
 
 ---
 
-**Last Updated:** 2026-02-15
+**Last Updated:** 2026-02-20

@@ -12,6 +12,7 @@ interface UseChatsOptions {
   tag?: ChatTag | 'all'; // LEGACY: for backwards compatibility
   search?: string;
   hasDraft?: boolean; // NEW: Filter for chats with draft replies
+  reviewLinkedOnly?: boolean; // Only show chats linked to reviews via review_chat_links
 }
 
 interface UseChatsInfiniteOptions {
@@ -22,16 +23,17 @@ interface UseChatsInfiniteOptions {
   tag?: ChatTag | 'all'; // LEGACY: for backwards compatibility
   search?: string;
   hasDraft?: boolean; // NEW: Filter for chats with draft replies
+  reviewLinkedOnly?: boolean; // Only show chats linked to reviews via review_chat_links
 }
 
 /**
  * Hook для получения списка чатов с фильтрацией и пагинацией
  */
 export function useChats(options: UseChatsOptions) {
-  const { storeId, skip = 0, take = 100, status = 'all', sender = 'all', tag = 'all', search = '', hasDraft = false } = options;
+  const { storeId, skip = 0, take = 100, status = 'all', sender = 'all', tag = 'all', search = '', hasDraft = false, reviewLinkedOnly = false } = options;
 
   return useQuery({
-    queryKey: ['chats', storeId, skip, take, status, sender, tag, search, hasDraft],
+    queryKey: ['chats', storeId, skip, take, status, sender, tag, search, hasDraft, reviewLinkedOnly],
     queryFn: async () => {
       const params = new URLSearchParams({
         skip: skip.toString(),
@@ -42,6 +44,7 @@ export function useChats(options: UseChatsOptions) {
         search,
         hasDraft: hasDraft.toString(),
       });
+      if (reviewLinkedOnly) params.set('reviewLinkedOnly', 'true');
 
       const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
         headers: { Authorization: `Bearer ${API_KEY}` },
@@ -64,10 +67,10 @@ export function useChats(options: UseChatsOptions) {
  * Используется в MessengerView для автоматической подгрузки при прокрутке
  */
 export function useChatsInfinite(options: UseChatsInfiniteOptions) {
-  const { storeId, take = 50, status = 'all', sender = 'all', tag = 'all', search = '', hasDraft = false } = options;
+  const { storeId, take = 50, status = 'all', sender = 'all', tag = 'all', search = '', hasDraft = false, reviewLinkedOnly = false } = options;
 
   return useInfiniteQuery({
-    queryKey: ['chats-infinite', storeId, status, sender, tag, search, hasDraft],
+    queryKey: ['chats-infinite', storeId, status, sender, tag, search, hasDraft, reviewLinkedOnly],
     queryFn: async ({ pageParam = 0 }) => {
       const params = new URLSearchParams({
         skip: pageParam.toString(),
@@ -78,6 +81,7 @@ export function useChatsInfinite(options: UseChatsInfiniteOptions) {
         search,
         hasDraft: hasDraft.toString(),
       });
+      if (reviewLinkedOnly) params.set('reviewLinkedOnly', 'true');
 
       const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
         headers: { Authorization: `Bearer ${API_KEY}` },

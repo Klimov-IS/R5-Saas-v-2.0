@@ -4,7 +4,7 @@
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
 **Marketplaces:** Wildberries, OZON
-**Last Updated:** 2026-02-20
+**Last Updated:** 2026-02-22
 
 ---
 
@@ -1573,7 +1573,7 @@ CREATE TABLE invites (
 
 ---
 
-**Last Updated:** 2026-02-20
+**Last Updated:** 2026-02-22
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials

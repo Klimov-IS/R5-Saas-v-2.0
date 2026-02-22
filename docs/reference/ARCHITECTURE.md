@@ -8,7 +8,7 @@
 
 ## Обзор системы
 
-**R5 (Reputation Management Service)** — B2B SaaS платформа для управления репутацией продавцов Wildberries.
+**R5 (Reputation Management Service)** — B2B SaaS платформа для управления репутацией продавцов на маркетплейсах (Wildberries, OZON).
 
 ### Ключевые возможности
 
@@ -393,21 +393,31 @@ Telegram Mini App для управления чатами с покупател
 **Потоки данных:**
 
 ```
-Клиент отвечает → Dialogue Sync → TG Push → Менеджер открывает Mini App
-→ Видит очередь → Тапает чат → 4 кнопки: Отправить / Заново / Закрыть / Пропустить
+Клиент отвечает → Dialogue Sync → TG Push (review-linked only)
+→ Менеджер открывает Mini App → Очередь (review-linked only)
+→ Тапает чат → Видит рейтинг, дату отзыва, детали (статусы, стратегия, кешбек)
+→ 4 кнопки: Отправить / Заново / Закрыть / Пропустить
 ```
 
-**Фильтр очереди (`telegram-helpers.ts`):**
+**Фильтр очереди (`telegram-helpers.ts`) — Review-Linked Only (Sprint 002+):**
 ```sql
--- Показываем только чаты которые R5 активно обрабатывает:
-AND (
-  pr.work_in_chats = TRUE                                          -- WB: активные товары
-  OR (c.marketplace = 'ozon' AND c.product_nm_id IS NOT NULL)     -- OZON: seller-initiated
-)
+-- WB: INNER JOIN review_chat_links → только чаты привязанные к отзывам
+INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
+
+-- OZON: seller-initiated (product_nm_id IS NOT NULL)
 ```
 
-**Фильтр уведомлений:**
-- WB: только если `product_nm_id` есть в `activeNmIds` (work_in_chats=TRUE)
+**Принцип фильтрации:** Из ~300K+ чатов показываются только те, которые R5 сам открыл по отзывам. Это ~700 чатов вместо тысяч. Снижает шум на ~90%.
+
+**Дополнительные данные в очереди:**
+- `review_rating` + `review_date` — из `review_chat_links` (показываются в карточке)
+- `complaint_status`, `product_status` — из `reviews` (показываются в детальном виде чата)
+- `offer_compensation`, `max_compensation`, `chat_strategy` — из `product_rules` (показываются в детальном виде чата)
+
+**Фильтр уведомлений (dialogue sync Step 5a-tg):**
+- WB: только чаты с записью в `review_chat_links` (INNER JOIN) + `activeNmIds` (work_in_chats=TRUE)
 - OZON: только если `existing.product_nm_id IS NOT NULL` (seller-initiated)
 
 **API endpoints:** `/api/telegram/*`
@@ -484,4 +494,4 @@ AND (
 
 ---
 
-**Last Updated:** 2026-02-10
+**Last Updated:** 2026-02-22

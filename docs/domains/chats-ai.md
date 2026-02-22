@@ -49,7 +49,7 @@ AI-ассистент в чатах помогает менеджерам быс
 | `refund_requested` | Запрос возврата | Клиент просит возврат без упоминания отзыва |
 | `spam` | Спам | Спам, конкуренты, автоматические сообщения |
 
-### ChatStatus (5 статусов Kanban)
+### ChatStatus (4 статуса Kanban)
 
 > Source of truth: `src/types/chats.ts`
 
@@ -58,8 +58,9 @@ AI-ассистент в чатах помогает менеджерам быс
 | `inbox` | Входящие | Новые/необработанные чаты |
 | `in_progress` | В работе | Менеджер работает с чатом |
 | `awaiting_reply` | Ожидание ответа | Ждём ответа клиента (триггер для авто-рассылки) |
-| `resolved` | Решено | Вопрос решён |
 | `closed` | Закрыто | Диалог закрыт (требует `completion_reason`) |
+
+> `resolved` удалён в migration 008.
 
 **Важно:** ChatTag = AI-классификация содержимого. ChatStatus = позиция на Kanban-доске (управляется вручную).
 
@@ -781,12 +782,71 @@ Dialogue Sync (Step 3.5) → reconciliation: заполняет chat_id
 - **Reconciliation:** `src/app/api/stores/[storeId]/dialogues/update/route.ts` (Step 3.5)
 - **Sprint Docs:** `docs/sprints/sprint-002-review-chat-linking/`
 
-### Будущие возможности (Фаза 2-3)
+### Review-Linked Chat Filtering (Sprint 002, фаза 2)
+
+**Проблема:** Из ~300K+ диалогов с WB, только несколько тысяч — наши (открытые по отзывам). Остальные — обычная клиентская поддержка, не наша зона ответственности.
+
+**Решение:** TG мини-апп и нотификации фильтруют чаты через `INNER JOIN review_chat_links`:
+
+```sql
+-- Вместо: JOIN products + product_rules WHERE work_in_chats = TRUE
+-- Теперь: INNER JOIN review_chat_links → только наши чаты
+INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
+```
+
+**Эффект:** ~90% снижение шума (тысячи → десятки-сотни чатов в очереди).
+
+**Где применяется:**
+1. **TG очередь** (`src/db/telegram-helpers.ts`) — `getUnifiedChatQueue()`, `getUnifiedChatQueueCount()`, `getUnifiedChatQueueCountsByStatus()`
+2. **TG нотификации** (`src/app/api/stores/[storeId]/dialogues/update/route.ts`, Step 5a-tg) — фильтрует `clientRepliedChats` по `review_chat_links`
+3. **Вкладка Чаты** (`src/db/helpers.ts`) — параметр `reviewLinkedOnly=true`
+
+**НЕ затрагивает:**
+- Dialogue sync — продолжает синхронизировать ВСЕ чаты (нужно для reconciliation)
+- Extension tasks API — уже правильно фильтрует
+
+### TG Mini App — обогащённые данные чатов (Sprint 002, фаза 2)
+
+Карточка чата в TG мини-апп и детальный вид обогащены данными из `review_chat_links`, `reviews` и `product_rules`.
+
+**В очереди (карточка TgQueueCard):**
+- Рейтинг отзыва (цветные звёзды: 1★ красный → 5★ зелёный)
+- Дата + время отзыва
+
+**В детальном виде чата (раскрываемая секция "Детали"):**
+- Статус по товару: `purchased` / `refused` / `returned` / `return_requested`
+- Статус жалобы: `not_sent` / `draft` / `sent` / `approved` / `rejected` / `pending`
+- Стратегия: `upgrade_to_5` / `delete` / `both`
+- Кешбек: `offer_compensation` + `max_compensation` + `compensation_by`
+
+**SQL (из `telegram-helpers.ts`):**
+```sql
+-- Из review_chat_links:
+rcl.review_rating, rcl.review_date
+
+-- Из reviews (LEFT JOIN через rcl.review_id):
+r.complaint_status, r.product_status_by_review as product_status
+
+-- Из product_rules (LEFT JOIN через products):
+pr.offer_compensation, pr.max_compensation,
+pr.compensation_type, pr.compensation_by,
+pr.chat_strategy::text as chat_strategy
+```
+
+**Файлы:**
+- `src/db/telegram-helpers.ts` — SQL запросы с LEFT JOINs
+- `src/app/api/telegram/queue/route.ts` — API маппинг snake_case → camelCase
+- `src/app/api/telegram/chats/[chatId]/route.ts` — то же для деталей чата
+- `src/components/telegram/TgQueueCard.tsx` — UI карточка (рейтинг + дата)
+- `src/app/(telegram)/tg/chat/[chatId]/page.tsx` — UI деталей (раскрываемые чипсы)
+
+### Будущие возможности (Фаза 3)
 
 - AI получает текст отзыва при генерации ответа в чате
 - Авто-создание auto-sequence при открытии linked чата
 - Закрытие чата при обнаружении удаления отзыва
-- UI: виджет отзыва в карточке чата
 - Аналитика: воронка review → complaint → chat → deletion
 
 ---
@@ -813,4 +873,4 @@ Dialogue Sync (Step 3.5) → reconciliation: заполняет chat_id
 
 ---
 
-**Last Updated:** 2026-02-16
+**Last Updated:** 2026-02-22

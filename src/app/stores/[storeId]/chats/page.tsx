@@ -27,6 +27,7 @@ export default function ChatsPage() {
     selectedChatIds,
     setCurrentStoreId,
     completionReasonFilter,
+    reviewLinkedOnly,
   } = useChatsStore();
 
   // Set current store ID when component mounts or storeId changes
@@ -53,7 +54,7 @@ export default function ChatsPage() {
     isLoading: loadingStats,
     error: statsError
   } = useQuery({
-    queryKey: ['chats-stats', storeId], // ✅ Only storeId - counters show ALL chats always
+    queryKey: ['chats-stats', storeId, reviewLinkedOnly], // Reloads when filter toggles
     queryFn: async () => {
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const params = new URLSearchParams({
@@ -63,6 +64,7 @@ export default function ChatsPage() {
         sender: 'all', // Get all senders
         search: '', // No search filter
       });
+      if (reviewLinkedOnly) params.set('reviewLinkedOnly', 'true');
       const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
         headers: { 'Authorization': `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(15000),
@@ -89,7 +91,7 @@ export default function ChatsPage() {
     isLoading: loadingAllChats,
     error: allChatsError
   } = useQuery({
-    queryKey: ['all-chats', storeId], // ✅ No filters - load ALL chats once
+    queryKey: ['all-chats', storeId, reviewLinkedOnly], // Reloads when filter toggles
     queryFn: async () => {
       const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
       const params = new URLSearchParams({
@@ -99,6 +101,7 @@ export default function ChatsPage() {
         sender: 'all', // ✅ Get ALL senders
         search: '', // ✅ No search filter
       });
+      if (reviewLinkedOnly) params.set('reviewLinkedOnly', 'true');
       const response = await fetch(`/api/stores/${storeId}/chats?${params}`, {
         headers: { 'Authorization': `Bearer ${apiKey}` },
         signal: AbortSignal.timeout(15000),

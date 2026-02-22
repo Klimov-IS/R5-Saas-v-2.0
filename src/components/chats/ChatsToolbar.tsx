@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Search, ChevronDown, Table, MessageSquare, LayoutGrid, Zap } from 'lucide-react';
+import { Search, ChevronDown, Table, MessageSquare, LayoutGrid, Zap, Link2, Link2Off } from 'lucide-react';
 import { useChatsStore } from '@/store/chatsStore';
 import { cn } from '@/lib/utils';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
@@ -43,7 +43,9 @@ export function ChatsToolbar({
     searchQuery,
     setSearchQuery,
     completionReasonFilter,
-    setCompletionReasonFilter
+    setCompletionReasonFilter,
+    reviewLinkedOnly,
+    setReviewLinkedOnly,
   } = useChatsStore();
 
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -144,6 +146,21 @@ export function ChatsToolbar({
               className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
+
+          {/* Review-Linked Toggle */}
+          <button
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 border rounded-md text-sm font-medium transition-all whitespace-nowrap',
+              reviewLinkedOnly
+                ? 'bg-emerald-500 text-white border-emerald-500 hover:bg-emerald-600'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            )}
+            onClick={() => setReviewLinkedOnly(!reviewLinkedOnly)}
+            title={reviewLinkedOnly ? 'Показаны только чаты по отзывам' : 'Показаны все чаты'}
+          >
+            {reviewLinkedOnly ? <Link2 className="w-4 h-4" /> : <Link2Off className="w-4 h-4" />}
+            {reviewLinkedOnly ? 'По отзывам' : 'Все чаты'}
+          </button>
 
           {/* Status Filter */}
           <div className="relative" ref={statusDropdownRef}>

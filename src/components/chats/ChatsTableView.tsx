@@ -22,6 +22,7 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
     selectAllChats,
     deselectAllChats,
     isSelected,
+    reviewLinkedOnly,
   } = useChatsStore();
 
   // ✅ PAGINATION STATE
@@ -31,7 +32,7 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
   // ✅ AUTO-RESET: Return to page 1 when filters change
   useEffect(() => {
     setSkip(0);
-  }, [statusFilter, lastSender, hasDraft, searchQuery]);
+  }, [statusFilter, lastSender, hasDraft, searchQuery, reviewLinkedOnly]);
 
   // Fetch chats with pagination
   const { data, isLoading } = useChats({
@@ -42,6 +43,7 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
     search: searchQuery,
     skip,
     take,
+    reviewLinkedOnly,
   });
 
   const chats = data?.data || [];

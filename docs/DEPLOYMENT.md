@@ -1,6 +1,6 @@
 # Deployment Guide - WB Reputation Manager
 
-**Last Updated:** 2026-02-11
+**Last Updated:** 2026-02-18
 
 ---
 
@@ -106,10 +106,18 @@ npm run build
 # 6. Reload PM2 (zero-downtime)
 pm2 reload wb-reputation
 
+# 6a. ОБЯЗАТЕЛЬНО: перезапустить cron-процесс после reload Next.js
+# pm2 reload сбрасывает in-memory шедулеры внутри Next.js.
+# wb-reputation-cron триггерит /api/cron/trigger только один раз при старте,
+# поэтому его нужно перезапустить чтобы шедулеры переинициализировались.
+pm2 restart wb-reputation-cron
+
 # 7. Check status
-pm2 status wb-reputation
+pm2 status
 pm2 logs wb-reputation --lines 50
 ```
+
+> ⚠️ **Без шага 6a** адаптивный диалоговый синк (каждые 5/15/60 мин) и другие автоматические задачи перестанут работать до следующего перезапуска `wb-reputation-cron`.
 
 ---
 
@@ -493,10 +501,20 @@ pm2 logs wb-reputation
 
 ## CRON Jobs Auto-Start
 
-**IMPORTANT:** CRON jobs are initialized automatically on server start via `instrumentation.ts`.
+**IMPORTANT:** CRON jobs live **in-memory** inside the Next.js process and are initialized via `instrumentation.ts` + `/api/cron/trigger`.
 
-- **No manual intervention required** after deployment
-- CRON jobs start when PM2 reloads the application
+### ⚠️ После каждого `pm2 reload wb-reputation` — обязателен перезапуск cron:
+
+```bash
+pm2 reload wb-reputation      # сбрасывает in-memory шедулеры в Next.js
+pm2 restart wb-reputation-cron  # wb-reputation-cron триггерит /api/cron/trigger заново
+```
+
+**Почему:** `wb-reputation-cron` (процесс `start-cron.js`) вызывает `/api/cron/trigger` только один раз при своём старте. После `pm2 reload wb-reputation` Next.js перезапускается, шедулеры теряются, а cron-процесс продолжает жить и не перетриггеривает. Без перезапуска cron-процесса диалоговый синк и другие задачи останавливаются.
+
+**Метод 1 (update-app.sh) использует `pm2 restart all`** → затрагивает все процессы → OK.
+**Метод 2 (ручной) с `pm2 reload wb-reputation`** → требует ручного `pm2 restart wb-reputation-cron`.
+
 - **9 active jobs:** hourly review sync, nightly full review sync (22:00 MSK, all 12 chunks), adaptive dialogue sync (5min/15min/60min), daily product sync, backfill worker, stores cache, Google Sheets, client directory, auto-sequence processor
 - See [CRON_JOBS.md](./CRON_JOBS.md) for details
 
@@ -594,7 +612,8 @@ pm2 logs wb-reputation --err --lines 100
 | Deploy (one-line) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "cd /var/www/wb-reputation && bash deploy/update-app.sh"` |
 | Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 status"` |
 | View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation --lines 50 --nostream"` |
-| Restart app | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation"` |
+| Reload app (zero-downtime) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation"` |
+| **Reload + перезапуск cron** | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation && pm2 restart wb-reputation-cron"` |
 | Restart all | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart all"` |
 | TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
 | Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart wb-reputation-tg-bot"` |
@@ -603,4 +622,4 @@ pm2 logs wb-reputation --err --lines 100
 
 ---
 
-**Last Updated:** 2026-02-11
+**Last Updated:** 2026-02-18

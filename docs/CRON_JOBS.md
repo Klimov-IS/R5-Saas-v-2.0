@@ -1,6 +1,6 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-02-17
+**Last Updated:** 2026-02-22
 
 ---
 
@@ -802,7 +802,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-02-15
+**Last Updated:** 2026-02-22
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -1079,12 +1079,18 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 | 06:00–09:00, 18:00–21:00 | 15 min | Morning/evening — moderate frequency |
 | 21:00–06:00 | 60 min | Night — low frequency |
 
-**What It Does:**
-1. Fetches active chats from WB API for each store
-2. Gets new message events (cursor-based pagination)
-3. Saves messages, sends Telegram notifications, triggers auto-sequences
-4. AI re-classification of updated chats
-5. Recalculates interval for next run based on current MSK time
+**What It Does (per store):**
+
+| Step | Name | Description |
+|------|------|-------------|
+| 1 | Fetch events | WB: cursor-based `chats/events`; OZON: `getChatList()` |
+| 2 | Save messages | Upsert `chat_messages`, update `chats.last_message_*` |
+| 3 | AI classification | `classifyChatDeletion()` for chats with new client messages |
+| **3.5** | **Reconciliation** | `reconcileChatWithLink()` — fills `review_chat_links.chat_id` by matching chat URL patterns. Extracts UUID from WB URL, maps to `rcl.chat_url` |
+| 4 | Status updates | Tag changes, counter updates |
+| **5a-tg** | **TG notifications** | Sends push to linked TG users. **Filtered:** WB only for chats with `review_chat_links` record; OZON only for `product_nm_id IS NOT NULL` |
+| **5b** | **Auto-sequence trigger** | Detects `trigger_phrase` / `trigger_phrase2` → creates `chat_auto_sequences` |
+| 6 | Interval recalc | Sets next run timeout based on MSK time tier |
 
 **Load:**
 - 43 stores × 2 sec delay = ~90 seconds per cycle

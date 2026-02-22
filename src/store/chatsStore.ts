@@ -42,6 +42,8 @@ interface ChatsState {
   setSearchQuery: (query: string) => void;
   completionReasonFilter: CompletionReasonFilter;
   setCompletionReasonFilter: (reason: CompletionReasonFilter) => void;
+  reviewLinkedOnly: boolean;
+  setReviewLinkedOnly: (value: boolean) => void;
 
   // Reset temporary state only (selection, active chat)
   resetTemporaryState: () => void;
@@ -96,6 +98,8 @@ export const useChatsStore = create<ChatsState>()((set, get) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   completionReasonFilter: 'all',
   setCompletionReasonFilter: (reason) => set({ completionReasonFilter: reason }),
+  reviewLinkedOnly: true, // Default ON — show only review-linked chats
+  setReviewLinkedOnly: (value) => set({ reviewLinkedOnly: value }),
 
   // Reset only temporary state (selection, active chat)
   resetTemporaryState: () => set({

@@ -15,7 +15,7 @@ interface MessengerViewProps {
 }
 
 export function MessengerView({ storeId, tagStats: propTagStats }: MessengerViewProps) {
-  const { statusFilter, lastSender, hasDraft, searchQuery, activeChatId } = useChatsStore();
+  const { statusFilter, lastSender, hasDraft, searchQuery, activeChatId, reviewLinkedOnly } = useChatsStore();
 
   // 🎯 DEBOUNCE SEARCH: Задержка 300ms перед API запросом
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300);
@@ -35,6 +35,7 @@ export function MessengerView({ storeId, tagStats: propTagStats }: MessengerView
     hasDraft,
     search: debouncedSearchQuery,
     take: 50, // Load 50 chats per page (optimal for performance)
+    reviewLinkedOnly,
   });
 
   // ✅ FLATTEN PAGES: Combine all pages into single array
