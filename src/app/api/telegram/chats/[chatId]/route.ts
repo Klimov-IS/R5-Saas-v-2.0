@@ -23,11 +23,20 @@ export async function GET(
     const { chatId } = params;
     const storeIds = await getAccessibleStoreIds(auth.userId);
 
-    // Get chat with org-based access check
+    // Get chat with org-based access check + review/product rules data
     const chatResult = await query(
-      `SELECT c.*, s.name as store_name
+      `SELECT c.*, s.name as store_name,
+         rcl.review_rating, rcl.review_date,
+         r.complaint_status, r.product_status_by_review as product_status,
+         pr.offer_compensation, pr.max_compensation,
+         pr.compensation_type, pr.compensation_by,
+         pr.chat_strategy::text as chat_strategy
        FROM chats c
        JOIN stores s ON c.store_id = s.id
+       LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+       LEFT JOIN reviews r ON rcl.review_id = r.id
+       LEFT JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+       LEFT JOIN product_rules pr ON p.id = pr.product_id
        WHERE c.id = $1 AND c.store_id = ANY($2::text[])`,
       [chatId, storeIds]
     );
@@ -91,6 +100,16 @@ export async function GET(
         tag: chat.tag,
         draftReply: chat.draft_reply,
         completionReason: chat.completion_reason,
+        // Review & product rules
+        reviewRating: chat.review_rating ?? null,
+        reviewDate: chat.review_date ?? null,
+        complaintStatus: chat.complaint_status ?? null,
+        productStatus: chat.product_status ?? null,
+        offerCompensation: chat.offer_compensation ?? null,
+        maxCompensation: chat.max_compensation ?? null,
+        compensationType: chat.compensation_type ?? null,
+        compensationBy: chat.compensation_by ?? null,
+        chatStrategy: chat.chat_strategy ?? null,
       },
       messages,
     });

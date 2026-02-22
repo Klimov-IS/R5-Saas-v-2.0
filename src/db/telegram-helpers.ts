@@ -48,6 +48,17 @@ export interface QueueChat {
   status: string;
   tag: string | null;
   completion_reason: string | null;
+  // Review data (from review_chat_links + reviews)
+  review_rating: number | null;
+  review_date: string | null;
+  complaint_status: string | null;
+  product_status: string | null;
+  // Product rules (from product_rules)
+  offer_compensation: boolean | null;
+  max_compensation: string | null;
+  compensation_type: string | null;
+  compensation_by: string | null;
+  chat_strategy: string | null;
 }
 
 // ============================================================================
@@ -231,9 +242,15 @@ export async function getUnifiedChatQueue(
          c.id, c.store_id, s.name as store_name, c.marketplace,
          c.client_name, c.product_name, c.product_nm_id,
          c.last_message_text, c.last_message_date, c.last_message_sender,
-         c.draft_reply, c.status, c.tag, c.completion_reason
+         c.draft_reply, c.status, c.tag, c.completion_reason,
+         rcl.review_rating, rcl.review_date,
+         r.complaint_status, r.product_status_by_review as product_status,
+         pr.offer_compensation, pr.max_compensation,
+         pr.compensation_type, pr.compensation_by,
+         pr.chat_strategy::text as chat_strategy
        FROM chats c
        INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+       LEFT JOIN reviews r ON rcl.review_id = r.id
        JOIN stores s ON c.store_id = s.id
        JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
        JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
@@ -248,9 +265,15 @@ export async function getUnifiedChatQueue(
          c.id, c.store_id, s.name as store_name, c.marketplace,
          c.client_name, c.product_name, c.product_nm_id,
          c.last_message_text, c.last_message_date, c.last_message_sender,
-         c.draft_reply, c.status, c.tag, c.completion_reason
+         c.draft_reply, c.status, c.tag, c.completion_reason,
+         rcl.review_rating, rcl.review_date,
+         r.complaint_status, r.product_status_by_review as product_status,
+         NULL::boolean as offer_compensation, NULL::text as max_compensation,
+         NULL::text as compensation_type, NULL::text as compensation_by,
+         NULL::text as chat_strategy
        FROM chats c
        INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+       LEFT JOIN reviews r ON rcl.review_id = r.id
        JOIN stores s ON c.store_id = s.id
        WHERE c.store_id = ANY($1::text[])
          AND c.marketplace = 'ozon'

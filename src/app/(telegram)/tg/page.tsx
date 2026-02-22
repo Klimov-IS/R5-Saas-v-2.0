@@ -21,6 +21,16 @@ interface QueueItem {
   status: string;
   tag: string | null;
   completionReason: string | null;
+  // Review & product rules
+  reviewRating?: number | null;
+  reviewDate?: string | null;
+  complaintStatus?: string | null;
+  productStatus?: string | null;
+  offerCompensation?: boolean | null;
+  maxCompensation?: string | null;
+  compensationType?: string | null;
+  compensationBy?: string | null;
+  chatStrategy?: string | null;
 }
 
 const STATUS_TABS = [

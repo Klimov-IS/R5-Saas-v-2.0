@@ -12,6 +12,39 @@ const COMPLETION_REASONS: Record<string, string> = {
   other: 'Другое',
 };
 
+const RATING_COLORS: Record<number, string> = {
+  1: '#ef4444',
+  2: '#f97316',
+  3: '#f59e0b',
+  4: '#84cc16',
+  5: '#22c55e',
+};
+
+const PRODUCT_STATUS_LABELS: Record<string, string> = {
+  purchased: 'Выкуп',
+  refused: 'Отказ',
+  returned: 'Возврат',
+  return_requested: 'Запрошен возврат',
+  not_specified: 'Не указан',
+};
+
+const COMPLAINT_STATUS_LABELS: Record<string, string> = {
+  not_sent: 'Не отправлена',
+  draft: 'Черновик',
+  sent: 'Отправлена',
+  approved: 'Одобрена',
+  rejected: 'Отклонена',
+  pending: 'На рассмотрении',
+  reconsidered: 'Пересмотрена',
+  not_applicable: 'Нельзя подать',
+};
+
+const STRATEGY_LABELS: Record<string, string> = {
+  upgrade_to_5: 'Повышение до 5',
+  delete: 'Удаление',
+  both: 'Обе стратегии',
+};
+
 interface TgQueueCardProps {
   id: string;
   storeId: string;
@@ -31,6 +64,16 @@ interface TgQueueCardProps {
   selectionMode?: boolean;
   onToggleSelect?: () => void;
   onClick: () => void;
+  // Review & product rules
+  reviewRating?: number | null;
+  reviewDate?: string | null;
+  complaintStatus?: string | null;
+  productStatus?: string | null;
+  offerCompensation?: boolean | null;
+  maxCompensation?: string | null;
+  compensationType?: string | null;
+  compensationBy?: string | null;
+  chatStrategy?: string | null;
 }
 
 export default function TgQueueCard({
@@ -49,6 +92,14 @@ export default function TgQueueCard({
   selectionMode,
   onToggleSelect,
   onClick,
+  reviewRating,
+  reviewDate,
+  complaintStatus,
+  productStatus,
+  offerCompensation,
+  maxCompensation,
+  compensationBy,
+  chatStrategy,
 }: TgQueueCardProps) {
   const timeAgo = lastMessageDate
     ? (() => {
@@ -62,8 +113,15 @@ export default function TgQueueCard({
       })()
     : '';
 
+  const reviewDateFormatted = reviewDate
+    ? new Date(reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
+    : null;
+
   const senderPrefix = lastMessageSender === 'seller' ? 'Вы: ' : lastMessageSender === 'client' ? 'Покупатель: ' : '';
   const isClosed = status === 'closed';
+
+  // Build compact info chips for review data
+  const hasReviewInfo = reviewRating != null || productStatus || complaintStatus || chatStrategy;
 
   return (
     <div
@@ -133,15 +191,95 @@ export default function TgQueueCard({
         </span>
       </div>
 
-      {/* Client name */}
-      <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '2px', color: 'var(--tg-text)' }}>
-        {clientName}
+      {/* Client name + review rating & date */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+        <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--tg-text)' }}>
+          {clientName}
+        </span>
+        {reviewRating != null && (
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            padding: '1px 6px',
+            borderRadius: '6px',
+            backgroundColor: RATING_COLORS[reviewRating] || '#9ca3af',
+            color: '#fff',
+            flexShrink: 0,
+          }}>
+            {'★'.repeat(reviewRating)}
+          </span>
+        )}
+        {reviewDateFormatted && (
+          <span style={{ fontSize: '11px', color: 'var(--tg-hint)', flexShrink: 0 }}>
+            {reviewDateFormatted}
+          </span>
+        )}
       </div>
 
       {/* Product */}
       {productName && (
         <div style={{ fontSize: '13px', color: 'var(--tg-hint)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {productName}
+        </div>
+      )}
+
+      {/* Compact info chips: product status, complaint, strategy, cashback */}
+      {hasReviewInfo && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px', marginBottom: '4px' }}>
+          {productStatus && productStatus !== 'unknown' && productStatus !== 'not_specified' && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '6px',
+              backgroundColor: productStatus === 'refused' ? 'rgba(239,68,68,0.12)' :
+                productStatus === 'purchased' ? 'rgba(34,197,94,0.12)' :
+                'rgba(156,163,175,0.12)',
+              color: productStatus === 'refused' ? '#ef4444' :
+                productStatus === 'purchased' ? '#22c55e' : '#6b7280',
+            }}>
+              {PRODUCT_STATUS_LABELS[productStatus] || productStatus}
+            </span>
+          )}
+          {complaintStatus && complaintStatus !== 'not_sent' && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '6px',
+              backgroundColor: complaintStatus === 'rejected' ? 'rgba(239,68,68,0.12)' :
+                complaintStatus === 'approved' ? 'rgba(34,197,94,0.12)' :
+                'rgba(245,158,11,0.12)',
+              color: complaintStatus === 'rejected' ? '#ef4444' :
+                complaintStatus === 'approved' ? '#22c55e' : '#f59e0b',
+            }}>
+              {COMPLAINT_STATUS_LABELS[complaintStatus] || complaintStatus}
+            </span>
+          )}
+          {chatStrategy && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(59,130,246,0.12)',
+              color: '#3b82f6',
+            }}>
+              {STRATEGY_LABELS[chatStrategy] || chatStrategy}
+            </span>
+          )}
+          {offerCompensation && maxCompensation && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '6px',
+              backgroundColor: 'rgba(168,85,247,0.12)',
+              color: '#a855f7',
+            }}>
+              {maxCompensation}₽ {compensationBy === 'r5' ? '(R5)' : compensationBy === 'seller' ? '(продавец)' : ''}
+            </span>
+          )}
         </div>
       )}
 
