@@ -391,20 +391,30 @@ export function extractChatIdFromUrl(chatUrl: string): string | null {
 /**
  * Reconcile a single chat: find pending review_chat_link and set chat_id.
  * Called during dialogue sync for each synced chat.
+ *
+ * chatId from WB API is in format "1:uuid" (replySign:uuid).
+ * chat_url from extension is "...?chatId=uuid" (UUID only).
+ * We extract the UUID part from chatId to match against chat_url,
+ * then store the FULL chatId (1:uuid) to match chats.id.
  */
 export async function reconcileChatWithLink(
   chatId: string,
   storeId: string
 ): Promise<boolean> {
-  // Try to find a pending link that matches this chat by extracting URL pattern
+  // Extract UUID part from "1:uuid" format
+  const uuidPart = chatId.includes(':') ? chatId.split(':').slice(1).join(':') : chatId;
+
+  // Match against chat_url (which contains UUID only) and update chat_id to full format
+  // Handles both: chat_id IS NULL (never set) and chat_id without prefix (set by extractChatIdFromUrl)
   const result = await query(
     `UPDATE review_chat_links
      SET chat_id = $1, updated_at = NOW()
      WHERE store_id = $2
-       AND chat_id IS NULL
-       AND chat_url LIKE '%/' || $1
+       AND (chat_id IS NULL OR chat_id NOT LIKE '%:%')
+       AND (chat_url LIKE '%chatId=' || $3 || '%'
+            OR chat_url LIKE '%/' || $3)
      RETURNING id`,
-    [chatId, storeId]
+    [chatId, storeId, uuidPart]
   );
 
   return result.rows.length > 0;
