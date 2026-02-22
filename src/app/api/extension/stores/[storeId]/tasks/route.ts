@@ -153,6 +153,7 @@ export async function GET(
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
            AND p.work_status = 'active'
+           AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
            AND (
              (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
              (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
@@ -285,6 +286,7 @@ export async function GET(
              AND r.chat_status_by_review = 'available'
              AND r.review_status_wb != 'deleted' AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
              AND p.work_status = 'active'
+             AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
              AND (
                (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
                (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR

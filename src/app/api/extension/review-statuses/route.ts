@@ -54,6 +54,23 @@ const COMPLAINT_STATUS_MAP: Record<string, string> = {
 // All complaint statuses that should clear drafts
 const COMPLAINT_STATUSES = Object.keys(COMPLAINT_STATUS_MAP);
 
+// WB status → review_status_wb ENUM
+// These statuses mean the review is effectively removed/hidden
+const REVIEW_STATUS_WB_MAP: Record<string, string> = {
+  'Снят с публикации': 'deleted',
+};
+
+/**
+ * Get review_status_wb from array of WB statuses
+ * Returns 'deleted' if review is removed from publication
+ */
+function getReviewStatusWbFromStatuses(statuses: string[]): string | null {
+  for (const status of statuses) {
+    if (REVIEW_STATUS_WB_MAP[status]) return REVIEW_STATUS_WB_MAP[status];
+  }
+  return null;
+}
+
 // Extension chatStatus → DB chat_status_by_review ENUM
 const CHAT_STATUS_MAP: Record<string, string> = {
   'chat_not_activated': 'unavailable',
@@ -374,7 +391,31 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 5c. Sync complaint statuses (only if complaint status present)
+      // 5c. Sync review_status_wb from extension statuses ("Снят с публикации" → deleted)
+      if (review.statuses && review.statuses.length > 0) {
+        const reviewStatusWb = getReviewStatusWbFromStatuses(review.statuses);
+        if (reviewStatusWb) {
+          try {
+            await query(
+              `UPDATE reviews
+               SET
+                 review_status_wb = $1,
+                 updated_at = NOW()
+               WHERE
+                 store_id = $2
+                 AND product_id = $3
+                 AND rating = $4
+                 AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
+                 AND review_status_wb != $1`,
+              [reviewStatusWb, storeId, reviewsProductId, review.rating, review.reviewDate]
+            );
+          } catch (err: any) {
+            console.error(`[Extension ReviewStatuses] ❌ review_status_wb sync error for ${review.reviewKey}:`, err.message);
+          }
+        }
+      }
+
+      // 5d. Sync complaint statuses (only if complaint status present)
       if (!review.statuses || !hasAnyComplaintStatus(review.statuses)) {
         continue;
       }
