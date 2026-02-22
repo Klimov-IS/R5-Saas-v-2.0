@@ -121,7 +121,7 @@ export async function GET(
         AND r.rating = ANY($2)
         AND p.work_status = 'active'
         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-        AND r.review_status_wb != 'deleted'
+        AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
         AND r.rating_excluded = FALSE
       ORDER BY p.wb_product_id, r.date DESC
       LIMIT $3`,
@@ -142,7 +142,7 @@ export async function GET(
          AND r.store_id = $1
          AND p.work_status = 'active'
          AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-         AND r.review_status_wb != 'deleted'
+         AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
          AND r.rating_excluded = FALSE
        GROUP BY r.rating, p.wb_product_id`,
       [storeId]

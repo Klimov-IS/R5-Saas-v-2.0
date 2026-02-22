@@ -54,19 +54,31 @@ const COMPLAINT_STATUS_MAP: Record<string, string> = {
 // All complaint statuses that should clear drafts
 const COMPLAINT_STATUSES = Object.keys(COMPLAINT_STATUS_MAP);
 
-// WB status → review_status_wb ENUM
-// These statuses mean the review is effectively removed/hidden
+// WB status → review_status_wb ENUM (1:1 mapping with WB)
 const REVIEW_STATUS_WB_MAP: Record<string, string> = {
-  'Снят с публикации': 'deleted',
+  'Снят с публикации': 'unpublished',          // review removed from public view
+  'Временно скрыт': 'temporarily_hidden',       // new WB status — temporarily hidden
+  'Исключён из рейтинга': 'excluded',           // review excluded from rating (old WB feature)
 };
 
-/**
- * Get review_status_wb from array of WB statuses
- * Returns 'deleted' if review is removed from publication
- */
 function getReviewStatusWbFromStatuses(statuses: string[]): string | null {
   for (const status of statuses) {
     if (REVIEW_STATUS_WB_MAP[status]) return REVIEW_STATUS_WB_MAP[status];
+  }
+  return null;
+}
+
+// WB status → product_status_by_review ENUM (purchase/return info)
+const PRODUCT_STATUS_MAP: Record<string, string> = {
+  'Выкуп': 'purchased',
+  'Отказ': 'refused',
+  'Возврат': 'returned',
+  'Запрошен возврат': 'return_requested',
+};
+
+function getProductStatusFromStatuses(statuses: string[]): string | null {
+  for (const status of statuses) {
+    if (PRODUCT_STATUS_MAP[status]) return PRODUCT_STATUS_MAP[status];
   }
   return null;
 }
@@ -391,7 +403,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // 5c. Sync review_status_wb from extension statuses ("Снят с публикации" → deleted)
+      // 5c. Sync review_status_wb from extension statuses (1:1 WB mapping)
       if (review.statuses && review.statuses.length > 0) {
         const reviewStatusWb = getReviewStatusWbFromStatuses(review.statuses);
         if (reviewStatusWb) {
@@ -399,7 +411,7 @@ export async function POST(request: NextRequest) {
             await query(
               `UPDATE reviews
                SET
-                 review_status_wb = $1,
+                 review_status_wb = $1::review_status_wb,
                  updated_at = NOW()
                WHERE
                  store_id = $2
@@ -411,6 +423,28 @@ export async function POST(request: NextRequest) {
             );
           } catch (err: any) {
             console.error(`[Extension ReviewStatuses] ❌ review_status_wb sync error for ${review.reviewKey}:`, err.message);
+          }
+        }
+
+        // 5c2. Sync product_status_by_review (purchase/return info)
+        const productStatus = getProductStatusFromStatuses(review.statuses);
+        if (productStatus) {
+          try {
+            await query(
+              `UPDATE reviews
+               SET
+                 product_status_by_review = $1::product_status_by_review,
+                 updated_at = NOW()
+               WHERE
+                 store_id = $2
+                 AND product_id = $3
+                 AND rating = $4
+                 AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
+                 AND product_status_by_review != $1`,
+              [productStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
+            );
+          } catch (err: any) {
+            console.error(`[Extension ReviewStatuses] ❌ product_status sync error for ${review.reviewKey}:`, err.message);
           }
         }
       }

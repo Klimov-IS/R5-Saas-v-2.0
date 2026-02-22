@@ -2,20 +2,23 @@
  * Review status types matching database ENUMs
  */
 
-// Review visibility status on Wildberries
+// Review visibility status on Wildberries (1:1 with WB statuses)
 export type ReviewStatusWB =
-  | 'visible'       // Виден
-  | 'unpublished'   // Снят с публикации
-  | 'excluded'      // Исключён из рейтинга
-  | 'deleted'       // Удалён покупателем (обнаружен при full sync)
-  | 'unknown';      // Неизвестно
+  | 'visible'              // Виден
+  | 'unpublished'          // Снят с публикации
+  | 'excluded'             // Исключён из рейтинга
+  | 'temporarily_hidden'   // Временно скрыт (new WB status)
+  | 'deleted'              // Не найден на WB (full sync detection)
+  | 'unknown';             // Неизвестно
 
-// Product purchase status from review
+// Product purchase status from review (1:1 with WB statuses)
 export type ProductStatusByReview =
-  | 'purchased'      // Выкуп
-  | 'refused'        // Отказ
-  | 'not_specified'  // Не указано
-  | 'unknown';       // Неизвестно
+  | 'purchased'        // Выкуп
+  | 'refused'          // Отказ
+  | 'returned'         // Возврат
+  | 'return_requested' // Запрошен возврат
+  | 'not_specified'    // Не указано
+  | 'unknown';         // Неизвестно
 
 // Chat availability status
 export type ChatStatusByReview =
@@ -94,7 +97,8 @@ export type Review = {
 export const REVIEW_STATUS_LABELS: Record<ReviewStatusWB, string> = {
   visible: 'Отзыв: Виден',
   unpublished: 'Отзыв: Снят с публикации',
-  excluded: 'Отзыв: Исключён',
+  excluded: 'Отзыв: Исключён из рейтинга',
+  temporarily_hidden: 'Отзыв: Временно скрыт',
   deleted: 'Отзыв: Удалён',
   unknown: 'Отзыв: Неизвестно',
 };
@@ -102,6 +106,8 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatusWB, string> = {
 export const PRODUCT_STATUS_LABELS: Record<ProductStatusByReview, string> = {
   purchased: 'Товар: Выкуп',
   refused: 'Товар: Отказ',
+  returned: 'Товар: Возврат',
+  return_requested: 'Товар: Запрошен возврат',
   not_specified: 'Товар: Не указан',
   unknown: 'Товар: Неизвестно',
 };
@@ -138,6 +144,7 @@ export const REVIEW_STATUS_COLORS: Record<ReviewStatusWB, { bg: string; color: s
   visible: { bg: '#d1fae5', color: '#065f46', border: '#10b981' },
   unpublished: { bg: '#fef3c7', color: '#92400e', border: '#f59e0b' },
   excluded: { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' },
+  temporarily_hidden: { bg: '#fff7ed', color: '#9a3412', border: '#fb923c' },
   deleted: { bg: '#fce4ec', color: '#880e4f', border: '#e91e63' },
   unknown: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
 };
@@ -145,6 +152,8 @@ export const REVIEW_STATUS_COLORS: Record<ReviewStatusWB, { bg: string; color: s
 export const PRODUCT_STATUS_COLORS: Record<ProductStatusByReview, { bg: string; color: string; border: string }> = {
   purchased: { bg: '#dbeafe', color: '#1e40af', border: '#3b82f6' },
   refused: { bg: '#fce7f3', color: '#9f1239', border: '#ec4899' },
+  returned: { bg: '#fefce8', color: '#854d0e', border: '#facc15' },
+  return_requested: { bg: '#fef9c3', color: '#a16207', border: '#fde047' },
   not_specified: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
   unknown: { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
 };

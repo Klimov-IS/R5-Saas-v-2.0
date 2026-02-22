@@ -71,35 +71,45 @@
 ## ENUM Types
 
 ### 1. `review_status_wb`
-**Review visibility status on Wildberries platform**
+**Review visibility status on Wildberries platform (1:1 with WB statuses)**
 
 ```sql
 CREATE TYPE review_status_wb AS ENUM (
-  'visible',       -- Виден (подаем жалобы)
-  'unpublished',   -- Снят с публикации (НЕ подаем)
-  'excluded',      -- Исключён из рейтинга (НЕ подаем)
-  'deleted',       -- Удалён покупателем (обнаружен при full sync, migration 015)
-  'unknown'        -- Неизвестно (по умолчанию)
+  'visible',              -- Виден (подаем жалобы + чаты)
+  'unpublished',          -- Снят с публикации (НЕ подаем жалобы, привязываем чаты)
+  'excluded',             -- Исключён из рейтинга (НЕ подаем жалобы, привязываем чаты)
+  'temporarily_hidden',   -- Временно скрыт (подаем жалобы, привязываем чаты, НЕ открываем новые)
+  'deleted',              -- Не найден на WB (обнаружен при full sync, migration 015)
+  'unknown'               -- Неизвестно (по умолчанию)
 );
 ```
 
-**Usage:** Determines if review should be included in complaint workflow
+**WB mapping:** "Снят с публикации" → `unpublished`, "Временно скрыт" → `temporarily_hidden`, "Исключён из рейтинга" → `excluded`
+**`deleted`** — НЕ от расширения, только full sync (review не найден в WB API)
+
+**Task filtering:**
+- Parse statuses: `NOT IN ('unpublished','excluded','deleted')`
+- Open new chats: `IN ('visible','unknown')` only
+- Link existing chats: `!= 'deleted'` (link for all non-deleted)
+- Complaints: `IN ('visible','unknown','temporarily_hidden')`
 
 ---
 
 ### 2. `product_status_by_review`
-**Product purchase status from review context**
+**Product purchase/return status from review context (1:1 with WB statuses)**
 
 ```sql
 CREATE TYPE product_status_by_review AS ENUM (
-  'purchased',      -- Выкуп (товар выкуплен)
-  'refused',        -- Отказ (отказ от товара)
-  'not_specified',  -- Не указано
-  'unknown'         -- Неизвестно
+  'purchased',        -- Выкуп (товар выкуплен)
+  'refused',          -- Отказ (отказ от товара)
+  'returned',         -- Возврат (товар возвращён)
+  'return_requested', -- Запрошен возврат
+  'not_specified',    -- Не указано
+  'unknown'           -- Неизвестно
 );
 ```
 
-**Usage:** Helps understand review context (return vs purchase)
+**WB mapping:** "Выкуп" → `purchased`, "Отказ" → `refused`, "Возврат" → `returned`, "Запрошен возврат" → `return_requested`
 
 ---
 
@@ -1381,6 +1391,7 @@ Key migrations:
 16. `020_add_complaint_filed_info.sql` - `filed_by` + `complaint_filed_date` on review_complaints and reviews
 17. `021_complaint_details.sql` - `complaint_details` table — source of truth for approved complaints (mirrors Google Sheets)
 18. `022_rating_excluded.sql` - `rating_excluded` BOOLEAN on reviews + review_statuses_from_extension (WB transparent rating)
+19. `023_review_status_alignment.sql` - Align statuses 1:1 with WB: add `temporarily_hidden` to review_status_wb, add `returned`/`return_requested` to product_status_by_review, backfill `deleted` → `unpublished` where set by extension
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 

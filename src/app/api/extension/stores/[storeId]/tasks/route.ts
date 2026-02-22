@@ -103,7 +103,7 @@ export async function GET(
          JOIN products p ON r.product_id = p.id
          JOIN product_rules pr ON pr.product_id = p.id
          WHERE r.store_id = $1
-           AND r.review_status_wb != 'deleted'
+           AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
            AND p.work_status = 'active'
@@ -149,7 +149,7 @@ export async function GET(
            AND rc.status = 'rejected'
            AND pr.work_in_chats = TRUE
            AND r.chat_status_by_review = 'available'
-           AND r.review_status_wb != 'deleted'
+           AND r.review_status_wb IN ('visible', 'unknown')
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
            AND p.work_status = 'active'
@@ -238,7 +238,7 @@ export async function GET(
            AND r.store_id = $1
            AND p.work_status = 'active'
            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-           AND r.review_status_wb != 'deleted'
+           AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
            AND r.rating_excluded = FALSE
          ORDER BY p.wb_product_id, r.date ASC
          LIMIT 500`,
@@ -258,7 +258,7 @@ export async function GET(
            JOIN products p ON r.product_id = p.id
            JOIN product_rules pr ON pr.product_id = p.id
            WHERE r.store_id = $1
-             AND r.review_status_wb != 'deleted' AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
+             AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted') AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
              AND p.work_status = 'active'
              AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
              AND (
@@ -284,7 +284,7 @@ export async function GET(
            WHERE r.store_id = $1
              AND rc.status = 'rejected' AND pr.work_in_chats = TRUE
              AND r.chat_status_by_review = 'available'
-             AND r.review_status_wb != 'deleted' AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
+             AND r.review_status_wb IN ('visible', 'unknown') AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
              AND p.work_status = 'active'
              AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
              AND (
@@ -330,7 +330,7 @@ export async function GET(
            WHERE rc.store_id = $1 AND rc.status = 'draft'
              AND r.store_id = $1 AND p.work_status = 'active'
              AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-             AND r.review_status_wb != 'deleted'
+             AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
              AND r.rating_excluded = FALSE
           ) as complaints_total`,
         [storeId]

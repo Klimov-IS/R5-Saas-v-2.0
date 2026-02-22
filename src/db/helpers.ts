@@ -848,11 +848,11 @@ export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_
       complaint_sent_date = COALESCE(EXCLUDED.complaint_sent_date, reviews.complaint_sent_date),
       draft_reply = COALESCE(EXCLUDED.draft_reply, reviews.draft_reply),
       review_status_wb = CASE
-        WHEN reviews.review_status_wb = 'deleted' THEN 'visible'::review_status_wb
+        WHEN reviews.review_status_wb IN ('deleted', 'unpublished') THEN 'visible'::review_status_wb
         ELSE reviews.review_status_wb
       END,
       deleted_from_wb_at = CASE
-        WHEN reviews.review_status_wb = 'deleted' THEN NULL
+        WHEN reviews.review_status_wb IN ('deleted', 'unpublished') THEN NULL
         ELSE reviews.deleted_from_wb_at
       END,
       ozon_review_status = COALESCE(EXCLUDED.ozon_review_status, reviews.ozon_review_status),
