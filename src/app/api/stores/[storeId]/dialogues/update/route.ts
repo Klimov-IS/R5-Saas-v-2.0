@@ -12,7 +12,7 @@ import { detectSuccessEvent } from '@/lib/success-detector';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
 import { reconcileChatWithLink } from '@/db/review-chat-link-helpers';
 import { canAutoOverwriteTag } from '@/lib/chat-transitions';
-import { maybeStartAutoSequence } from '@/lib/auto-sequence-launcher';
+// Auto-launch removed: sequences are started manually from TG mini app
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -112,8 +112,6 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                 const reconciled = await reconcileChatWithLink(activeChat.chatID, storeId);
                 if (reconciled) {
                     reconciledCount++;
-                    // Auto-launch 30-day sequence for review-linked chats (WB only)
-                    await maybeStartAutoSequence(activeChat.chatID, storeId);
                 }
             } catch (err) {
                 // Non-fatal: reconciliation failure shouldn't break sync
