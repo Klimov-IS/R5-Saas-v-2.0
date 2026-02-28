@@ -1,6 +1,6 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-28
 
 ---
 
@@ -802,7 +802,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-28
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -816,6 +816,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
 | Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
 | **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
+| ~~Chat Status Transition~~ | ~~Every 30 min~~ | ~~*/30 * * * *~~ | **DISABLED (2026-02-28):** Was auto-moving `in_progress → awaiting_reply` after 2 days. Disabled — sequences are now manual only |
 
 **Non-CRON Background Process:**
 | Process | Type | Description |
@@ -828,29 +829,52 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ## 8. Auto-Sequence Processor (Авто-рассылка)
 
+> **Обновлено 2026-02-28:** Все auto-launch механизмы удалены. Рассылки запускаются **только вручную** из TG Mini App (кнопка "Запустить рассылку"). Крон `transitionStaleInProgressChats` отключён.
+
 **Job Name:** `auto-sequence-processor`
 **Schedule:** `*/30 * * * *` (every 30 minutes, UTC)
 **Active hours:** 8:00-22:00 MSK only (skips nighttime)
 **Batch limit:** 100 sequences per run
 
-**Two template sets:**
-- `no_reply_followup` — negatives (1-2-3 stars), trigger from `no_reply_trigger_phrase`
-- `no_reply_followup_4star` — 4-star reviews, trigger from `no_reply_trigger_phrase2`
+**Sequence types (актуальные):**
+- `no_reply_followup_30d` — negatives (1-3★), 15 msgs every 2 days (~30 days)
+- `no_reply_followup_4star_30d` — 4★ reviews, 10 msgs every 3 days (~30 days)
+
+> Legacy: `no_reply_followup` / `no_reply_followup_4star` — старая 14-дневная система.
 
 **What It Does:**
 1. Queries `chat_auto_sequences` table for active sequences where `next_send_at <= NOW()` (limit 100)
 2. For each pending sequence (safety checks in order):
-   a. **Client replied?** → STOP sequence (`client_replied`)
-   b. **Chat status valid?** → STOP if not `awaiting_reply` or `inbox` (`status_changed`)
-   c. **Seller already sent today?** → SKIP, reschedule to random slot tomorrow (no step advance)
-   d. **Max steps reached?** → Send СТОП message (per `sequence_type`) + close chat
-   e. Send next follow-up via WB Chat API
-   f. Record in `chat_messages`, update chat, advance sequence
+   a. **Client replied?** → STOP sequence (`client_replied`), chat → `inbox`
+   b. **Review resolved?** → STOP sequence (`review_resolved`) if complaint approved / review excluded / rating excluded
+   c. **Chat status valid?** → STOP if not `awaiting_reply` or `inbox` (`status_changed`)
+   d. **Seller already sent today?** → SKIP, reschedule to random slot (no step advance)
+   e. **Max steps reached?** → Send СТОП message (per `sequence_type`) + close chat (`no_reply`)
+   f. Send next follow-up via WB Chat API
+   g. Record in `chat_messages`, update chat, advance sequence
 3. Rate limits: 3 seconds between sends
+
+**Review-resolved check (step 2b):** Before each message send, checks `isReviewResolvedForChat()`:
+- `complaint_status = 'approved'` — WB accepted complaint
+- `review_status_wb IN ('excluded','unpublished','temporarily_hidden','deleted')`
+- `rating_excluded = true` — transparent stars
+
+### Запуск рассылок (MANUAL ONLY, с 2026-02-28)
+
+Рассылки создаются **только вручную** из TG Mini App:
+- Менеджер открывает чат → нажимает "Запустить рассылку"
+- API: `POST /api/telegram/chats/[chatId]/sequence/start`
+- Создаёт sequence + ставит `tag='deletion_candidate'`, `status='awaiting_reply'`
+
+> **Удалено:** auto-launch из dialogue sync (Step 5b trigger phrase detection), auto-launch из OZON sync (Step 3.5), auto-create при смене статуса на `awaiting_reply` из веб-дашборда. Файл `auto-sequence-launcher.ts` — dead code, не вызывается.
+
+### Защита статуса awaiting_reply
+
+Dialogue sync при обнаружении seller message НЕ переводит `awaiting_reply` → `in_progress`, если `getActiveSequenceForChat()` возвращает активную рассылку. Без этого каждое авто-сообщение cron-а сбрасывало бы статус.
 
 ### Distributed Time Slots
 
-Messages are **not sent all at once** — they are distributed across the day using weighted time slots to avoid overwhelming managers with responses arriving simultaneously.
+Messages are distributed across the day using weighted time slots.
 
 | Slot (MSK) | Weight | Share |
 |------------|--------|-------|
@@ -864,41 +888,35 @@ Messages are **not sent all at once** — they are distributed across the day us
 | 17:00 | 10 | 10% |
 
 **How it works:**
-- When a sequence is created or advanced, `next_send_at` is set to a **random time tomorrow** within a weighted slot (e.g. tomorrow at 11:37 MSK)
+- When a sequence is created or advanced, `next_send_at` is set to a **random time** within a weighted slot
+- For 30d sequences: next send = current day + interval (2 days for negatives, 3 days for 4★)
 - Random minute (0-59) within each hour for additional scatter
-- Cron picks up sequences where `next_send_at <= NOW()` — no changes to cron logic needed
-- Function: `getNextSlotTime()` in `src/lib/auto-sequence-templates.ts`
-
-**Result:** ~4700 sequences spread as ~700/hr (10-13 MSK) and ~470/hr (14-17 MSK) instead of all at once.
+- Function: `getNextSlotTime(dayOffset)` in `src/lib/auto-sequence-templates.ts`
 
 **Dry Run Mode:**
 Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decisions are logged, but NO messages are sent and NO database changes are made.
 
-Manual dry run script: `node scripts/dry-run-sequences.mjs`
-
-**Triggering a Sequence:**
-- Dialogue sync detects trigger phrase in seller message → auto-tag + auto-sequence
-- Manual status change to `awaiting_reply` (via PATCH `/api/stores/:storeId/chats/:chatId/status`)
-- Templates: `user_settings.no_reply_messages` / `no_reply_messages2`, fallback to defaults
-
 **Stopping Conditions:**
 - Client replied (detected in dialogue sync and in cron job)
+- Review resolved (complaint approved / review excluded — checked before each send)
 - Chat status changed away from `awaiting_reply`/`inbox` (checked in cron)
-- Seller already sent a message today (skip + reschedule to random slot, not stop)
-- All messages sent (14 days) → СТОП message + close
+- Seller already sent a message today (skip + reschedule, not stop)
+- All messages sent (15 for negatives, 10 for 4★) → СТОП message + close
 
 **Database Table:** `chat_auto_sequences`
 - See `migrations/005_create_chat_auto_sequences.sql`
-- Field `sequence_type` determines template set and stop message
+- Field `sequence_type` determines template set, interval, and stop message
 
 **Source Files:**
 - [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — Cron job definition
-- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (2 sets), `getNextSlotTime()` slot distributor
-- [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, advanceSequence, rescheduleSequence, etc.)
-- [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) — Trigger detection (Step 5b)
-- [scripts/dry-run-sequences.mjs](../scripts/dry-run-sequences.mjs) — Manual dry run
-- [scripts/backfill-and-send.mjs](../scripts/backfill-and-send.mjs) — Batch backfill + immediate send
-- [scripts/backfill-store-sequences.mjs](../scripts/backfill-store-sequences.mjs) — Backfill sequences (no send)
+- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (30D sets), `getNextSlotTime()` slot distributor
+- [src/lib/auto-sequence-launcher.ts](../src/lib/auto-sequence-launcher.ts) — Auto-launch logic (`maybeStartAutoSequence`)
+- [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, advanceSequence, etc.)
+- [src/db/review-chat-link-helpers.ts](../src/db/review-chat-link-helpers.ts) — `isReviewResolvedForChat()` guard
+- [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) — Auto-launch trigger (Step 3.5) + awaiting_reply protection
+- [scripts/backfill-auto-sequences-30d.mjs](../scripts/backfill-auto-sequences-30d.mjs) — Batch backfill 30d sequences
+- [scripts/migrate-chat-statuses.mjs](../scripts/migrate-chat-statuses.mjs) — One-time status migration (2026-02-28)
+- [scripts/_check_sequences.mjs](../scripts/_check_sequences.mjs) — Diagnostic script
 
 ---
 
@@ -1089,7 +1107,7 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 | **3.5** | **Reconciliation** | `reconcileChatWithLink()` — fills `review_chat_links.chat_id` by matching chat URL patterns. Extracts UUID from WB URL, maps to `rcl.chat_url` |
 | 4 | Status updates | Tag changes, counter updates |
 | **5a-tg** | **TG notifications** | Sends push to linked TG users. **Filtered:** WB only for chats with `review_chat_links` record; OZON only for `product_nm_id IS NOT NULL` |
-| **5b** | **Auto-sequence trigger** | Detects `trigger_phrase` / `trigger_phrase2` → creates `chat_auto_sequences` |
+| ~~5b~~ | ~~Auto-sequence trigger~~ | **REMOVED (2026-02-28).** Was: detects trigger phrases → creates sequences. Now: sequences started manually from TG mini app only |
 | 6 | Interval recalc | Sets next run timeout based on MSK time tier |
 
 **Load:**
