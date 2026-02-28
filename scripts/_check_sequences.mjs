@@ -77,8 +77,47 @@ async function main() {
   console.log('\n=== TOTAL ACTIVE (visible in TG badge) ===');
   console.log(r5.rows[0]);
 
-  // 6. Check recent PM2 logs for AUTO-SEQ
-  console.log('\n=== Check server logs for [AUTO-SEQ] entries ===');
+  // 6. Next send times for 30d sequences
+  const r6 = await pool.query(`
+    SELECT sequence_type, MIN(next_send_at)::text as earliest, MAX(next_send_at)::text as latest, COUNT(*) as cnt
+    FROM chat_auto_sequences
+    WHERE status = 'active' AND sequence_type LIKE '%_30d'
+    GROUP BY sequence_type
+  `);
+  console.log('\n=== NEXT SEND TIMES FOR 30D ===');
+  if (r6.rows.length > 0) {
+    console.table(r6.rows);
+  } else {
+    console.log('No 30d sequences');
+  }
+
+  // 7. By store for 30d
+  const r7 = await pool.query(`
+    SELECT cas.store_id, s.name as store_name, cas.sequence_type, COUNT(*) as cnt
+    FROM chat_auto_sequences cas
+    JOIN stores s ON s.id = cas.store_id
+    WHERE cas.status = 'active' AND cas.sequence_type LIKE '%_30d'
+    GROUP BY cas.store_id, s.name, cas.sequence_type
+    ORDER BY cnt DESC
+  `);
+  console.log('\n=== 30D SEQUENCES BY STORE ===');
+  if (r7.rows.length > 0) {
+    console.table(r7.rows);
+  } else {
+    console.log('None');
+  }
+
+  // 8. Old sequences: how many are past their 14-day period?
+  const r8 = await pool.query(`
+    SELECT
+      COUNT(*) as total_old_active,
+      COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '14 days') as past_14d,
+      COUNT(*) FILTER (WHERE created_at < NOW() - INTERVAL '7 days') as past_7d
+    FROM chat_auto_sequences
+    WHERE status = 'active' AND sequence_type = 'no_reply_followup'
+  `);
+  console.log('\n=== OLD 14-DAY SEQUENCES AGE ===');
+  console.log(r8.rows[0]);
 
   await pool.end();
 }
