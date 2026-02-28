@@ -97,7 +97,7 @@ export async function POST(
       draft_reply: null,
       draft_reply_generated_at: null,
       draft_reply_edited: null,
-      status: 'awaiting_reply',
+      status: 'in_progress',
       last_message_sender: 'seller',
       last_message_text: message.trim(),
       last_message_date: new Date().toISOString(),

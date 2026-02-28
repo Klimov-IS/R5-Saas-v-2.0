@@ -145,8 +145,8 @@ ${chatHistory}
                 last_message_date: new Date().toISOString(),
               });
 
-              // Update status to awaiting_reply after sending
-              await updateChatStatus(chatId, 'awaiting_reply');
+              // Update status to in_progress after sending (seller replied → "В работе")
+              await updateChatStatus(chatId, 'in_progress');
 
               results.successful++;
             } catch (sendError: any) {

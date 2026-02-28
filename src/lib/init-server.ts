@@ -28,7 +28,7 @@ export function initializeServer() {
     startAutoSequenceProcessor(); // Auto-sequence follow-up messages (every 30 min)
     startRollingReviewFullSync(); // Rolling full review sync (3:00 MSK daily, 90-day chunks)
     startMiddayReviewCatchup(); // Midday review catchup (13:00 MSK daily, chunk 0 only)
-    startChatStatusTransition(); // Chat status: in_progress → awaiting_reply after 2 days (every 30 min)
+    // startChatStatusTransition(); // DISABLED: auto-transition removed — sequences are now started manually from TG mini app
     startOzonHourlyFullSync();   // OZON hourly full scan — safety net for chats read in OZON dashboard (9:00-20:00 MSK)
 
     initialized = true;
