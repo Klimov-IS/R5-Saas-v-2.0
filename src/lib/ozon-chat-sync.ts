@@ -18,9 +18,10 @@ import { query } from '@/db/client';
 import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
 import { buildStoreInstructions } from '@/lib/ai-context';
-import { DEFAULT_TRIGGER_PHRASE, DEFAULT_OZON_FOLLOWUP_TEMPLATES, DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
+// Auto-sequence templates removed: sequences are now started manually from TG mini app
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
+import { canAutoOverwriteTag } from '@/lib/chat-transitions';
 
 /** Map OZON user.type to our sender format */
 function mapSender(userType: string): 'client' | 'seller' | null {
@@ -128,7 +129,6 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
     let chatsSeeded = 0;
     let chatErrors = 0;
     const chatsToClassify: { chatId: string; productName?: string }[] = [];
-    const newSellerMessagesByChat: Record<string, string[]> = {};
     const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
     let statusTransitions = 0;
     const seedBatch: Array<{ id: string; lastMsgId: string }> = [];
@@ -240,12 +240,6 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
             is_auto_reply: false,
           });
           newForThisChat++;
-
-          // Track new seller messages for trigger phrase detection
-          if (sender === 'seller' && text.trim() && Number(msg.message_id) > existingLastMsgId) {
-            if (!newSellerMessagesByChat[chatId]) newSellerMessagesByChat[chatId] = [];
-            newSellerMessagesByChat[chatId].push(text);
-          }
         }
 
         newMessagesTotal += newForThisChat;
@@ -353,62 +347,9 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
       }
     }
 
-    // Step 3.5: Trigger phrase detection for OZON auto-sequences
-    let triggersDetected = 0;
-    if (Object.keys(newSellerMessagesByChat).length > 0) {
-      const settings = await dbHelpers.getUserSettings();
-      const triggerPhrase = settings?.no_reply_trigger_phrase || DEFAULT_TRIGGER_PHRASE;
-      const triggerPhrase2 = settings?.no_reply_trigger_phrase2 || null;
-
-      const deletionTags: ChatTag[] = [
-        'deletion_candidate', 'deletion_offered', 'deletion_agreed',
-        'deletion_confirmed', 'refund_requested',
-      ];
-
-      for (const [trigChatId, sellerTexts] of Object.entries(newSellerMessagesByChat)) {
-        try {
-          const matchedSet1 = sellerTexts.some(text => text.includes(triggerPhrase));
-          const matchedSet2 = triggerPhrase2 ? sellerTexts.some(text => text.includes(triggerPhrase2)) : false;
-
-          if (!matchedSet1 && !matchedSet2) continue;
-
-          const chat = await dbHelpers.getChatById(trigChatId);
-          if (!chat) continue;
-
-          // Skip if already in deletion workflow
-          if (chat.tag && deletionTags.includes(chat.tag as ChatTag)) continue;
-
-          const is4Star = matchedSet2 && !matchedSet1;
-          const sequenceType = is4Star ? 'ozon_no_reply_followup_4star' : 'ozon_no_reply_followup';
-
-          await dbHelpers.updateChat(trigChatId, {
-            tag: 'deletion_candidate' as ChatTag,
-            status: 'in_progress' as ChatStatus,
-            status_updated_at: new Date().toISOString(),
-          });
-
-          // Create auto-sequence if none exists
-          const existingSeq = await dbHelpers.getActiveSequenceForChat(trigChatId);
-          if (!existingSeq) {
-            let templates;
-            if (is4Star) {
-              templates = settings?.no_reply_messages2?.length
-                ? settings.no_reply_messages2.map((text: string, i: number) => ({ day: i + 1, text }))
-                : DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR;
-            } else {
-              templates = settings?.no_reply_messages?.length
-                ? settings.no_reply_messages.map((text: string, i: number) => ({ day: i + 1, text }))
-                : DEFAULT_OZON_FOLLOWUP_TEMPLATES;
-            }
-            await dbHelpers.createAutoSequence(trigChatId, chat.store_id, chat.owner_id, templates, sequenceType);
-            console.log(`[OZON-CHATS] Trigger detected in chat ${trigChatId} → deletion_candidate + sequence [${sequenceType}]`);
-          }
-          triggersDetected++;
-        } catch (triggerErr: any) {
-          console.error(`[OZON-CHATS] Trigger detection error for chat ${trigChatId}: ${triggerErr.message}`);
-        }
-      }
-    }
+    // Step 3.5 REMOVED: OZON trigger phrase detection removed.
+    // Sequences are now started manually from TG mini app.
+    const triggersDetected = 0;
 
     // Step 5a-tg: Send Telegram notifications for OZON client replies (review-linked only)
     if (clientRepliedChats.length > 0) {
@@ -453,6 +394,14 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
             productName: item.productName,
             storeInstructions,
           });
+
+          // Protect deletion workflow tags from AI overwrite
+          const currentChat = await dbHelpers.getChatById(item.chatId);
+          const currentTag = (currentChat?.tag || null) as ChatTag | null;
+          if (!canAutoOverwriteTag(currentTag, result.tag as ChatTag)) {
+            console.log(`[OZON-CHATS] Chat ${item.chatId}: Tag '${currentTag}' protected from AI overwrite to '${result.tag}'. Skipping.`);
+            continue;
+          }
 
           await dbHelpers.updateChat(item.chatId, { tag: result.tag });
           classified++;

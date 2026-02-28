@@ -5,7 +5,7 @@ import { query } from '@/db/client';
 import { verifyApiKey } from '@/lib/server-utils';
 import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
-import { DEFAULT_TRIGGER_PHRASE, DEFAULT_FOLLOWUP_TEMPLATES, DEFAULT_FOLLOWUP_TEMPLATES_4STAR } from '@/lib/auto-sequence-templates';
+// Auto-sequence templates removed: sequences are now started manually from TG mini app
 import { buildStoreInstructions } from '@/lib/ai-context';
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
@@ -168,8 +168,6 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
         if (allEvents.length > 0) {
             // Track latest message per chat for updating last_message fields
             const latestMessagesPerChat: { [chatId: string]: any } = {};
-            // Track new seller messages per chat for trigger detection
-            const newSellerMessagesByChat: { [chatId: string]: string[] } = {};
 
             for (const event of allEvents) {
                 if (event.eventType === 'message' && event.chatID) {
@@ -196,12 +194,6 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                     };
 
                     await dbHelpers.upsertChatMessage(messagePayload);
-
-                    // Track seller messages for trigger detection
-                    if (event.sender === 'seller' && event.message?.text) {
-                        if (!newSellerMessagesByChat[chatId]) newSellerMessagesByChat[chatId] = [];
-                        newSellerMessagesByChat[chatId].push(event.message.text);
-                    }
 
                     // Track latest message
                     if (!latestMessagesPerChat[chatId] || new Date(event.addTime) > new Date(latestMessagesPerChat[chatId].addTime)) {
@@ -326,66 +318,10 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                 console.error(`[DIALOGUES] TG notification error (non-critical):`, tgErr.message);
             }
 
-            // --- Step 5b: Trigger detection — auto-tag + auto-sequence for outreach messages ---
-            // Supports two trigger sets: negatives (1-2-3 stars) and 4-star reviews
-            const settings = await dbHelpers.getUserSettings();
-            const triggerPhrase = settings?.no_reply_trigger_phrase || DEFAULT_TRIGGER_PHRASE;
-            const triggerPhrase2 = settings?.no_reply_trigger_phrase2 || null; // 4-star trigger (null = disabled)
-
-            for (const chatId of Object.keys(newSellerMessagesByChat)) {
-                try {
-                    const sellerTexts = newSellerMessagesByChat[chatId];
-
-                    // Check which trigger matched (set 1 = negatives, set 2 = 4-star)
-                    const matchedSet1 = sellerTexts.some(text => text.includes(triggerPhrase));
-                    const matchedSet2 = triggerPhrase2 ? sellerTexts.some(text => text.includes(triggerPhrase2)) : false;
-
-                    if (!matchedSet1 && !matchedSet2) continue;
-
-                    // Check current chat state (avoid re-processing)
-                    const chat = await dbHelpers.getChatById(chatId);
-                    if (!chat) continue;
-
-                    // Skip if already tagged as deletion workflow or already has active sequence
-                    const deletionTags: ChatTag[] = [
-                        'deletion_candidate', 'deletion_offered', 'deletion_agreed',
-                        'deletion_confirmed', 'refund_requested'
-                    ];
-                    if (chat.tag && deletionTags.includes(chat.tag as ChatTag)) continue;
-
-                    // Determine which template set to use
-                    const is4Star = matchedSet2 && !matchedSet1; // Prefer set 1 if both match
-                    const sequenceType = is4Star ? 'no_reply_followup_4star' : 'no_reply_followup';
-
-                    // Tag as deletion_candidate + set in_progress (cron will move to awaiting_reply after 2 days)
-                    await dbHelpers.updateChat(chatId, {
-                        tag: 'deletion_candidate' as ChatTag,
-                        status: 'in_progress' as ChatStatus,
-                        status_updated_at: new Date().toISOString(),
-                    });
-
-                    // Create auto-sequence if none exists
-                    const existingSeq = await dbHelpers.getActiveSequenceForChat(chatId);
-                    if (!existingSeq) {
-                        let templates;
-                        if (is4Star) {
-                            templates = settings?.no_reply_messages2?.length
-                                ? settings.no_reply_messages2.map((text: string, i: number) => ({ day: i + 1, text }))
-                                : DEFAULT_FOLLOWUP_TEMPLATES_4STAR;
-                        } else {
-                            templates = settings?.no_reply_messages?.length
-                                ? settings.no_reply_messages.map((text: string, i: number) => ({ day: i + 1, text }))
-                                : DEFAULT_FOLLOWUP_TEMPLATES;
-                        }
-                        await dbHelpers.createAutoSequence(chatId, chat.store_id, chat.owner_id, templates, sequenceType);
-                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + in_progress + sequence [${sequenceType}] (${templates.length} msgs)`);
-                    } else {
-                        console.log(`[DIALOGUES] 🎯 Trigger detected in chat ${chatId} → deletion_candidate + in_progress (sequence already active)`);
-                    }
-                } catch (triggerErr: any) {
-                    console.error(`[DIALOGUES] Trigger detection error for chat ${chatId}:`, triggerErr.message);
-                }
-            }
+            // --- Step 5b REMOVED: Auto-sequence trigger detection removed ---
+            // Sequences are now started manually from TG mini app.
+            // Old logic: detected trigger phrases in seller messages → auto-created sequences.
+            // New logic: user starts sequences manually via "Запустить рассылку" button.
 
             // --- Step 6: Re-classify tags for updated chats using AI ---
             console.log(`[DIALOGUES] Starting AI tag classification for ${chatsToClassify.size} updated chats...`);

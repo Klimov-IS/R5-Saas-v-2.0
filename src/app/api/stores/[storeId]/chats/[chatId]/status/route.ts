@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateChat, getActiveSequenceForChat, createAutoSequence, stopSequence, getChatById, getUserSettings, getStoreById } from '@/db/helpers';
+import { updateChat, getActiveSequenceForChat, stopSequence, getChatById, getStoreById } from '@/db/helpers';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
-import { DEFAULT_FOLLOWUP_TEMPLATES } from '@/lib/auto-sequence-templates';
 import { validateTransition } from '@/lib/chat-transitions';
 
 /**
@@ -83,28 +82,8 @@ export async function PATCH(
 
     console.log(`✅ [API] Chat ${chatId} status updated: ${status}${completion_reason ? ` (reason: ${completion_reason})` : ''}`);
 
-    // Auto-sequence trigger: when moving to 'awaiting_reply', start follow-up sequence
-    if (status === 'awaiting_reply') {
-      try {
-        const existing = await getActiveSequenceForChat(chatId);
-        if (!existing) {
-          const chat = await getChatById(chatId);
-          if (chat) {
-            // Load templates from user_settings, fallback to defaults
-            const settings = await getUserSettings();
-            const templates = settings?.no_reply_messages?.length
-              ? settings.no_reply_messages.map((text: string, i: number) => ({ day: i + 1, text }))
-              : DEFAULT_FOLLOWUP_TEMPLATES;
-
-            await createAutoSequence(chatId, chat.store_id, chat.owner_id, templates);
-            console.log(`📨 [API] Auto-sequence created for chat ${chatId} (${templates.length} messages)`);
-          }
-        }
-      } catch (seqError: any) {
-        // Non-blocking: log but don't fail the status update
-        console.error(`[API] Failed to create auto-sequence for chat ${chatId}:`, seqError.message);
-      }
-    }
+    // Auto-sequence trigger removed: sequences are now started manually from TG mini app
+    // via "Запустить рассылку" button → /api/telegram/chats/[chatId]/sequence/start
 
     // When moving away from 'awaiting_reply', stop active sequence
     if (status !== 'awaiting_reply') {
