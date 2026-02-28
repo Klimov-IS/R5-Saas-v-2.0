@@ -32,6 +32,7 @@ interface ChatDetail {
   compensationBy?: string | null;
   chatStrategy?: string | null;
   reviewText?: string | null;
+  chatUrl?: string | null;
 }
 
 interface SequenceInfo {
@@ -417,7 +418,7 @@ export default function TgChatPage() {
         )}
 
         {/* Expandable details section */}
-        {(chat.productStatus || chat.complaintStatus || chat.chatStrategy || chat.offerCompensation || chat.reviewText) && (
+        {(chat.productStatus || chat.complaintStatus || chat.chatStrategy || chat.offerCompensation || chat.reviewText || chat.chatUrl) && (
           <>
             <button
               onClick={() => setShowDetails(!showDetails)}
@@ -482,6 +483,20 @@ export default function TgChatPage() {
                   }}>
                     Кешбек {chat.maxCompensation}₽ {chat.compensationBy === 'r5' ? '(R5)' : chat.compensationBy === 'seller' ? '(продавец)' : ''}
                   </span>
+                )}
+                {chat.chatUrl && (
+                  <a
+                    href={chat.chatUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
+                      backgroundColor: 'rgba(59,130,246,0.12)', color: '#3b82f6',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    Открыть в WB
+                  </a>
                 )}
                 {chat.reviewText && (
                   <div style={{ width: '100%', marginTop: '4px' }}>

@@ -26,7 +26,7 @@ export async function GET(
     // Get chat with org-based access check + review/product rules data
     const chatResult = await query(
       `SELECT c.*, s.name as store_name,
-         rcl.review_rating, rcl.review_date,
+         rcl.review_rating, rcl.review_date, rcl.chat_url,
          r.text as review_text,
          r.complaint_status, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
@@ -112,6 +112,7 @@ export async function GET(
         compensationBy: chat.compensation_by ?? null,
         chatStrategy: chat.chat_strategy ?? null,
         reviewText: chat.review_text ?? null,
+        chatUrl: chat.chat_url ?? null,
       },
       messages,
     });
