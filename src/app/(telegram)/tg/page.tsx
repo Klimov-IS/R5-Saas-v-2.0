@@ -34,10 +34,10 @@ interface QueueItem {
 }
 
 const STATUS_TABS = [
-  { key: 'awaiting_reply', label: 'Ожидание', color: '#f97316' },
-  { key: 'inbox', label: 'Входящие', color: '#3b82f6' },
-  { key: 'in_progress', label: 'В работе', color: '#f59e0b' },
-  { key: 'closed', label: 'Закрытые', color: '#9ca3af' },
+  { key: 'awaiting_reply', label: 'Ожидание' },
+  { key: 'inbox', label: 'Входящие' },
+  { key: 'in_progress', label: 'В работе' },
+  { key: 'closed', label: 'Закрытые' },
 ] as const;
 
 const EMPTY_MESSAGES: Record<string, { icon: string; title: string; subtitle: string }> = {
@@ -355,10 +355,10 @@ export default function TgQueuePage() {
   // Auth loading state
   if (authLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <div style={{ textAlign: 'center', color: 'var(--tg-hint)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F7F8FA' }}>
+        <div style={{ textAlign: 'center', color: '#6B7280' }}>
           <div style={{ fontSize: '24px', marginBottom: '8px' }}>⏳</div>
-          <div>Авторизация...</div>
+          <div style={{ fontSize: '14px' }}>Авторизация...</div>
         </div>
       </div>
     );
@@ -371,27 +371,18 @@ export default function TgQueuePage() {
 
   // Queue list (with loading/error/empty inline)
   return (
-    <div style={{ padding: '12px 12px 80px' }} className="tg-safe-area">
+    <div style={{ padding: '12px 12px 80px', backgroundColor: '#F7F8FA', minHeight: '100vh' }} className="tg-safe-area">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', padding: '0 2px' }}>
-        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--tg-text)' }}>
-          {selectionMode ? (
-            <>
-              Выбрано
-              <span style={{ fontSize: '14px', fontWeight: 400, color: '#3b82f6', marginLeft: '8px' }}>
-                {selectedIds.size} / {sortedQueue.length}
-              </span>
-            </>
-          ) : (
-            <>
-              Очередь
-              <span style={{ fontSize: '14px', fontWeight: 400, color: 'var(--tg-hint)', marginLeft: '8px' }}>
-                {totalCount}
-              </span>
-            </>
-          )}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '0 4px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+          <span style={{ fontSize: '20px', fontWeight: 600, color: '#111827' }}>
+            {selectionMode ? 'Выбрано' : 'Очередь'}
+          </span>
+          <span style={{ fontSize: '14px', fontWeight: 400, color: selectionMode ? '#2563EB' : '#6B7280' }}>
+            {selectionMode ? `${selectedIds.size} / ${sortedQueue.length}` : totalCount}
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
           {selectionMode ? (
             <>
               <button
@@ -399,11 +390,13 @@ export default function TgQueuePage() {
                 style={{
                   backgroundColor: 'transparent',
                   border: 'none',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer',
-                  padding: '4px 8px',
-                  color: '#3b82f6',
+                  padding: '6px 10px',
+                  borderRadius: '12px',
+                  color: '#2563EB',
                   fontWeight: 600,
+                  transition: 'all 0.15s ease-out',
                 }}
               >
                 {selectedIds.size === sortedQueue.length ? 'Снять все' : 'Выбрать все'}
@@ -413,11 +406,13 @@ export default function TgQueuePage() {
                 style={{
                   backgroundColor: 'transparent',
                   border: 'none',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer',
-                  padding: '4px 8px',
-                  color: 'var(--tg-hint)',
+                  padding: '6px 10px',
+                  borderRadius: '12px',
+                  color: '#6B7280',
                   fontWeight: 600,
+                  transition: 'all 0.15s ease-out',
                 }}
               >
                 Отмена
@@ -429,28 +424,35 @@ export default function TgQueuePage() {
               <button
                 onClick={() => setShowStoreFilter(!showStoreFilter)}
                 style={{
-                  backgroundColor: selectedStoreIds.length > 0 ? 'rgba(59,130,246,0.12)' : 'transparent',
-                  border: selectedStoreIds.length > 0 ? '1px solid #3b82f6' : 'none',
-                  borderRadius: '8px',
-                  fontSize: '13px',
+                  backgroundColor: selectedStoreIds.length > 0 ? '#EEF2FF' : 'transparent',
+                  border: selectedStoreIds.length > 0 ? '1px solid rgba(37,99,235,0.2)' : 'none',
+                  borderRadius: '12px',
+                  fontSize: '12px',
                   cursor: 'pointer',
-                  padding: '4px 8px',
-                  color: selectedStoreIds.length > 0 ? '#3b82f6' : 'var(--tg-hint)',
-                  fontWeight: 500,
+                  padding: '6px 10px',
+                  color: selectedStoreIds.length > 0 ? '#2563EB' : '#6B7280',
+                  fontWeight: selectedStoreIds.length > 0 ? 600 : 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease-out',
                 }}
               >
-                {selectedStoreIds.length > 0 ? `☰ ${selectedStoreIds.length}` : '☰'}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+                {selectedStoreIds.length > 0 ? selectedStoreIds.length : ''}
               </button>
               <button
                 onClick={() => setSelectionMode(true)}
                 style={{
                   backgroundColor: 'transparent',
                   border: 'none',
-                  fontSize: '13px',
+                  fontSize: '12px',
                   cursor: 'pointer',
-                  padding: '4px 8px',
-                  color: 'var(--tg-hint)',
+                  padding: '6px 10px',
+                  borderRadius: '12px',
+                  color: '#6B7280',
                   fontWeight: 500,
+                  transition: 'all 0.15s ease-out',
                 }}
               >
                 Выбрать
@@ -460,12 +462,16 @@ export default function TgQueuePage() {
                 style={{
                   backgroundColor: 'transparent',
                   border: 'none',
-                  fontSize: '18px',
                   cursor: 'pointer',
-                  padding: '4px',
+                  padding: '6px',
+                  borderRadius: '12px',
+                  color: '#6B7280',
+                  display: 'flex',
+                  alignItems: 'center',
+                  transition: 'all 0.15s ease-out',
                 }}
               >
-                🔄
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
               </button>
             </>
           )}
@@ -475,22 +481,25 @@ export default function TgQueuePage() {
       {/* Store filter panel */}
       {showStoreFilter && stores && stores.length > 0 && (
         <div style={{
-          backgroundColor: 'var(--tg-secondary-bg)',
-          borderRadius: '12px',
-          padding: '10px 12px',
-          marginBottom: '10px',
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          border: '1px solid #E6E8EC',
+          padding: '14px',
+          marginBottom: '12px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--tg-text)' }}>Магазины</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#6B7280' }}>Магазины</span>
             <button
               onClick={clearStoreFilter}
               style={{
                 fontSize: '12px',
-                color: selectedStoreIds.length > 0 ? '#3b82f6' : 'var(--tg-hint)',
+                color: selectedStoreIds.length > 0 ? '#2563EB' : '#6B7280',
                 border: 'none',
                 background: 'none',
                 cursor: 'pointer',
                 fontWeight: 500,
+                transition: 'color 0.15s',
               }}
             >
               Все магазины
@@ -504,15 +513,16 @@ export default function TgQueuePage() {
               onChange={(e) => setStoreSearch(e.target.value)}
               style={{
                 width: '100%',
-                padding: '6px 10px',
-                borderRadius: '8px',
-                border: '1px solid rgba(0,0,0,0.1)',
+                padding: '8px 12px',
+                borderRadius: '12px',
+                border: '1px solid #E6E8EC',
                 fontSize: '13px',
-                backgroundColor: 'var(--tg-bg)',
-                color: 'var(--tg-text)',
-                marginBottom: '6px',
+                backgroundColor: '#F7F8FA',
+                color: '#111827',
+                marginBottom: '8px',
                 outline: 'none',
                 boxSizing: 'border-box',
+                transition: 'border-color 0.15s',
               }}
             />
           )}
@@ -525,14 +535,16 @@ export default function TgQueuePage() {
               const isChecked = selectedStoreIds.includes(store.id);
               return (
                 <label key={store.id} style={{
-                  display: 'flex', alignItems: 'center', gap: '8px',
-                  padding: '6px 4px', cursor: 'pointer', fontSize: '13px', color: 'var(--tg-text)',
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '8px 8px', borderRadius: '12px', cursor: 'pointer',
+                  fontSize: '13px', fontWeight: 500, color: '#111827',
+                  transition: 'background-color 0.15s',
                 }}>
                   <input
                     type="checkbox"
                     checked={isChecked}
                     onChange={() => toggleStoreFilter(store.id)}
-                    style={{ width: '16px', height: '16px', accentColor: '#3b82f6' }}
+                    style={{ width: '16px', height: '16px', accentColor: '#2563EB', borderRadius: '4px' }}
                   />
                   {store.name}
                 </label>
@@ -543,15 +555,13 @@ export default function TgQueuePage() {
       )}
 
       {/* Status tabs */}
-      <div style={{
+      <div className="tabs-scroll" style={{
         display: 'flex',
         gap: '6px',
         marginBottom: '12px',
         overflowX: 'auto',
         padding: '0 2px 4px',
         WebkitOverflowScrolling: 'touch' as any,
-        msOverflowStyle: 'none',
-        scrollbarWidth: 'none',
       }}>
         {STATUS_TABS.map(tab => {
           const count = statusCounts[tab.key] || 0;
@@ -563,28 +573,29 @@ export default function TgQueuePage() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px',
-                padding: '6px 12px',
-                borderRadius: '16px',
+                gap: '6px',
+                padding: '8px 16px',
+                borderRadius: '100px',
                 border: 'none',
                 fontSize: '12px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
                 flexShrink: 0,
-                backgroundColor: isActive ? tab.color : 'var(--tg-secondary-bg)',
-                color: isActive ? '#fff' : 'var(--tg-hint)',
-                transition: 'all 0.15s',
+                backgroundColor: isActive ? '#2563EB' : '#EEF2FF',
+                color: isActive ? '#FFFFFF' : '#111827',
+                transition: 'all 0.15s ease-out',
+                boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.04)' : 'none',
               }}
             >
               {tab.label}
               <span style={{
                 fontSize: '11px',
                 fontWeight: 700,
-                padding: '0 5px',
+                padding: '0 6px',
                 borderRadius: '8px',
-                backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.08)',
-                minWidth: '18px',
+                backgroundColor: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.06)',
+                minWidth: '20px',
                 textAlign: 'center',
               }}>
                 {count}
@@ -599,34 +610,41 @@ export default function TgQueuePage() {
         <div>
           {[1, 2, 3].map(i => (
             <div key={i} style={{
-              backgroundColor: 'var(--tg-secondary-bg)',
-              borderRadius: '12px',
-              height: '100px',
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              border: '1px solid #E6E8EC',
+              height: '110px',
               marginBottom: '8px',
-              opacity: 0.5,
-              animation: 'pulse 1.5s ease-in-out infinite',
+              animation: 'r5-pulse 1.5s ease-in-out infinite',
             }} />
           ))}
-          <style>{`@keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 0.3; } }`}</style>
         </div>
       )}
 
       {/* Error state */}
       {!isLoading && error && (
-        <div style={{ padding: '20px', textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>😕</div>
-          <div style={{ fontSize: '16px', color: 'var(--tg-text)', marginBottom: '12px' }}>{error}</div>
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          border: '1px solid #E6E8EC',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          padding: '40px 20px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.8 }}>😕</div>
+          <div style={{ fontSize: '16px', color: '#111827', marginBottom: '16px', fontWeight: 500 }}>{error}</div>
           <button
             onClick={fetchQueue}
             style={{
-              backgroundColor: 'var(--tg-button)',
-              color: 'var(--tg-button-text)',
+              backgroundColor: '#2563EB',
+              color: '#FFFFFF',
               border: 'none',
-              borderRadius: '8px',
-              padding: '10px 20px',
+              borderRadius: '12px',
+              padding: '10px 24px',
               fontSize: '14px',
               fontWeight: 600,
               cursor: 'pointer',
+              transition: 'all 0.15s ease-out',
             }}
           >
             Повторить
@@ -636,33 +654,40 @@ export default function TgQueuePage() {
 
       {/* Empty state */}
       {!isLoading && !error && sortedQueue.length === 0 && !authLoading && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh', padding: '20px' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>
-              {EMPTY_MESSAGES[activeStatus]?.icon || '📋'}
-            </div>
-            <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--tg-text)', marginBottom: '8px' }}>
-              {EMPTY_MESSAGES[activeStatus]?.title || 'Нет чатов'}
-            </div>
-            <div style={{ fontSize: '14px', color: 'var(--tg-hint)' }}>
-              {EMPTY_MESSAGES[activeStatus]?.subtitle || ''}
-            </div>
-            <button
-              onClick={fetchQueue}
-              style={{
-                marginTop: '20px',
-                backgroundColor: 'var(--tg-secondary-bg)',
-                color: 'var(--tg-text)',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '10px 20px',
-                fontSize: '14px',
-                cursor: 'pointer',
-              }}
-            >
-              Обновить
-            </button>
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          border: '1px solid #E6E8EC',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          padding: '48px 24px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.8 }}>
+            {EMPTY_MESSAGES[activeStatus]?.icon || '📋'}
           </div>
+          <div style={{ fontSize: '18px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
+            {EMPTY_MESSAGES[activeStatus]?.title || 'Нет чатов'}
+          </div>
+          <div style={{ fontSize: '14px', color: '#6B7280' }}>
+            {EMPTY_MESSAGES[activeStatus]?.subtitle || ''}
+          </div>
+          <button
+            onClick={fetchQueue}
+            style={{
+              marginTop: '24px',
+              backgroundColor: '#EEF2FF',
+              color: '#2563EB',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '10px 24px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease-out',
+            }}
+          >
+            Обновить
+          </button>
         </div>
       )}
 
@@ -686,26 +711,28 @@ export default function TgQueuePage() {
           bottom: 0,
           left: 0,
           right: 0,
-          backgroundColor: 'var(--tg-bg)',
-          borderTop: '1px solid rgba(0,0,0,0.1)',
+          backgroundColor: '#FFFFFF',
+          borderTop: '1px solid #E6E8EC',
           padding: '10px 14px',
           paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
           display: 'flex',
           gap: '8px',
           zIndex: 50,
+          boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
         }}>
           <button
             onClick={bulkGenerate}
             style={{
               flex: 1,
               padding: '12px 8px',
-              borderRadius: '10px',
+              borderRadius: '12px',
               border: 'none',
               fontSize: '13px',
               fontWeight: 700,
               cursor: 'pointer',
-              backgroundColor: 'var(--tg-button)',
-              color: 'var(--tg-button-text)',
+              background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
+              color: '#FFFFFF',
+              transition: 'all 0.15s ease-out',
             }}
           >
             AI ({selectedIds.size})
@@ -716,13 +743,14 @@ export default function TgQueuePage() {
             style={{
               flex: 1,
               padding: '12px 8px',
-              borderRadius: '10px',
+              borderRadius: '12px',
               border: 'none',
               fontSize: '13px',
               fontWeight: 700,
               cursor: 'pointer',
-              backgroundColor: selectedWithDrafts > 0 ? '#22c55e' : '#ccc',
+              backgroundColor: selectedWithDrafts > 0 ? '#10B981' : '#D1D5DB',
               color: '#fff',
+              transition: 'all 0.15s ease-out',
             }}
           >
             Отправить ({selectedWithDrafts})
@@ -734,16 +762,19 @@ export default function TgQueuePage() {
             }}
             style={{
               padding: '12px 14px',
-              borderRadius: '10px',
-              border: '1px solid rgba(0,0,0,0.12)',
+              borderRadius: '12px',
+              border: '2px solid #E6E8EC',
               fontSize: '13px',
               fontWeight: 700,
               cursor: 'pointer',
-              backgroundColor: 'transparent',
-              color: 'var(--tg-text)',
+              backgroundColor: '#FFFFFF',
+              color: '#6B7280',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.15s ease-out',
             }}
           >
-            🔄
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
           </button>
         </div>
       )}
@@ -755,32 +786,33 @@ export default function TgQueuePage() {
           bottom: 0,
           left: 0,
           right: 0,
-          backgroundColor: 'var(--tg-bg)',
-          borderTop: '1px solid rgba(0,0,0,0.1)',
+          backgroundColor: '#FFFFFF',
+          borderTop: '1px solid #E6E8EC',
           padding: '16px 14px',
           paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
           zIndex: 50,
           textAlign: 'center',
+          boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
         }}>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--tg-text)', marginBottom: '8px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
             {bulkAction === 'generate' ? 'Генерация AI...' : 'Отправка...'}
             {' '}{bulkProgress.done} / {bulkProgress.total}
             {bulkProgress.errors > 0 && (
-              <span style={{ color: '#ef4444', marginLeft: '8px' }}>
+              <span style={{ color: '#EF4444', marginLeft: '8px' }}>
                 ({bulkProgress.errors} ошибок)
               </span>
             )}
           </div>
           <div style={{
             height: '4px',
-            backgroundColor: 'rgba(0,0,0,0.1)',
+            backgroundColor: '#E6E8EC',
             borderRadius: '2px',
             overflow: 'hidden',
           }}>
             <div style={{
               height: '100%',
               width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
-              backgroundColor: bulkAction === 'generate' ? '#3b82f6' : '#22c55e',
+              backgroundColor: bulkAction === 'generate' ? '#2563EB' : '#10B981',
               borderRadius: '2px',
               transition: 'width 0.3s ease',
             }} />

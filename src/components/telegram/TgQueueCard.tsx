@@ -13,11 +13,11 @@ const COMPLETION_REASONS: Record<string, string> = {
 };
 
 const RATING_COLORS: Record<number, string> = {
-  1: '#ef4444',
-  2: '#f97316',
-  3: '#f59e0b',
-  4: '#84cc16',
-  5: '#22c55e',
+  1: '#ef4444', 2: '#f97316', 3: '#f59e0b', 4: '#84cc16', 5: '#22c55e',
+};
+
+const ACCENT_COLORS: Record<number, string> = {
+  1: '#EF4444', 2: '#F97316', 3: '#F59E0B', 4: '#84CC16', 5: '#22C55E',
 };
 
 interface TgQueueCardProps {
@@ -39,14 +39,12 @@ interface TgQueueCardProps {
   selectionMode?: boolean;
   onToggleSelect?: () => void;
   onClick: () => void;
-  // Review data (only rating + date used in queue card)
   reviewRating?: number | null;
   reviewDate?: string | null;
-  // Auto-sequence data
   seqCurrentStep?: number | null;
   seqMaxSteps?: number | null;
   seqStatus?: string | null;
-  [key: string]: any; // ignore extra props passed from parent
+  [key: string]: any;
 }
 
 export default function TgQueueCard({
@@ -94,23 +92,27 @@ export default function TgQueueCard({
 
   const senderPrefix = lastMessageSender === 'seller' ? 'Вы: ' : lastMessageSender === 'client' ? 'Покупатель: ' : '';
   const isClosed = status === 'closed';
+  const accentColor = reviewRating ? (ACCENT_COLORS[reviewRating] || '#E6E8EC') : '#E6E8EC';
 
   return (
     <div
       onClick={selectionMode ? onToggleSelect : onClick}
       style={{
-        backgroundColor: isSelected ? 'rgba(59,130,246,0.12)' : 'var(--tg-secondary-bg)',
-        borderRadius: '12px',
-        padding: '12px 14px',
+        backgroundColor: isSelected ? 'rgba(37,99,235,0.08)' : '#FFFFFF',
+        borderRadius: '16px',
+        padding: '14px 14px 14px 16px',
         marginBottom: '8px',
         cursor: 'pointer',
-        transition: 'all 0.15s',
+        transition: 'all 0.15s ease-out',
         opacity: isSkipped ? 0.5 : 1,
-        border: isSelected ? '2px solid #3b82f6' : '2px solid transparent',
+        border: isSelected ? '2px solid #2563EB' : '1px solid #E6E8EC',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        borderLeft: isSelected ? '2px solid #2563EB' : `3px solid ${accentColor}`,
+        overflow: 'hidden',
       }}
     >
-      {/* Top row: checkbox (if selection mode) + store badge + time */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+      {/* Top row: checkbox + store badge + time */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {selectionMode && (
             <div
@@ -118,31 +120,29 @@ export default function TgQueueCard({
               style={{
                 width: '20px',
                 height: '20px',
-                borderRadius: '4px',
-                border: isSelected ? 'none' : '2px solid var(--tg-hint)',
-                backgroundColor: isSelected ? '#3b82f6' : 'transparent',
+                borderRadius: '6px',
+                border: isSelected ? 'none' : '2px solid #D1D5DB',
+                backgroundColor: isSelected ? '#2563EB' : 'transparent',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                transition: 'all 0.15s',
+                transition: 'all 0.15s ease-out',
               }}
             >
               {isSelected && (
-                <span style={{ color: '#fff', fontSize: '12px', fontWeight: 700 }}>✓</span>
+                <span style={{ color: '#fff', fontSize: '11px', fontWeight: 700 }}>✓</span>
               )}
             </div>
           )}
-          <span
-            style={{
-              fontSize: '11px',
-              fontWeight: 600,
-              padding: '2px 8px',
-              borderRadius: '10px',
-              backgroundColor: 'var(--tg-button)',
-              color: 'var(--tg-button-text)',
-            }}
-          >
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            padding: '2px 8px',
+            borderRadius: '8px',
+            backgroundColor: '#2563EB',
+            color: '#FFFFFF',
+          }}>
             {storeName}
           </span>
           {marketplace === 'ozon' && (
@@ -158,14 +158,14 @@ export default function TgQueueCard({
             </span>
           )}
         </div>
-        <span style={{ fontSize: '11px', color: 'var(--tg-hint)' }}>
+        <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500 }}>
           {timeAgo}
         </span>
       </div>
 
-      {/* Client name + review rating & date */}
+      {/* Client name + rating + review date */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-        <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--tg-text)' }}>
+        <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
           {clientName}
         </span>
         {reviewRating != null && (
@@ -177,12 +177,13 @@ export default function TgQueueCard({
             backgroundColor: RATING_COLORS[reviewRating] || '#9ca3af',
             color: '#fff',
             flexShrink: 0,
+            lineHeight: '16px',
           }}>
             {'★'.repeat(reviewRating)}
           </span>
         )}
         {reviewDateFormatted && (
-          <span style={{ fontSize: '11px', color: 'var(--tg-hint)', flexShrink: 0 }}>
+          <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500, flexShrink: 0 }}>
             {reviewDateFormatted}
           </span>
         )}
@@ -190,26 +191,27 @@ export default function TgQueueCard({
 
       {/* Product */}
       {productName && (
-        <div style={{ fontSize: '13px', color: 'var(--tg-hint)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{
+          fontSize: '13px', color: '#6B7280', marginBottom: '4px',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {productName}
         </div>
       )}
 
-      {/* Message preview with sender prefix */}
+      {/* Message preview */}
       {lastMessageText && (
-        <div style={{
+        <div className="line-clamp-2" style={{
           fontSize: '13px',
-          color: 'var(--tg-text)',
-          opacity: 0.8,
-          lineHeight: 1.4,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
+          color: 'rgba(17,24,39,0.8)',
+          lineHeight: 1.5,
           marginTop: '4px',
         }}>
           {senderPrefix && (
-            <span style={{ fontWeight: 600, color: lastMessageSender === 'seller' ? '#3b82f6' : '#f97316' }}>
+            <span style={{
+              fontWeight: 600,
+              color: lastMessageSender === 'seller' ? '#2563EB' : '#F97316',
+            }}>
               {senderPrefix}
             </span>
           )}
@@ -217,18 +219,18 @@ export default function TgQueueCard({
         </div>
       )}
 
-      {/* Footer: draft indicator OR completion reason + sequence badge */}
-      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* Footer: draft + sequence */}
+      <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         {isClosed && completionReason ? (
           <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>
             {COMPLETION_REASONS[completionReason] || completionReason}
           </span>
         ) : hasDraft ? (
-          <span style={{ fontSize: '11px', color: '#22c55e', fontWeight: 600 }}>
+          <span style={{ fontSize: '11px', color: '#10B981', fontWeight: 600 }}>
             ✓ Черновик готов
           </span>
         ) : (
-          <span style={{ fontSize: '11px', color: '#f97316', fontWeight: 600 }}>
+          <span style={{ fontSize: '11px', color: '#F97316', fontWeight: 600 }}>
             ○ Нет черновика
           </span>
         )}
@@ -236,10 +238,10 @@ export default function TgQueueCard({
           <span style={{
             fontSize: '11px',
             fontWeight: 600,
-            padding: '1px 6px',
-            borderRadius: '6px',
-            backgroundColor: 'rgba(59,130,246,0.15)',
-            color: '#3b82f6',
+            padding: '2px 8px',
+            borderRadius: '8px',
+            backgroundColor: 'rgba(37,99,235,0.1)',
+            color: '#2563EB',
           }}>
             Авто {seqCurrentStep}/{seqMaxSteps}
           </span>

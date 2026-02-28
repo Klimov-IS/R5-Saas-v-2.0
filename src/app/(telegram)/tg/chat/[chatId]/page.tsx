@@ -341,10 +341,10 @@ export default function TgChatPage() {
   // Loading
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <div style={{ textAlign: 'center', color: 'var(--tg-hint)' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F7F8FA' }}>
+        <div style={{ textAlign: 'center', color: '#6B7280' }}>
           <div style={{ fontSize: '24px', marginBottom: '8px' }}>⏳</div>
-          <div>Загрузка чата...</div>
+          <div style={{ fontSize: '14px' }}>Загрузка чата...</div>
         </div>
       </div>
     );
@@ -352,29 +352,29 @@ export default function TgChatPage() {
 
   if (!chat) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--tg-hint)' }}>
+      <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280', backgroundColor: '#F7F8FA', height: '100vh' }}>
         Чат не найден
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: '#F7F8FA' }}>
       {/* Header */}
       <div style={{
-        padding: '12px 14px',
-        borderBottom: '1px solid rgba(0,0,0,0.08)',
-        backgroundColor: 'var(--tg-bg)',
+        padding: '14px 16px',
+        borderBottom: '1px solid #E6E8EC',
+        backgroundColor: '#FFFFFF',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
           <span style={{
             fontSize: '11px',
             fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: '10px',
-            backgroundColor: 'var(--tg-button)',
-            color: 'var(--tg-button-text)',
+            padding: '2px 10px',
+            borderRadius: '8px',
+            backgroundColor: '#2563EB',
+            color: '#FFFFFF',
           }}>
             {chat.storeName}
           </span>
@@ -391,30 +391,31 @@ export default function TgChatPage() {
             </span>
           )}
         </div>
-        {/* Client name + review rating & date inline */}
+        {/* Client name + review rating & date */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--tg-text)' }}>{chat.clientName}</span>
+          <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>{chat.clientName}</span>
           {chat.reviewRating != null && (
             <span style={{
-              fontSize: '12px',
+              fontSize: '11px',
               fontWeight: 700,
               padding: '1px 6px',
               borderRadius: '6px',
               backgroundColor: RATING_COLORS[chat.reviewRating] || '#9ca3af',
               color: '#fff',
               flexShrink: 0,
+              lineHeight: '16px',
             }}>
               {'★'.repeat(chat.reviewRating)}
             </span>
           )}
           {chat.reviewDate && (
-            <span style={{ fontSize: '12px', color: 'var(--tg-hint)', flexShrink: 0 }}>
+            <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500, flexShrink: 0 }}>
               {new Date(chat.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
             </span>
           )}
         </div>
         {chat.productName && (
-          <div style={{ fontSize: '13px', color: 'var(--tg-hint)', marginTop: '2px' }}>{chat.productName}</div>
+          <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '2px' }}>{chat.productName}</div>
         )}
 
         {/* Expandable details section */}
@@ -423,63 +424,68 @@ export default function TgChatPage() {
             <button
               onClick={() => setShowDetails(!showDetails)}
               style={{
-                marginTop: '6px',
-                padding: '4px 10px',
+                marginTop: '8px',
+                padding: '6px 12px',
                 fontSize: '11px',
                 fontWeight: 600,
-                border: '1px solid rgba(0,0,0,0.1)',
-                borderRadius: '8px',
-                backgroundColor: showDetails ? 'rgba(59,130,246,0.08)' : 'transparent',
-                color: showDetails ? '#3b82f6' : 'var(--tg-hint)',
+                border: showDetails ? '1px solid rgba(37,99,235,0.15)' : '1px solid #E6E8EC',
+                borderRadius: '10px',
+                backgroundColor: showDetails ? '#EEF2FF' : 'transparent',
+                color: showDetails ? '#2563EB' : '#6B7280',
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px',
+                gap: '6px',
+                transition: 'all 0.15s ease-out',
               }}
             >
               {showDetails ? '▲ Скрыть' : '▼ Детали'}
             </button>
             {showDetails && (
               <div style={{
-                marginTop: '6px',
+                marginTop: '8px',
                 display: 'flex',
                 flexWrap: 'wrap',
-                gap: '4px',
+                gap: '6px',
               }}>
                 {chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified' && (
                   <span style={{
-                    fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
-                    backgroundColor: chat.productStatus === 'refused' ? 'rgba(239,68,68,0.12)' :
-                      chat.productStatus === 'purchased' ? 'rgba(34,197,94,0.12)' : 'rgba(156,163,175,0.12)',
-                    color: chat.productStatus === 'refused' ? '#ef4444' :
-                      chat.productStatus === 'purchased' ? '#22c55e' : '#6b7280',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
+                    backgroundColor: chat.productStatus === 'refused' ? '#FEE2E2' :
+                      chat.productStatus === 'purchased' ? '#D1FAE5' : '#F3F4F6',
+                    color: chat.productStatus === 'refused' ? '#991B1B' :
+                      chat.productStatus === 'purchased' ? '#065F46' : '#6B7280',
                   }}>
                     {PRODUCT_STATUS_LABELS[chat.productStatus] || chat.productStatus}
                   </span>
                 )}
                 {chat.complaintStatus && chat.complaintStatus !== 'not_sent' && (
                   <span style={{
-                    fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
-                    backgroundColor: chat.complaintStatus === 'rejected' ? 'rgba(239,68,68,0.12)' :
-                      chat.complaintStatus === 'approved' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)',
-                    color: chat.complaintStatus === 'rejected' ? '#ef4444' :
-                      chat.complaintStatus === 'approved' ? '#22c55e' : '#f59e0b',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
+                    backgroundColor: chat.complaintStatus === 'rejected' ? '#FEE2E2' :
+                      chat.complaintStatus === 'approved' ? '#D1FAE5' : '#FEF3C7',
+                    color: chat.complaintStatus === 'rejected' ? '#991B1B' :
+                      chat.complaintStatus === 'approved' ? '#065F46' : '#92400E',
                   }}>
                     Жалоба: {COMPLAINT_STATUS_LABELS[chat.complaintStatus] || chat.complaintStatus}
                   </span>
                 )}
                 {chat.chatStrategy && (
                   <span style={{
-                    fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
-                    backgroundColor: 'rgba(59,130,246,0.12)', color: '#3b82f6',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
+                    backgroundColor: '#EEF2FF', color: '#1E40AF',
                   }}>
                     {STRATEGY_LABELS[chat.chatStrategy] || chat.chatStrategy}
                   </span>
                 )}
                 {chat.offerCompensation && chat.maxCompensation && (
                   <span style={{
-                    fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
-                    backgroundColor: 'rgba(168,85,247,0.12)', color: '#a855f7',
+                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
+                    backgroundColor: '#EDE9FE', color: '#5B21B6',
                   }}>
                     Кешбек {chat.maxCompensation}₽ {chat.compensationBy === 'r5' ? '(R5)' : chat.compensationBy === 'seller' ? '(продавец)' : ''}
                   </span>
@@ -490,9 +496,10 @@ export default function TgChatPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px',
-                      backgroundColor: 'rgba(59,130,246,0.12)', color: '#3b82f6',
-                      textDecoration: 'none',
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
+                      backgroundColor: '#EEF2FF', color: '#2563EB',
+                      textDecoration: 'none', transition: 'all 0.15s ease-out',
                     }}
                   >
                     Открыть в WB
@@ -505,24 +512,26 @@ export default function TgChatPage() {
                       style={{
                         fontSize: '11px',
                         fontWeight: 600,
-                        color: 'var(--tg-hint)',
+                        color: '#6B7280',
                         background: 'none',
                         border: 'none',
                         padding: 0,
                         cursor: 'pointer',
+                        transition: 'color 0.15s',
                       }}
                     >
                       {reviewTextExpanded ? '▲ Скрыть отзыв' : '▼ Текст отзыва'}
                     </button>
                     {reviewTextExpanded && (
                       <div style={{
-                        marginTop: '4px',
-                        padding: '6px 8px',
-                        backgroundColor: 'rgba(0,0,0,0.04)',
-                        borderRadius: '6px',
+                        marginTop: '6px',
+                        padding: '8px 12px',
+                        backgroundColor: '#F7F8FA',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(230,232,236,0.5)',
                         fontSize: '12px',
-                        color: 'var(--tg-text)',
-                        lineHeight: '1.4',
+                        color: '#111827',
+                        lineHeight: '1.5',
                         maxHeight: '120px',
                         overflowY: 'auto',
                       }}>
@@ -539,7 +548,7 @@ export default function TgChatPage() {
         {/* Auto-sequence section */}
         {(sequence || chat.status !== 'closed') && (
           <div style={{
-            marginTop: '8px',
+            marginTop: '10px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -549,10 +558,10 @@ export default function TgChatPage() {
                 <span style={{
                   fontSize: '11px',
                   fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: 'rgba(59,130,246,0.15)',
-                  color: '#3b82f6',
+                  padding: '4px 10px',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(37,99,235,0.1)',
+                  color: '#2563EB',
                 }}>
                   Авто {sequence.currentStep}/{sequence.maxSteps}
                 </span>
@@ -562,13 +571,14 @@ export default function TgChatPage() {
                   style={{
                     fontSize: '11px',
                     fontWeight: 600,
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #ef4444',
+                    padding: '4px 10px',
+                    borderRadius: '10px',
+                    border: '1px solid #EF4444',
                     backgroundColor: 'transparent',
-                    color: '#ef4444',
+                    color: '#EF4444',
                     cursor: 'pointer',
                     opacity: seqLoading ? 0.5 : 1,
+                    transition: 'all 0.15s ease-out',
                   }}
                 >
                   Стоп
@@ -578,10 +588,10 @@ export default function TgChatPage() {
               <span style={{
                 fontSize: '11px',
                 fontWeight: 600,
-                padding: '2px 8px',
-                borderRadius: '6px',
-                backgroundColor: 'rgba(156,163,175,0.15)',
-                color: '#6b7280',
+                padding: '4px 10px',
+                borderRadius: '10px',
+                backgroundColor: '#F3F4F6',
+                color: '#6B7280',
               }}>
                 Рассылка завершена
               </span>
@@ -590,10 +600,10 @@ export default function TgChatPage() {
                 <span style={{
                   fontSize: '11px',
                   fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  backgroundColor: 'rgba(245,158,11,0.15)',
-                  color: '#f59e0b',
+                  padding: '4px 10px',
+                  borderRadius: '10px',
+                  backgroundColor: '#FEF3C7',
+                  color: '#92400E',
                 }}>
                   Остановлена ({sequence.currentStep}/{sequence.maxSteps})
                 </span>
@@ -603,13 +613,14 @@ export default function TgChatPage() {
                   style={{
                     fontSize: '11px',
                     fontWeight: 600,
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #3b82f6',
+                    padding: '4px 10px',
+                    borderRadius: '10px',
+                    border: '1px solid #2563EB',
                     backgroundColor: 'transparent',
-                    color: '#3b82f6',
+                    color: '#2563EB',
                     cursor: 'pointer',
                     opacity: seqLoading ? 0.5 : 1,
+                    transition: 'all 0.15s ease-out',
                   }}
                 >
                   Запустить
@@ -622,13 +633,17 @@ export default function TgChatPage() {
                 style={{
                   fontSize: '11px',
                   fontWeight: 600,
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  border: '1px solid #3b82f6',
+                  padding: '4px 10px',
+                  borderRadius: '10px',
+                  border: '1px solid #2563EB',
                   backgroundColor: 'transparent',
-                  color: '#3b82f6',
+                  color: '#2563EB',
                   cursor: 'pointer',
                   opacity: seqLoading ? 0.5 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.15s ease-out',
                 }}
               >
                 Запустить рассылку
@@ -642,8 +657,8 @@ export default function TgChatPage() {
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '12px 14px',
-        backgroundColor: 'var(--tg-secondary-bg)',
+        padding: '12px 16px',
+        backgroundColor: '#F7F8FA',
       }}>
         {messages.slice(-15).map(msg => (
           <div
@@ -653,24 +668,28 @@ export default function TgChatPage() {
               marginLeft: msg.sender === 'seller' ? 'auto' : '0',
               marginRight: msg.sender === 'client' ? 'auto' : '0',
               marginBottom: '8px',
-              padding: '8px 12px',
-              borderRadius: msg.sender === 'seller' ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
-              backgroundColor: msg.sender === 'seller'
-                ? 'var(--tg-button)'
-                : 'var(--tg-bg)',
-              color: msg.sender === 'seller'
-                ? 'var(--tg-button-text)'
-                : 'var(--tg-text)',
+              padding: '10px 14px',
+              borderRadius: msg.sender === 'seller' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+              ...(msg.sender === 'seller' ? {
+                background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
+                color: '#FFFFFF',
+              } : {
+                backgroundColor: '#FFFFFF',
+                border: '1px solid #E6E8EC',
+                color: '#111827',
+              }),
               fontSize: '14px',
-              lineHeight: 1.4,
+              lineHeight: 1.5,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             }}
           >
             {msg.text}
             <div style={{
               fontSize: '10px',
               opacity: 0.6,
-              marginTop: '4px',
+              marginTop: '6px',
               textAlign: msg.sender === 'seller' ? 'right' : 'left',
+              color: msg.sender === 'seller' ? 'rgba(255,255,255,0.6)' : '#6B7280',
             }}>
               {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ru-RU', {
                 day: '2-digit', month: '2-digit',
@@ -684,16 +703,16 @@ export default function TgChatPage() {
 
       {/* Draft area */}
       <div style={{
-        padding: '10px 14px',
-        borderTop: '1px solid rgba(0,0,0,0.08)',
-        backgroundColor: 'var(--tg-bg)',
+        padding: '12px 16px',
+        borderTop: '1px solid #E6E8EC',
+        backgroundColor: '#FFFFFF',
         flexShrink: 0,
       }}>
         {isGenerating ? (
           <div style={{
             textAlign: 'center',
             padding: '16px',
-            color: 'var(--tg-hint)',
+            color: '#6B7280',
             fontSize: '14px',
           }}>
             ⏳ Генерация ИИ-ответа...
@@ -711,23 +730,26 @@ export default function TgChatPage() {
                 width: '100%',
                 minHeight: '80px',
                 maxHeight: '150px',
-                padding: '10px',
-                border: '1px solid rgba(0,0,0,0.12)',
-                borderRadius: '10px',
+                padding: '10px 14px',
+                border: '1px solid #E6E8EC',
+                borderRadius: '12px',
                 fontSize: '14px',
-                lineHeight: 1.4,
+                lineHeight: 1.5,
                 resize: 'vertical',
-                backgroundColor: 'var(--tg-secondary-bg)',
-                color: 'var(--tg-text)',
+                backgroundColor: '#F7F8FA',
+                color: '#111827',
                 fontFamily: 'inherit',
                 boxSizing: 'border-box',
+                outline: 'none',
+                transition: 'border-color 0.15s',
               }}
             />
             <div style={{
               textAlign: 'right',
               fontSize: '11px',
-              marginTop: '2px',
-              color: draftText.length > 900 ? '#ef4444' : 'var(--tg-hint)',
+              marginTop: '4px',
+              fontWeight: 500,
+              color: draftText.length > 900 ? '#EF4444' : '#6B7280',
             }}>
               {draftText.length}/1000
             </div>
@@ -736,7 +758,7 @@ export default function TgChatPage() {
 
         {/* Feedback */}
         {feedback && (
-          <div style={{ textAlign: 'center', fontSize: '13px', padding: '4px 0', color: 'var(--tg-text)' }}>
+          <div style={{ textAlign: 'center', fontSize: '13px', padding: '4px 0', fontWeight: 500, color: '#111827' }}>
             {feedback}
           </div>
         )}
@@ -745,12 +767,12 @@ export default function TgChatPage() {
       {/* Action buttons */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: messageSent ? '1fr 1fr' : '1fr 1fr',
+        gridTemplateColumns: '1fr 1fr',
         gap: '8px',
-        padding: '10px 14px',
+        padding: '10px 16px',
         paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
-        backgroundColor: 'var(--tg-bg)',
-        borderTop: '1px solid rgba(0,0,0,0.08)',
+        backgroundColor: '#FFFFFF',
+        borderTop: '1px solid #E6E8EC',
         flexShrink: 0,
       }}>
         {!messageSent ? (
@@ -760,37 +782,43 @@ export default function TgChatPage() {
               onClick={handleSend}
               disabled={!draftText.trim() || isSending || isGenerating}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 padding: '12px',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 border: 'none',
                 fontSize: '14px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: (!draftText.trim() || isSending || isGenerating) ? '#ccc' : '#22c55e',
+                backgroundColor: (!draftText.trim() || isSending || isGenerating) ? '#D1D5DB' : '#10B981',
                 color: '#fff',
                 opacity: isSending ? 0.7 : 1,
+                transition: 'all 0.15s ease-out',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
               }}
             >
-              {isSending ? '⏳...' : '✅ Отправить'}
+              {isSending ? '⏳...' : 'Отправить'}
             </button>
 
-            {/* Regenerate */}
+            {/* AI reply */}
             <button
               onClick={handleGenerate}
               disabled={isGenerating || isSending}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 padding: '12px',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 border: 'none',
                 fontSize: '14px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: 'var(--tg-button)',
-                color: 'var(--tg-button-text)',
+                background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
+                color: '#FFFFFF',
                 opacity: isGenerating ? 0.7 : 1,
+                transition: 'all 0.15s ease-out',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
               }}
             >
-              {isGenerating ? '⏳...' : '🤖 AI ответ'}
+              {isGenerating ? '⏳...' : 'AI ответ'}
             </button>
 
             {/* Close */}
@@ -798,34 +826,38 @@ export default function TgChatPage() {
               onClick={() => setShowReasons(true)}
               disabled={isSending || isGenerating}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 padding: '12px',
-                borderRadius: '10px',
-                border: 'none',
+                borderRadius: '12px',
+                border: '2px solid rgba(239,68,68,0.2)',
                 fontSize: '14px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: '#ef4444',
-                color: '#fff',
+                backgroundColor: 'rgba(254,226,226,0.5)',
+                color: '#EF4444',
+                transition: 'all 0.15s ease-out',
               }}
             >
-              ❌ Закрыть
+              Закрыть
             </button>
 
             {/* Next dialog */}
             <button
               onClick={goToNextChat}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 padding: '12px',
-                borderRadius: '10px',
-                border: '1px solid rgba(0,0,0,0.12)',
+                borderRadius: '12px',
+                border: '2px solid #E6E8EC',
                 fontSize: '14px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: 'transparent',
-                color: 'var(--tg-hint)',
+                backgroundColor: '#FFFFFF',
+                color: '#6B7280',
+                transition: 'all 0.15s ease-out',
               }}
             >
-              ⏭️ След. диалог
+              След. диалог
             </button>
           </>
         ) : (
@@ -834,33 +866,38 @@ export default function TgChatPage() {
             <button
               onClick={() => setShowReasons(true)}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 padding: '12px',
-                borderRadius: '10px',
-                border: 'none',
+                borderRadius: '12px',
+                border: '2px solid rgba(239,68,68,0.2)',
                 fontSize: '14px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: '#ef4444',
-                color: '#fff',
+                backgroundColor: 'rgba(254,226,226,0.5)',
+                color: '#EF4444',
+                transition: 'all 0.15s ease-out',
               }}
             >
-              ❌ Закрыть диалог
+              Закрыть диалог
             </button>
 
             <button
               onClick={goToNextChat}
               style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                 padding: '12px',
-                borderRadius: '10px',
+                borderRadius: '12px',
                 border: 'none',
                 fontSize: '14px',
                 fontWeight: 700,
                 cursor: 'pointer',
-                backgroundColor: 'var(--tg-button)',
-                color: 'var(--tg-button-text)',
+                background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
+                color: '#FFFFFF',
+                transition: 'all 0.15s ease-out',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
               }}
             >
-              ⏭️ След. диалог
+              След. диалог
             </button>
           </>
         )}
@@ -874,7 +911,7 @@ export default function TgChatPage() {
             style={{
               position: 'fixed',
               inset: 0,
-              backgroundColor: 'rgba(0,0,0,0.5)',
+              backgroundColor: 'rgba(0,0,0,0.3)',
               zIndex: 100,
             }}
           />
@@ -883,15 +920,22 @@ export default function TgChatPage() {
             bottom: 0,
             left: 0,
             right: 0,
-            backgroundColor: 'var(--tg-bg)',
-            borderRadius: '16px 16px 0 0',
+            backgroundColor: '#FFFFFF',
+            borderRadius: '20px 20px 0 0',
             padding: '16px',
             paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
             zIndex: 101,
             maxHeight: '60vh',
             overflowY: 'auto',
+            boxShadow: '0 -4px 24px rgba(0,0,0,0.1)',
+            borderTop: '1px solid #E6E8EC',
           }}>
-            <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '12px', color: 'var(--tg-text)' }}>
+            {/* Handle bar */}
+            <div style={{
+              width: '40px', height: '4px', backgroundColor: '#E6E8EC',
+              borderRadius: '2px', margin: '0 auto 16px',
+            }} />
+            <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '12px', color: '#111827' }}>
               Причина закрытия
             </div>
             {COMPLETION_REASONS.map(r => (
@@ -902,20 +946,22 @@ export default function TgChatPage() {
                   width: '100%',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '10px',
-                  padding: '12px',
-                  marginBottom: '4px',
-                  borderRadius: '10px',
+                  gap: '12px',
+                  padding: '12px 16px',
+                  marginBottom: '6px',
+                  borderRadius: '12px',
                   border: 'none',
-                  backgroundColor: 'var(--tg-secondary-bg)',
-                  color: 'var(--tg-text)',
+                  backgroundColor: '#F7F8FA',
+                  color: '#111827',
                   fontSize: '14px',
+                  fontWeight: 500,
                   cursor: 'pointer',
                   textAlign: 'left',
+                  transition: 'all 0.15s ease-out',
                 }}
               >
-                <span style={{ fontSize: '18px' }}>{r.icon}</span>
-                <span style={{ fontWeight: 500 }}>{r.label}</span>
+                <span style={{ fontSize: '16px' }}>{r.icon}</span>
+                <span>{r.label}</span>
               </button>
             ))}
             <button
@@ -924,13 +970,14 @@ export default function TgChatPage() {
                 width: '100%',
                 padding: '12px',
                 marginTop: '8px',
-                borderRadius: '10px',
-                border: '1px solid rgba(0,0,0,0.12)',
-                backgroundColor: 'transparent',
-                color: 'var(--tg-hint)',
+                borderRadius: '12px',
+                border: '2px solid #E6E8EC',
+                backgroundColor: '#FFFFFF',
+                color: '#6B7280',
                 fontSize: '14px',
                 fontWeight: 600,
                 cursor: 'pointer',
+                transition: 'all 0.15s ease-out',
               }}
             >
               Отмена
