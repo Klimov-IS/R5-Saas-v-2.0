@@ -60,6 +60,10 @@ export interface QueueChat {
   compensation_type: string | null;
   compensation_by: string | null;
   chat_strategy: string | null;
+  // Auto-sequence data (from chat_auto_sequences)
+  seq_current_step: number | null;
+  seq_max_steps: number | null;
+  seq_status: string | null;
 }
 
 // ============================================================================
@@ -249,10 +253,14 @@ export async function getUnifiedChatQueue(
          r.complaint_status, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
          pr.compensation_type, pr.compensation_by,
-         pr.chat_strategy::text as chat_strategy
+         pr.chat_strategy::text as chat_strategy,
+         cas.current_step as seq_current_step,
+         cas.max_steps as seq_max_steps,
+         cas.status as seq_status
        FROM chats c
        INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
        LEFT JOIN reviews r ON rcl.review_id = r.id
+       LEFT JOIN chat_auto_sequences cas ON cas.chat_id = c.id AND cas.status = 'active'
        JOIN stores s ON c.store_id = s.id
        JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
        JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
@@ -273,10 +281,14 @@ export async function getUnifiedChatQueue(
          r.complaint_status, r.product_status_by_review as product_status,
          NULL::boolean as offer_compensation, NULL::text as max_compensation,
          NULL::text as compensation_type, NULL::text as compensation_by,
-         NULL::text as chat_strategy
+         NULL::text as chat_strategy,
+         cas.current_step as seq_current_step,
+         cas.max_steps as seq_max_steps,
+         cas.status as seq_status
        FROM chats c
        INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
        LEFT JOIN reviews r ON rcl.review_id = r.id
+       LEFT JOIN chat_auto_sequences cas ON cas.chat_id = c.id AND cas.status = 'active'
        JOIN stores s ON c.store_id = s.id
        WHERE c.store_id = ANY($1::text[])
          AND c.marketplace = 'ozon'

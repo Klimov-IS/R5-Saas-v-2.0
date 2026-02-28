@@ -199,6 +199,68 @@ export async function findLinkByChatUrl(
 }
 
 /**
+ * Find link by chat_id. Used by auto-sequence launcher to get review_rating.
+ */
+export async function findLinkByChatId(
+  chatId: string
+): Promise<ReviewChatLink | null> {
+  const result = await query<ReviewChatLink>(
+    `SELECT * FROM review_chat_links WHERE chat_id = $1 LIMIT 1`,
+    [chatId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Check if the review linked to a chat is "resolved" — meaning the review
+ * no longer affects product rating and follow-up is unnecessary.
+ *
+ * Resolved conditions (any = true → resolved):
+ * 1. complaint_status = 'approved' (complaint accepted by WB)
+ * 2. review_status_wb IN ('excluded','unpublished','temporarily_hidden','deleted')
+ * 3. rating_excluded = true ("transparent stars", excluded from WB rating)
+ *
+ * Returns { resolved, reason } for logging. If no review link found, returns not resolved.
+ */
+export async function isReviewResolvedForChat(
+  chatId: string
+): Promise<{ resolved: boolean; reason: string | null }> {
+  const result = await query<{
+    complaint_status: string | null;
+    review_status_wb: string | null;
+    rating_excluded: boolean | null;
+  }>(
+    `SELECT r.complaint_status, r.review_status_wb, r.rating_excluded
+     FROM review_chat_links rcl
+     JOIN reviews r ON rcl.review_id = r.id
+     WHERE rcl.chat_id = $1
+     LIMIT 1`,
+    [chatId]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    // No linked review found — not resolved (allow sequence)
+    return { resolved: false, reason: null };
+  }
+
+  if (row.complaint_status === 'approved') {
+    return { resolved: true, reason: 'complaint_approved' };
+  }
+
+  const excludedStatuses = ['excluded', 'unpublished', 'temporarily_hidden', 'deleted'];
+  if (row.review_status_wb && excludedStatuses.includes(row.review_status_wb)) {
+    return { resolved: true, reason: `review_${row.review_status_wb}` };
+  }
+
+  if (row.rating_excluded) {
+    return { resolved: true, reason: 'rating_excluded' };
+  }
+
+  return { resolved: false, reason: null };
+}
+
+/**
  * Find pending links without chat_id for a store (batch reconciliation).
  */
 export async function findPendingLinksWithoutChatId(

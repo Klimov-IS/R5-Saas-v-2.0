@@ -5,6 +5,7 @@ import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
+import { validateTransition } from '@/lib/chat-transitions';
 
 const validStatuses: ChatStatus[] = ['inbox', 'in_progress', 'awaiting_reply', 'closed'];
 const validReasons: CompletionReason[] = [
@@ -52,6 +53,18 @@ export async function PATCH(
 
     if (!chatResult.rows[0]) {
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+    }
+
+    // Validate transition from current status
+    const currentChat = await dbHelpers.getChatById(chatId);
+    if (currentChat) {
+      const transitionError = validateTransition(
+        currentChat.status as ChatStatus,
+        status as ChatStatus
+      );
+      if (transitionError) {
+        console.warn(`[TG-STATUS] ${transitionError} for chat ${chatId}`);
+      }
     }
 
     // Update status

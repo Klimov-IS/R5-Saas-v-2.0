@@ -12,7 +12,9 @@ import * as dbHelpers from '@/db/helpers';
 import { runBackfillWorker } from '@/services/backfill-worker';
 
 import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
-import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MESSAGE, DEFAULT_OZON_STOP_MESSAGE_4STAR, getNextSlotTime } from '@/lib/auto-sequence-templates';
+import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MESSAGE, DEFAULT_OZON_STOP_MESSAGE_4STAR, getNextSlotTime, getDaysUntilNextMessage } from '@/lib/auto-sequence-templates';
+import type { SequenceMessage } from '@/lib/auto-sequence-templates';
+import { isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -623,6 +625,16 @@ export function startAutoSequenceProcessor() {
             continue;
           }
 
+          // Check stop condition 3: is the linked review "resolved"?
+          // (complaint approved, excluded from rating, unpublished, deleted, etc.)
+          const { resolved: reviewResolved, reason: resolvedReason } = await isReviewResolvedForChat(seq.chat_id);
+          if (reviewResolved) {
+            if (!dryRun) await dbHelpers.stopSequence(seq.id, 'review_resolved');
+            stopped++;
+            console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (review resolved: ${resolvedReason})${dryRun ? ' [DRY RUN]' : ''}`);
+            continue;
+          }
+
           // Check skip condition: seller already sent a message today?
           const todayStart = new Date();
           todayStart.setUTCHours(0, 0, 0, 0);
@@ -642,55 +654,74 @@ export function startAutoSequenceProcessor() {
           // Load settings for stop message and templates
           const settings = await dbHelpers.getUserSettings();
 
-          // Check max steps — send СТОП message and close chat
+          // Check max steps — sequence completed, close chat
           if (seq.current_step >= seq.max_steps) {
-            // Choose stop message based on sequence type (negatives vs 4-star, WB vs OZON)
             const is4Star = seq.sequence_type === 'no_reply_followup_4star' || seq.sequence_type === 'ozon_no_reply_followup_4star';
             const isOzonSeq = seq.sequence_type?.startsWith('ozon_');
-            const stopMessage = is4Star
-              ? (settings?.no_reply_stop_message2 || (isOzonSeq ? DEFAULT_OZON_STOP_MESSAGE_4STAR : DEFAULT_STOP_MESSAGE_4STAR))
-              : (settings?.no_reply_stop_message || (isOzonSeq ? DEFAULT_OZON_STOP_MESSAGE : DEFAULT_STOP_MESSAGE));
+            const is30d = seq.sequence_type?.includes('_30d');
 
             if (dryRun) {
-              console.log(`[CRON] 🧪 DRY RUN: would send STOP message to chat ${seq.chat_id} and close it`);
+              console.log(`[CRON] 🧪 DRY RUN: would ${is30d ? 'close chat (last msg was stop)' : 'send STOP message + close chat'} for ${seq.chat_id}`);
             } else {
               try {
-                // Marketplace-aware dispatch
-                if (seqStore?.marketplace === 'ozon' && seqStore.ozon_client_id && seqStore.ozon_api_key) {
-                  const { createOzonClient } = await import('@/lib/ozon-api');
-                  const ozonClient = createOzonClient(seqStore.ozon_client_id, seqStore.ozon_api_key);
-                  await ozonClient.sendChatMessage(seq.chat_id, stopMessage);
-                } else {
-                  const { sendChatMessage: sendStopMsg } = await import('@/lib/wb-chat-api');
-                  await sendStopMsg(seq.store_id, seq.chat_id, stopMessage);
+                // 30D sequences: last message IS the stop (negatives #15, 4-star #10) — already sent as the last template step.
+                // 14D sequences: send a separate stop message after all 14 templates.
+                if (!is30d) {
+                  // Choose stop message (14-day: negatives vs 4-star, WB vs OZON)
+                  let stopMessage: string;
+                  if (is4Star) {
+                    stopMessage = settings?.no_reply_stop_message2 || (isOzonSeq ? DEFAULT_OZON_STOP_MESSAGE_4STAR : DEFAULT_STOP_MESSAGE_4STAR);
+                  } else {
+                    stopMessage = settings?.no_reply_stop_message || (isOzonSeq ? DEFAULT_OZON_STOP_MESSAGE : DEFAULT_STOP_MESSAGE);
+                  }
+
+                  // Send stop message via marketplace-aware dispatch
+                  if (seqStore?.marketplace === 'ozon' && seqStore.ozon_client_id && seqStore.ozon_api_key) {
+                    const { createOzonClient } = await import('@/lib/ozon-api');
+                    const ozonClient = createOzonClient(seqStore.ozon_client_id, seqStore.ozon_api_key);
+                    await ozonClient.sendChatMessage(seq.chat_id, stopMessage);
+                  } else {
+                    const { sendChatMessage: sendStopMsg } = await import('@/lib/wb-chat-api');
+                    await sendStopMsg(seq.store_id, seq.chat_id, stopMessage);
+                  }
+
+                  // Record stop message in chat_messages
+                  const stopMsgId = `auto_stop_${seq.id}`;
+                  await dbHelpers.createChatMessage({
+                    id: stopMsgId,
+                    chat_id: seq.chat_id,
+                    store_id: seq.store_id,
+                    owner_id: seq.owner_id,
+                    sender: 'seller',
+                    text: stopMessage,
+                    timestamp: new Date().toISOString(),
+                    is_auto_reply: true,
+                  });
+
+                  // Update chat last_message to the stop message
+                  await dbHelpers.updateChat(seq.chat_id, {
+                    last_message_text: stopMessage,
+                    last_message_sender: 'seller',
+                    last_message_date: new Date().toISOString(),
+                  });
                 }
 
-                // Record stop message in chat_messages
-                const stopMsgId = `auto_stop_${seq.id}`;
-                await dbHelpers.createChatMessage({
-                  id: stopMsgId,
-                  chat_id: seq.chat_id,
-                  store_id: seq.store_id,
-                  owner_id: seq.owner_id,
-                  sender: 'seller',
-                  text: stopMessage,
-                  timestamp: new Date().toISOString(),
-                  is_auto_reply: true,
-                });
+                // Close chat (optimistic lock: only if status hasn't changed since we checked)
+                const chatStatusBefore = chat?.status_updated_at;
+                const freshChat = await dbHelpers.getChatById(seq.chat_id);
+                if (freshChat && freshChat.status_updated_at !== chatStatusBefore) {
+                  console.log(`[CRON] ⚠️  Sequence ${seq.id}: chat status changed by another process, skipping close`);
+                } else {
+                  await dbHelpers.updateChat(seq.chat_id, {
+                    status: 'closed' as dbHelpers.ChatStatus,
+                    status_updated_at: new Date().toISOString(),
+                    completion_reason: 'no_reply' as dbHelpers.CompletionReason,
+                  });
+                }
 
-                // Update chat last message + close
-                await dbHelpers.updateChat(seq.chat_id, {
-                  last_message_text: stopMessage,
-                  last_message_sender: 'seller',
-                  last_message_date: new Date().toISOString(),
-                  status: 'closed' as dbHelpers.ChatStatus,
-                  status_updated_at: new Date().toISOString(),
-                  completion_reason: 'no_reply' as dbHelpers.CompletionReason,
-                });
-
-                console.log(`[CRON] 🛑 Sequence ${seq.id}: completed → stop message sent + chat closed`);
+                console.log(`[CRON] 🛑 Sequence ${seq.id}: completed → ${is30d ? 'chat closed (last msg was stop)' : 'stop message sent + chat closed'}`);
               } catch (stopErr: any) {
-                console.error(`[CRON] Failed to send stop message for sequence ${seq.id}:`, stopErr.message);
+                console.error(`[CRON] Failed to complete sequence ${seq.id}:`, stopErr.message);
               }
 
               await dbHelpers.completeSequence(seq.id);
@@ -747,11 +778,15 @@ export function startAutoSequenceProcessor() {
             last_message_date: new Date().toISOString(),
           });
 
-          // Advance sequence
-          await dbHelpers.advanceSequence(seq.id);
+          // Advance sequence — compute days until next message based on template schedule
+          const daysAhead = getDaysUntilNextMessage(
+            msgTemplates as SequenceMessage[],
+            seq.current_step + 1 // after increment
+          );
+          await dbHelpers.advanceSequence(seq.id, daysAhead || 1);
 
           sent++;
-          console.log(`[CRON] ✉️  Sequence ${seq.id}: sent step ${seq.current_step + 1}/${seq.max_steps}`);
+          console.log(`[CRON] ✉️  Sequence ${seq.id}: sent step ${seq.current_step + 1}/${seq.max_steps} (next in ${daysAhead || 1}d)`);
 
           // Rate limit: 3 seconds between sends
           await new Promise(resolve => setTimeout(resolve, 3000));

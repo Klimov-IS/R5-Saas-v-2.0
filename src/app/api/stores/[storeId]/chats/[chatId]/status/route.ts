@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { updateChat, getActiveSequenceForChat, createAutoSequence, stopSequence, getChatById, getUserSettings, getStoreById } from '@/db/helpers';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
 import { DEFAULT_FOLLOWUP_TEMPLATES } from '@/lib/auto-sequence-templates';
+import { validateTransition } from '@/lib/chat-transitions';
 
 /**
  * PATCH /api/stores/[storeId]/chats/[chatId]/status
@@ -51,6 +52,19 @@ export async function PATCH(
         { error: 'completion_reason is required when closing chat' },
         { status: 400 }
       );
+    }
+
+    // Validate transition from current status
+    const currentChat = await getChatById(chatId);
+    if (currentChat) {
+      const transitionError = validateTransition(
+        currentChat.status as ChatStatus,
+        status as ChatStatus
+      );
+      if (transitionError) {
+        console.warn(`[API] ${transitionError} for chat ${chatId}`);
+        // Allow the transition but log warning (soft enforcement)
+      }
     }
 
     // Update chat with status and optionally completion_reason

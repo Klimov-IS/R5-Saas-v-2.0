@@ -2717,6 +2717,36 @@ export async function getActiveSequenceForChat(chatId: string): Promise<ChatAuto
 }
 
 /**
+ * Check if chat has an active or completed sequence in a given family.
+ * Family prefix groups related sequence types (e.g. 'no_reply_followup' covers
+ * both 'no_reply_followup' and 'no_reply_followup_30d').
+ * Used for deduplication: prevents creating a new sequence if one already ran to completion.
+ * Note: 'stopped' sequences (manual/client_replied) are NOT blocked — user can restart manually.
+ */
+export async function hasCompletedSequenceFamily(chatId: string, familyPrefix: string): Promise<boolean> {
+  const result = await query(
+    `SELECT 1 FROM chat_auto_sequences
+     WHERE chat_id = $1
+       AND sequence_type LIKE $2
+       AND status IN ('active', 'completed')
+     LIMIT 1`,
+    [chatId, familyPrefix + '%']
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Get the latest sequence for a chat (any status), for UI display.
+ */
+export async function getLatestSequenceForChat(chatId: string): Promise<ChatAutoSequence | null> {
+  const result = await query<ChatAutoSequence>(
+    `SELECT * FROM chat_auto_sequences WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 1`,
+    [chatId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Get all pending sequences ready to send (cron job)
  */
 export async function getPendingSequences(limit: number = 50): Promise<ChatAutoSequence[]> {
@@ -2731,10 +2761,11 @@ export async function getPendingSequences(limit: number = 50): Promise<ChatAutoS
 }
 
 /**
- * Advance sequence to next step after sending a message
+ * Advance sequence to next step after sending a message.
+ * @param daysAhead - days until next message (default 1 for daily cadence, 3 for 30-day)
  */
-export async function advanceSequence(id: string): Promise<ChatAutoSequence | null> {
-  const nextSendAt = getNextSlotTime();
+export async function advanceSequence(id: string, daysAhead: number = 1): Promise<ChatAutoSequence | null> {
+  const nextSendAt = getNextSlotTime(daysAhead);
   const result = await query<ChatAutoSequence>(
     `UPDATE chat_auto_sequences
      SET current_step = current_step + 1,

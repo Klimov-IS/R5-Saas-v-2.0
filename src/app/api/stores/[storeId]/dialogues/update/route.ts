@@ -11,6 +11,8 @@ import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegr
 import { detectSuccessEvent } from '@/lib/success-detector';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
 import { reconcileChatWithLink } from '@/db/review-chat-link-helpers';
+import { canAutoOverwriteTag } from '@/lib/chat-transitions';
+import { maybeStartAutoSequence } from '@/lib/auto-sequence-launcher';
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -108,7 +110,11 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
             if (!activeChat.chatID) continue;
             try {
                 const reconciled = await reconcileChatWithLink(activeChat.chatID, storeId);
-                if (reconciled) reconciledCount++;
+                if (reconciled) {
+                    reconciledCount++;
+                    // Auto-launch 30-day sequence for review-linked chats (WB only)
+                    await maybeStartAutoSequence(activeChat.chatID, storeId);
+                }
             } catch (err) {
                 // Non-fatal: reconciliation failure shouldn't break sync
             }
@@ -408,6 +414,15 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                     });
 
                     const tag = result.tag;
+
+                    // Protect deletion workflow tags from being overwritten by AI classification
+                    const currentChat = await dbHelpers.getChatById(chatId);
+                    const currentTag = (currentChat?.tag || null) as ChatTag | null;
+
+                    if (!canAutoOverwriteTag(currentTag, tag as ChatTag)) {
+                        console.log(`[DIALOGUES] Chat ${chatId}: Tag '${currentTag}' protected from AI overwrite to '${tag}'. Skipping.`);
+                        continue;
+                    }
 
                     // Update chat tag (AI classification), status remains unchanged
                     await dbHelpers.updateChat(chatId, {

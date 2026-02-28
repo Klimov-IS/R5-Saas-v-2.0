@@ -42,6 +42,10 @@ interface TgQueueCardProps {
   // Review data (only rating + date used in queue card)
   reviewRating?: number | null;
   reviewDate?: string | null;
+  // Auto-sequence data
+  seqCurrentStep?: number | null;
+  seqMaxSteps?: number | null;
+  seqStatus?: string | null;
   [key: string]: any; // ignore extra props passed from parent
 }
 
@@ -63,6 +67,9 @@ export default function TgQueueCard({
   onClick,
   reviewRating,
   reviewDate,
+  seqCurrentStep,
+  seqMaxSteps,
+  seqStatus,
 }: TgQueueCardProps) {
   const timeAgo = lastMessageDate
     ? (() => {
@@ -210,8 +217,8 @@ export default function TgQueueCard({
         </div>
       )}
 
-      {/* Footer: draft indicator OR completion reason */}
-      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+      {/* Footer: draft indicator OR completion reason + sequence badge */}
+      <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         {isClosed && completionReason ? (
           <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>
             {COMPLETION_REASONS[completionReason] || completionReason}
@@ -223,6 +230,18 @@ export default function TgQueueCard({
         ) : (
           <span style={{ fontSize: '11px', color: '#f97316', fontWeight: 600 }}>
             ○ Нет черновика
+          </span>
+        )}
+        {seqStatus === 'active' && seqCurrentStep != null && seqMaxSteps != null && (
+          <span style={{
+            fontSize: '11px',
+            fontWeight: 600,
+            padding: '1px 6px',
+            borderRadius: '6px',
+            backgroundColor: 'rgba(59,130,246,0.15)',
+            color: '#3b82f6',
+          }}>
+            Авто {seqCurrentStep}/{seqMaxSteps}
           </span>
         )}
       </div>

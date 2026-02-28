@@ -34,6 +34,19 @@ interface ChatDetail {
   reviewText?: string | null;
 }
 
+interface SequenceInfo {
+  id: string;
+  sequenceType: string;
+  status: string;
+  currentStep: number;
+  maxSteps: number;
+  stopReason: string | null;
+  nextSendAt: string | null;
+  lastSentAt: string | null;
+  startedAt: string;
+  createdAt: string;
+}
+
 const COMPLETION_REASONS = [
   { value: 'review_deleted', label: 'Отзыв удален', icon: '🗑️' },
   { value: 'review_upgraded', label: 'Отзыв дополнен', icon: '⭐' },
@@ -81,6 +94,8 @@ export default function TgChatPage() {
   const [showReasons, setShowReasons] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [reviewTextExpanded, setReviewTextExpanded] = useState(false);
+  const [sequence, setSequence] = useState<SequenceInfo | null>(null);
+  const [seqLoading, setSeqLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -253,6 +268,72 @@ export default function TgChatPage() {
     } catch {
       haptic('error');
       setFeedback('❌ Ошибка закрытия');
+    }
+  };
+
+  // Fetch sequence status
+  const fetchSequence = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/telegram/chats/${chatId}/sequence`);
+      if (res.ok) {
+        const data = await res.json();
+        setSequence(data.sequence || null);
+      }
+    } catch {}
+  }, [chatId, apiFetch]);
+
+  useEffect(() => {
+    fetchSequence();
+  }, [fetchSequence]);
+
+  // Start sequence
+  const handleStartSequence = async () => {
+    setSeqLoading(true);
+    try {
+      const res = await apiFetch(`/api/telegram/chats/${chatId}/sequence/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        haptic('error');
+        setFeedback(err.error || 'Ошибка запуска рассылки');
+      } else {
+        haptic('success');
+        setFeedback('Рассылка запущена');
+        fetchSequence();
+      }
+    } catch {
+      haptic('error');
+      setFeedback('Ошибка запуска рассылки');
+    } finally {
+      setSeqLoading(false);
+    }
+  };
+
+  // Stop sequence
+  const handleStopSequence = async () => {
+    setSeqLoading(true);
+    try {
+      const res = await apiFetch(`/api/telegram/chats/${chatId}/sequence/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) {
+        haptic('error');
+        setFeedback('Ошибка остановки рассылки');
+      } else {
+        haptic('success');
+        setFeedback('Рассылка остановлена');
+        fetchSequence();
+      }
+    } catch {
+      haptic('error');
+      setFeedback('Ошибка остановки рассылки');
+    } finally {
+      setSeqLoading(false);
     }
   };
 
@@ -438,6 +519,107 @@ export default function TgChatPage() {
               </div>
             )}
           </>
+        )}
+
+        {/* Auto-sequence section */}
+        {(sequence || chat.status !== 'closed') && (
+          <div style={{
+            marginTop: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}>
+            {sequence?.status === 'active' ? (
+              <>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(59,130,246,0.15)',
+                  color: '#3b82f6',
+                }}>
+                  Авто {sequence.currentStep}/{sequence.maxSteps}
+                </span>
+                <button
+                  onClick={handleStopSequence}
+                  disabled={seqLoading}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #ef4444',
+                    backgroundColor: 'transparent',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    opacity: seqLoading ? 0.5 : 1,
+                  }}
+                >
+                  Стоп
+                </button>
+              </>
+            ) : sequence?.status === 'completed' ? (
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 8px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(156,163,175,0.15)',
+                color: '#6b7280',
+              }}>
+                Рассылка завершена
+              </span>
+            ) : sequence?.status === 'stopped' ? (
+              <>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(245,158,11,0.15)',
+                  color: '#f59e0b',
+                }}>
+                  Остановлена ({sequence.currentStep}/{sequence.maxSteps})
+                </span>
+                <button
+                  onClick={handleStartSequence}
+                  disabled={seqLoading}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #3b82f6',
+                    backgroundColor: 'transparent',
+                    color: '#3b82f6',
+                    cursor: 'pointer',
+                    opacity: seqLoading ? 0.5 : 1,
+                  }}
+                >
+                  Запустить
+                </button>
+              </>
+            ) : chat.status !== 'closed' ? (
+              <button
+                onClick={handleStartSequence}
+                disabled={seqLoading}
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid #3b82f6',
+                  backgroundColor: 'transparent',
+                  color: '#3b82f6',
+                  cursor: 'pointer',
+                  opacity: seqLoading ? 0.5 : 1,
+                }}
+              >
+                Запустить рассылку
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
 

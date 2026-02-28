@@ -127,10 +127,22 @@ const SEND_SLOTS: { hour: number; weight: number }[] = [
 ];
 
 /**
- * Pick a random time slot for tomorrow based on weighted distribution.
- * Returns ISO string for a specific time tomorrow (MSK converted to UTC).
+ * Pick a random time slot for a future day based on weighted distribution.
+ * @param daysAhead - number of days in the future (default 1 = tomorrow).
+ *   daysAhead=0 means "today if still within business hours (before 17:00 MSK),
+ *   otherwise tomorrow". Used for Day 0 in 30-day sequences.
+ * Returns ISO string for that day at a random business hour (MSK → UTC).
  */
-export function getNextSlotTime(): string {
+export function getNextSlotTime(daysAhead: number = 1): string {
+  // Day 0 support: today if before 17:00 MSK, else tomorrow
+  if (daysAhead === 0) {
+    const nowMSK = new Date().getUTCHours() + 3; // approximate MSK hour
+    const lastSlotHour = SEND_SLOTS[SEND_SLOTS.length - 1].hour; // 17
+    if (nowMSK >= lastSlotHour) {
+      daysAhead = 1; // too late today → tomorrow
+    }
+  }
+
   const totalWeight = SEND_SLOTS.reduce((sum, s) => sum + s.weight, 0);
   let rand = Math.random() * totalWeight;
   let selectedHour = SEND_SLOTS[0].hour;
@@ -146,14 +158,39 @@ export function getNextSlotTime(): string {
   // Random minute within the hour (0-59) for scatter
   const randomMinute = Math.floor(Math.random() * 60);
 
-  // Build tomorrow's date at selectedHour MSK
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Build target date at selectedHour MSK
+  const target = new Date();
+  target.setDate(target.getDate() + daysAhead);
   // MSK = UTC+3, so UTC hour = MSK hour - 3
   const utcHour = selectedHour - 3;
-  tomorrow.setUTCHours(utcHour, randomMinute, 0, 0);
+  target.setUTCHours(utcHour, randomMinute, 0, 0);
 
-  return tomorrow.toISOString();
+  // For daysAhead=0: ensure slot is in the future (not already passed today)
+  if (daysAhead === 0 && target.getTime() <= Date.now()) {
+    target.setDate(target.getDate() + 1); // fallback to tomorrow
+  }
+
+  return target.toISOString();
+}
+
+/**
+ * Calculate days until next message based on template schedule.
+ * Used by 30-day cadence (every 2 days) vs default 14-day (daily).
+ *
+ * @param templates - the message templates with day field
+ * @param currentStep - current step (0-indexed, just completed)
+ * @returns days until next message, or 0 if sequence is complete
+ */
+export function getDaysUntilNextMessage(
+  templates: SequenceMessage[],
+  currentStep: number
+): number {
+  const nextStep = currentStep; // currentStep has already been incremented by advanceSequence
+  if (nextStep >= templates.length) return 0; // sequence complete
+
+  const currentDay = currentStep > 0 ? templates[currentStep - 1].day : 0;
+  const nextDay = templates[nextStep].day;
+  return Math.max(1, nextDay - currentDay);
 }
 
 /**
@@ -279,4 +316,114 @@ export const DEFAULT_FOLLOWUP_TEMPLATES: SequenceMessage[] = [
     day: 14,
     text: 'Добрый день! Мы закрываем обращение. Если в будущем захотите вернуться к разговору — мы на связи. Спасибо!',
   },
+];
+
+// ============================================================================
+// 30-Day Cadence Templates (every 2 days, 15 messages)
+// ============================================================================
+
+/**
+ * 30-day follow-up templates for negative reviews (1-2-3 stars).
+ * 15 messages over 30 days, every 2 days.
+ * Message #15 (Day 30) IS the stop message — closes chat, no separate stop needed.
+ * 4-phase model: discovery → understanding → offer → closing.
+ * Sequence type: 'no_reply_followup_30d'
+ *
+ * REPLACES the old 14-day daily mailing for new sequences.
+ */
+export const DEFAULT_FOLLOWUP_TEMPLATES_30D: SequenceMessage[] = [
+  // Phase 1: Discovery — soft questions, learn what happened (Day 0-6)
+  { day: 0, text: 'Мы увидели ваш отзыв и немного переживаем, что покупка вас расстроила. Подскажите, пожалуйста, что именно пошло не так?' },
+  { day: 2, text: 'Возвращаемся к вам — нам правда важно понять ситуацию. Иногда детали помогают нам многое исправить.' },
+  { day: 4, text: 'Если найдётся минутка, расскажите, что именно вам не понравилось. Мы внимательно читаем каждую обратную связь.' },
+  { day: 6, text: 'Не хотим быть навязчивыми — просто хотим понять, можем ли мы как-то помочь или исправить впечатление.' },
+
+  // Phase 2: Understanding — empathy, transition to resolution (Day 8-14)
+  { day: 8, text: 'Если ситуация всё ещё актуальна, мы готовы предложить вариант решения, чтобы сгладить неприятный момент.' },
+  { day: 10, text: 'Иногда сообщение теряется в уведомлениях — аккуратно напоминаем о себе. Нам важно не оставить это без внимания.' },
+  { day: 12, text: 'Если покупка действительно вас расстроила, мы можем предложить компенсацию за доставленные неудобства.' },
+  { day: 14, text: 'Мы дорабатываем товары именно благодаря таким отзывам. Ваше мнение для нас — не формальность.' },
+
+  // Phase 3: Offer — compensation + bonus (Day 16-22)
+  { day: 16, text: 'Если будет желание обсудить ситуацию — готовы согласовать для вас бонус.' },
+  { day: 18, text: 'Мы правда хотим оставить у вас более приятное впечатление. Напишите, и найдём решение вместе!' },
+  { day: 20, text: 'Компенсация по вашему заказу по-прежнему возможна — главное, чтобы мы понимали, что именно произошло.' },
+  { day: 22, text: 'Если вопрос уже не актуален — можно просто написать «всё ок». Если актуален — мы на связи.' },
+
+  // Phase 4: Closing — final reminders + stop (Day 24-30)
+  { day: 24, text: 'Скоро будем закрывать обращение, но не хотим делать это, не дав вам возможность вернуться к разговору.' },
+  { day: 26, text: 'Если захотите воспользоваться бонусом или обсудить вариант решения — напишите. Мы всё ещё здесь.' },
+  { day: 30, text: 'Закрываем обращение. Спасибо за ваш отзыв — даже если он был строгим, он помогает нам становиться лучше. Если когда-нибудь захотите вернуться к разговору — будем рады.' },
+];
+
+/**
+ * 30-day follow-up templates for 4-star reviews.
+ * 10 messages over 30 days, every 3 days.
+ * Message #10 (Day 30) IS the stop message — closes chat, no separate stop needed.
+ * Focus: understand what was missing for 5 stars, gather feedback.
+ * Sequence type: 'no_reply_followup_4star_30d'
+ *
+ * REPLACES the old 14-day daily 4-star mailing for new sequences.
+ */
+export const DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D: SequenceMessage[] = [
+  // Phase 1: Discovery — gentle curiosity (Day 0-6)
+  { day: 0, text: 'Мы увидели ваш отзыв и хотим понять, всё ли в целом устроило в товаре. Если есть детали, которыми хочется поделиться — будем рады.' },
+  { day: 3, text: 'Нам важно понять, что можно сделать ещё лучше. Чего, на ваш взгляд, не хватило до идеального опыта?' },
+  { day: 6, text: 'Пользуетесь ли сейчас товаром? Нам интересно, как он показывает себя со временем.' },
+
+  // Phase 2: Understanding — warmth + feedback (Day 9-15)
+  { day: 9, text: 'Иногда 4★ — это «в целом хорошо, но…». Если есть это «но» — будем рады услышать.' },
+  { day: 12, text: 'Мы собираем честную обратную связь от покупателей, чтобы дорабатывать продукт. Ваше мнение правда помогает.' },
+  { day: 15, text: 'Если есть пожелания или идеи по улучшению — смело пишите. Мы передаём это напрямую команде.' },
+
+  // Phase 3: Follow-up — check experience over time (Day 18-24)
+  { day: 18, text: 'Интересно, изменилось ли ваше впечатление спустя время использования?' },
+  { day: 21, text: 'Бывает, что первые впечатления отличаются от дальнейшего опыта. Поделитесь, если это ваш случай.' },
+  { day: 24, text: 'Если вопрос уже не актуален — можно просто написать «всё устраивает». Нам важно понимать картину.' },
+
+  // Phase 4: Closing — stop (Day 30)
+  { day: 30, text: 'Спасибо за честную оценку. Даже 4★ помогают нам становиться лучше. Если появятся мысли или пожелания — будем рады диалогу.' },
+];
+
+/**
+ * OZON 30-day follow-up templates for 4-star reviews.
+ * Same 10-message cadence as WB. Separate export for future OZON-specific customization.
+ */
+export const DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR_30D: SequenceMessage[] = [
+  { day: 0, text: 'Мы увидели ваш отзыв и хотим понять, всё ли в целом устроило в товаре. Если есть детали, которыми хочется поделиться — будем рады.' },
+  { day: 3, text: 'Нам важно понять, что можно сделать ещё лучше. Чего, на ваш взгляд, не хватило до идеального опыта?' },
+  { day: 6, text: 'Пользуетесь ли сейчас товаром? Нам интересно, как он показывает себя со временем.' },
+  { day: 9, text: 'Иногда 4★ — это «в целом хорошо, но…». Если есть это «но» — будем рады услышать.' },
+  { day: 12, text: 'Мы собираем честную обратную связь от покупателей, чтобы дорабатывать продукт. Ваше мнение правда помогает.' },
+  { day: 15, text: 'Если есть пожелания или идеи по улучшению — смело пишите. Мы передаём это напрямую команде.' },
+  { day: 18, text: 'Интересно, изменилось ли ваше впечатление спустя время использования?' },
+  { day: 21, text: 'Бывает, что первые впечатления отличаются от дальнейшего опыта. Поделитесь, если это ваш случай.' },
+  { day: 24, text: 'Если вопрос уже не актуален — можно просто написать «всё устраивает». Нам важно понимать картину.' },
+  { day: 30, text: 'Спасибо за честную оценку. Даже 4★ помогают нам становиться лучше. Если появятся мысли или пожелания — будем рады диалогу.' },
+];
+
+/**
+ * OZON 30-day follow-up templates for negative reviews (1-2-3 stars).
+ * Same 15-message cadence as WB. Separate export for future OZON-specific customization.
+ */
+export const DEFAULT_OZON_FOLLOWUP_TEMPLATES_30D: SequenceMessage[] = [
+  // Phase 1: Discovery (Day 0-6)
+  { day: 0, text: 'Мы увидели ваш отзыв и немного переживаем, что покупка вас расстроила. Подскажите, пожалуйста, что именно пошло не так?' },
+  { day: 2, text: 'Возвращаемся к вам — нам правда важно понять ситуацию. Иногда детали помогают нам многое исправить.' },
+  { day: 4, text: 'Если найдётся минутка, расскажите, что именно вам не понравилось. Мы внимательно читаем каждую обратную связь.' },
+  { day: 6, text: 'Не хотим быть навязчивыми — просто хотим понять, можем ли мы как-то помочь или исправить впечатление.' },
+  // Phase 2: Understanding (Day 8-14)
+  { day: 8, text: 'Если ситуация всё ещё актуальна, мы готовы предложить вариант решения, чтобы сгладить неприятный момент.' },
+  { day: 10, text: 'Иногда сообщение теряется в уведомлениях — аккуратно напоминаем о себе. Нам важно не оставить это без внимания.' },
+  { day: 12, text: 'Если покупка действительно вас расстроила, мы можем предложить компенсацию за доставленные неудобства.' },
+  { day: 14, text: 'Мы дорабатываем товары именно благодаря таким отзывам. Ваше мнение для нас — не формальность.' },
+  // Phase 3: Offer (Day 16-22)
+  { day: 16, text: 'Если будет желание обсудить ситуацию — готовы согласовать для вас бонус.' },
+  { day: 18, text: 'Мы правда хотим оставить у вас более приятное впечатление. Напишите, и найдём решение вместе!' },
+  { day: 20, text: 'Компенсация по вашему заказу по-прежнему возможна — главное, чтобы мы понимали, что именно произошло.' },
+  { day: 22, text: 'Если вопрос уже не актуален — можно просто написать «всё ок». Если актуален — мы на связи.' },
+  // Phase 4: Closing (Day 24-30)
+  { day: 24, text: 'Скоро будем закрывать обращение, но не хотим делать это, не дав вам возможность вернуться к разговору.' },
+  { day: 26, text: 'Если захотите воспользоваться бонусом или обсудить вариант решения — напишите. Мы всё ещё здесь.' },
+  { day: 30, text: 'Закрываем обращение. Спасибо за ваш отзыв — даже если он был строгим, он помогает нам становиться лучше. Если когда-нибудь захотите вернуться к разговору — будем рады.' },
 ];

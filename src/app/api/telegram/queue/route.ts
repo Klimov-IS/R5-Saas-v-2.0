@@ -68,6 +68,10 @@ export async function GET(request: NextRequest) {
         compensationBy: c.compensation_by,
         chatStrategy: c.chat_strategy,
         reviewText: c.review_text ?? null,
+        // Auto-sequence data
+        seqCurrentStep: c.seq_current_step,
+        seqMaxSteps: c.seq_max_steps,
+        seqStatus: c.seq_status,
       })),
       totalCount,
       statusCounts,
