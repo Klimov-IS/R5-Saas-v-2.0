@@ -252,13 +252,24 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         console.error(`[DIALOGUES] Failed to stop auto-sequence for chat ${chatId}:`, seqErr.message);
                     }
                 } else if (latestMsg.sender === 'seller') {
-                    // Seller replied → move to in_progress (unless closed)
+                    // Seller replied → move to in_progress (unless closed or awaiting_reply with active sequence)
                     if (existingChat && existingChat.status !== 'in_progress' && existingChat.status !== 'closed') {
-                        await dbHelpers.updateChat(chatId, {
-                            status: 'in_progress' as ChatStatus,
-                            status_updated_at: new Date().toISOString(),
-                        });
-                        console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → in_progress (seller replied)`);
+                        // If chat is awaiting_reply with active auto-sequence, keep it there
+                        // (auto-mailing messages should not move chat to in_progress)
+                        let skipTransition = false;
+                        if (existingChat.status === 'awaiting_reply') {
+                            const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+                            if (activeSeq) {
+                                skipTransition = true;
+                            }
+                        }
+                        if (!skipTransition) {
+                            await dbHelpers.updateChat(chatId, {
+                                status: 'in_progress' as ChatStatus,
+                                status_updated_at: new Date().toISOString(),
+                            });
+                            console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → in_progress (seller replied)`);
+                        }
                     }
                     // Reopen closed chats when seller sends a new message
                     if (existingChat && existingChat.status === 'closed') {

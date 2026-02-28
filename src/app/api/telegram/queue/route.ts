@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
-    const status = searchParams.get('status') || 'inbox';
+    const status = searchParams.get('status') || 'awaiting_reply';
     const filterStoreIdsParam = searchParams.get('storeIds');
     const filterStoreIds = filterStoreIdsParam
       ? filterStoreIdsParam.split(',').filter(Boolean)

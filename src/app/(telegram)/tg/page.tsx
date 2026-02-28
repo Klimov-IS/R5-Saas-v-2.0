@@ -34,16 +34,16 @@ interface QueueItem {
 }
 
 const STATUS_TABS = [
-  { key: 'inbox', label: 'Входящие', color: '#3b82f6' },
   { key: 'awaiting_reply', label: 'Ожидание', color: '#f97316' },
+  { key: 'inbox', label: 'Входящие', color: '#3b82f6' },
   { key: 'in_progress', label: 'В работе', color: '#f59e0b' },
   { key: 'closed', label: 'Закрытые', color: '#9ca3af' },
 ] as const;
 
 const EMPTY_MESSAGES: Record<string, { icon: string; title: string; subtitle: string }> = {
-  inbox: { icon: '✅', title: 'Все чаты обработаны', subtitle: 'Новые ответы клиентов появятся здесь' },
-  awaiting_reply: { icon: '⏳', title: 'Нет чатов в ожидании', subtitle: 'Здесь появятся чаты после отправки ответа' },
-  in_progress: { icon: '📋', title: 'Нет чатов в работе', subtitle: 'Переместите чаты сюда из входящих' },
+  awaiting_reply: { icon: '⏳', title: 'Нет чатов в ожидании', subtitle: 'Чаты с активной рассылкой появятся здесь' },
+  inbox: { icon: '✅', title: 'Все чаты обработаны', subtitle: 'Новые ответы покупателей появятся здесь' },
+  in_progress: { icon: '📋', title: 'Нет чатов в работе', subtitle: 'Чаты с ответом продавца появятся здесь' },
   closed: { icon: '📦', title: 'Нет закрытых чатов', subtitle: 'Закрытые чаты с причиной будут здесь' },
 };
 
@@ -87,7 +87,7 @@ export default function TgQueuePage() {
 
   // Status tabs
   const [activeStatus, setActiveStatus] = useState<string>(() => {
-    try { return sessionStorage.getItem('tg_active_status') || 'inbox'; } catch { return 'inbox'; }
+    try { return sessionStorage.getItem('tg_active_status') || 'awaiting_reply'; } catch { return 'awaiting_reply'; }
   });
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>(() => {
     try {
