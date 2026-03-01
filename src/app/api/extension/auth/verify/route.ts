@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Get user's stores
-    const storeIds = await getUserStores(user.id);
+    // 4. Get user's stores (extension works only with WB)
+    const storeIds = await getUserStores(user.id, { marketplace: 'wb' });
 
     console.log(`[Extension Auth] ✅ Token verified for user ${user.email}, ${storeIds.length} stores found`);
 

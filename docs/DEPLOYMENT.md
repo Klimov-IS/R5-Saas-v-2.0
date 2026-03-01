@@ -1,6 +1,6 @@
 # Deployment Guide - WB Reputation Manager
 
-**Last Updated:** 2026-02-18
+**Last Updated:** 2026-02-25
 
 ---
 
@@ -8,13 +8,15 @@
 
 ### Server Details
 - **Provider:** Yandex Cloud Compute
-- **IP Address:** 158.160.217.236
+- **IP Address:** 158.160.229.16
 - **Domain:** `rating5.ru` (через Cloudflare)
 - **Region:** ru-central1-d
 - **OS:** Ubuntu 24.04 LTS
 - **Resources:** 2 vCPU, 4GB RAM, 20GB SSD
 - **SSH Key:** `~/.ssh/yandex-cloud-wb-reputation`
 - **SSH User:** `ubuntu` (NEVER use `sudo pm2` — creates separate root daemon)
+- **Public IP Type:** Динамический (⚠️ меняется при остановке VM! Рекомендуется зарезервировать статический)
+- **IP History:** `158.160.217.236` (до 2026-02-25) → `158.160.229.16` (с 2026-02-25)
 
 ### Network Architecture
 ```
@@ -39,7 +41,7 @@ User → HTTPS → Cloudflare (edge SSL, CDN, proxy) → HTTPS → Nginx → Nex
 ### Connect to Production Server
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 ```
 
 ### One-Line Commands (from local machine)
@@ -48,13 +50,13 @@ Execute commands remotely without keeping SSH session open:
 
 ```bash
 # Check application status
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 status"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 status"
 
 # View recent logs
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation --lines 50 --nostream"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs wb-reputation --lines 50 --nostream"
 
 # Check disk space
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "df -h"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "df -h"
 ```
 
 ---
@@ -66,7 +68,7 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "df -h"
 Run from **local machine** (one-line, zero-downtime):
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
@@ -89,7 +91,7 @@ If you need more control or troubleshooting:
 
 ```bash
 # 1. SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 # 2. Navigate to project
 cd /var/www/wb-reputation
@@ -143,7 +145,7 @@ After deployment, verify these endpoints:
 curl https://rating5.ru/health
 
 # Health check (direct IP)
-curl http://158.160.217.236/health
+curl http://158.160.229.16/health
 
 # API authentication
 curl -X GET "https://rating5.ru/api/stores" \
@@ -294,7 +296,7 @@ server {
 # IP-based access (legacy, backward compatibility)
 server {
     listen 80;
-    server_name 158.160.217.236;
+    server_name 158.160.229.16;
     # ... (existing proxy + flower market config)
 }
 ```
@@ -311,7 +313,7 @@ server {
 
 ### Cloudflare Configuration
 
-- **DNS:** A records `rating5.ru` + `www` → `158.160.217.236` (Proxied ON)
+- **DNS:** A records `rating5.ru` + `www` → `158.160.229.16` (Proxied ON)
 - **SSL/TLS:** Full (Strict) — Cloudflare validates origin cert
 - **Security:** Bot Fight Mode OFF (required for Telegram Mini App WebView)
 - **Cloudflare panel:** [dash.cloudflare.com](https://dash.cloudflare.com) → rating5.ru
@@ -390,7 +392,7 @@ pm2 reload wb-reputation
 
 ```bash
 # SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 # Navigate to project
 cd /var/www/wb-reputation
@@ -477,7 +479,7 @@ If deployment causes issues:
 
 ```bash
 # 1. SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 # 2. Navigate to project
 cd /var/www/wb-reputation
@@ -597,7 +599,7 @@ pm2 logs wb-reputation --err --lines 100
 
 ## Emergency Contacts
 
-- **Production URL:** https://rating5.ru (primary), http://158.160.217.236 (direct IP)
+- **Production URL:** https://rating5.ru (primary), http://158.160.229.16 (direct IP)
 - **Cloudflare:** [dash.cloudflare.com](https://dash.cloudflare.com) → rating5.ru
 - **GitHub Repo:** https://github.com/Klimov-IS/R5-Saas-v-2.0
 - **Telegram Bot:** [@R5_chat_bot](https://t.me/R5_chat_bot)
@@ -609,17 +611,17 @@ pm2 logs wb-reputation --err --lines 100
 
 | Task | Command |
 |------|---------|
-| Deploy (one-line) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "cd /var/www/wb-reputation && bash deploy/update-app.sh"` |
-| Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 status"` |
-| View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation --lines 50 --nostream"` |
-| Reload app (zero-downtime) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation"` |
-| **Reload + перезапуск cron** | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 reload wb-reputation && pm2 restart wb-reputation-cron"` |
-| Restart all | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart all"` |
-| TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
-| Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 restart wb-reputation-tg-bot"` |
-| Test SSL | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "curl -sI https://rating5.ru/health"` |
-| Check nginx | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "sudo nginx -t"` |
+| Deploy (one-line) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "cd /var/www/wb-reputation && bash deploy/update-app.sh"` |
+| Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 status"` |
+| View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs wb-reputation --lines 50 --nostream"` |
+| Reload app (zero-downtime) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 reload wb-reputation"` |
+| **Reload + перезапуск cron** | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 reload wb-reputation && pm2 restart wb-reputation-cron"` |
+| Restart all | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 restart all"` |
+| TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
+| Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 restart wb-reputation-tg-bot"` |
+| Test SSL | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "curl -sI https://rating5.ru/health"` |
+| Check nginx | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "sudo nginx -t"` |
 
 ---
 
-**Last Updated:** 2026-02-18
+**Last Updated:** 2026-02-25

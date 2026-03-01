@@ -3,10 +3,8 @@
  * @fileOverview AI Flow for generating deletion offer messages
  *
  * Generates personalized compensation offers for clients willing to delete/modify reviews.
- * Business Model:
- * - Seller pays cashback to client (compensated by us)
- * - We charge seller 600₽ for successful deletion
- * - Net profit: 600₽ - cashback amount
+ * Compensation amount is FIXED per product (from product_rules.max_compensation),
+ * same for all star ratings (1-2-3★).
  *
  * Created: 2026-01-16 (Stage 3)
  */
@@ -57,12 +55,10 @@ export type GenerateDeletionOfferOutput = z.infer<typeof GenerateDeletionOfferOu
 // ============================================================================
 
 /**
- * Calculate compensation amount based on review rating and product rules
+ * Get compensation amount from product rules.
  *
- * Logic:
- * - Lower rating = higher compensation (more damage to seller)
- * - Always respect product_rules.max_compensation
- * - Return both amount and reasoning
+ * Compensation is FIXED per product article — same amount for 1★, 2★, 3★.
+ * The value comes from product_rules.max_compensation and is used as-is.
  */
 function calculateCompensation(
   reviewRating: number | undefined,
@@ -72,32 +68,9 @@ function calculateCompensation(
   amount: number;
   reasoning: string;
 } {
-  // If no rating, offer maximum (assume worst case)
-  if (!reviewRating) {
-    return {
-      amount: maxCompensation,
-      reasoning: 'No review rating available, offering maximum',
-    };
-  }
-
-  // Rating-based percentage of max compensation
-  const ratingMultipliers: Record<number, number> = {
-    1: 1.0,   // 1★ → 100% max (most damage)
-    2: 0.8,   // 2★ → 80% max
-    3: 0.6,   // 3★ → 60% max
-    4: 0.4,   // 4★ → 40% max (less critical)
-    5: 0.2,   // 5★ → 20% max (shouldn't happen, but just in case)
-  };
-
-  const multiplier = ratingMultipliers[reviewRating] || 0.5;
-  const calculatedAmount = Math.round(maxCompensation * multiplier);
-
-  // Ensure we don't go below minimum viable offer (50 rubles)
-  const finalAmount = Math.max(50, Math.min(calculatedAmount, maxCompensation));
-
   return {
-    amount: finalAmount,
-    reasoning: `Review rating ${reviewRating}★ → ${(multiplier * 100).toFixed(0)}% of max (${maxCompensation}₽)`,
+    amount: maxCompensation,
+    reasoning: `Fixed per product rules: ${maxCompensation}₽`,
   };
 }
 

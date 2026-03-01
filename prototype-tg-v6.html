@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>R5 TG Mini App V6 — UX Redesign Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ================================================================
+       DESIGN TOKENS
+       ================================================================ */
+    :root {
+      /* Colors */
+      --c-bg: #F7F8FA;
+      --c-surface: #FFFFFF;
+      --c-border: #E6E8EC;
+      --c-border-light: rgba(230,232,236,0.5);
+      --c-text: #111827;
+      --c-text-secondary: #6B7280;
+      --c-text-tertiary: #9CA3AF;
+      --c-primary: #2563EB;
+      --c-primary-hover: #1D4ED8;
+      --c-primary-soft: #EEF2FF;
+      --c-success: #10B981;
+      --c-success-soft: #D1FAE5;
+      --c-warning: #F59E0B;
+      --c-warning-soft: #FEF3C7;
+      --c-danger: #EF4444;
+      --c-danger-soft: #FEE2E2;
+      --c-violet-soft: #EDE9FE;
+      /* Rating */
+      --r1: #EF4444; --r2: #F97316; --r3: #F59E0B; --r4: #84CC16; --r5: #22C55E;
+      /* Spacing */
+      --sp-xs: 4px; --sp-sm: 8px; --sp-md: 12px; --sp-lg: 16px; --sp-xl: 24px;
+      /* Radius */
+      --r-pill: 100px; --r-card: 16px; --r-btn: 12px; --r-input: 12px; --r-badge: 8px; --r-sm: 6px;
+      /* Shadows */
+      --sh-card: 0 1px 2px rgba(0,0,0,0.04);
+      --sh-sheet: 0 -4px 24px rgba(0,0,0,0.1);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: var(--c-bg); color: var(--c-text); }
+
+    /* Screen wrapper for prototype */
+    .proto-wrap { max-width: 400px; margin: 0 auto; padding-bottom: 32px; }
+    .proto-label {
+      text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--c-text-tertiary); padding: 40px 0 12px;
+      border-top: 1px dashed var(--c-border);
+    }
+    .proto-label:first-child { border-top: none; padding-top: 16px; }
+    .proto-note {
+      text-align: center; font-size: 11px; color: var(--c-text-tertiary);
+      padding: 0 20px 16px; line-height: 1.5;
+    }
+
+    /* Utility */
+    .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .tabs-scroll::-webkit-scrollbar { display: none; }
+    .tabs-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Rating accent — left border */
+    .accent-1 { border-left: 3px solid var(--r1); }
+    .accent-2 { border-left: 3px solid var(--r2); }
+    .accent-3 { border-left: 3px solid var(--r3); }
+    .accent-4 { border-left: 3px solid var(--r4); }
+    .accent-5 { border-left: 3px solid var(--r5); }
+    .accent-none { border-left: 3px solid var(--c-border); }
+
+    /* Chat bubbles */
+    .bubble-client { border-radius: 16px 16px 16px 4px; }
+    .bubble-seller { border-radius: 16px 16px 4px 16px; }
+
+    /* Bottom sheet overlay */
+    .sheet-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    }
+    .sheet-overlay.active { opacity: 1; pointer-events: auto; }
+    .sheet-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; max-width: 400px; margin: 0 auto;
+      background: var(--c-surface); border-radius: 20px 20px 0 0;
+      padding: 16px; z-index: 101; max-height: 70vh; overflow-y: auto;
+      box-shadow: var(--sh-sheet); border-top: 1px solid var(--c-border);
+      transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    .sheet-overlay.active .sheet-panel { transform: translateY(0); }
+    .sheet-handle {
+      width: 40px; height: 4px; background: var(--c-border);
+      border-radius: 2px; margin: 0 auto 16px;
+    }
+
+    /* Step indicator */
+    .step-track {
+      display: flex; align-items: center; gap: 0; width: 100%;
+    }
+    .step-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+      border: 2px solid var(--c-border); background: var(--c-surface);
+    }
+    .step-dot.active {
+      border-color: var(--c-primary); background: var(--c-primary);
+    }
+    .step-dot.completed {
+      border-color: var(--c-success); background: var(--c-success);
+    }
+    .step-line {
+      flex: 1; height: 2px; background: var(--c-border);
+    }
+    .step-line.completed { background: var(--c-success); }
+    .step-line.active { background: var(--c-primary); }
+    .step-labels {
+      display: flex; justify-content: space-between; margin-top: 6px;
+    }
+    .step-label {
+      font-size: 9px; font-weight: 600; color: var(--c-text-tertiary);
+      text-align: center; width: 60px;
+    }
+    .step-label.active { color: var(--c-primary); font-weight: 700; }
+    .step-label.completed { color: var(--c-success); }
+
+    /* Overflow menu */
+    .overflow-menu {
+      position: absolute; bottom: 100%; right: 0; margin-bottom: 8px;
+      background: var(--c-surface); border-radius: var(--r-card);
+      border: 1px solid var(--c-border); box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      min-width: 200px; padding: 6px; z-index: 50;
+      opacity: 0; pointer-events: none; transform: translateY(8px);
+      transition: all 0.15s ease-out;
+    }
+    .overflow-menu.active { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    .overflow-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; border-radius: 10px; border: none;
+      background: none; width: 100%; font-size: 14px; font-weight: 500;
+      color: var(--c-text); cursor: pointer; text-align: left;
+      transition: background 0.1s;
+    }
+    .overflow-item:hover { background: var(--c-bg); }
+    .overflow-item.danger { color: var(--c-danger); }
+    .overflow-icon { font-size: 16px; width: 20px; text-align: center; }
+
+    /* Date separator */
+    .date-sep {
+      display: flex; align-items: center; gap: 12px;
+      margin: 16px 0; padding: 0 8px;
+    }
+    .date-sep::before, .date-sep::after {
+      content: ''; flex: 1; height: 1px; background: var(--c-border);
+    }
+    .date-sep span {
+      font-size: 11px; font-weight: 600; color: var(--c-text-tertiary);
+      white-space: nowrap;
+    }
+
+    /* Contextual meta chips (for Info Sheet) */
+    .meta-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: var(--r-pill);
+    }
+    .meta-section {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--c-text-tertiary); margin-bottom: 8px;
+    }
+    .meta-row {
+      font-size: 13px; color: var(--c-text-secondary); padding: 6px 0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .meta-row-label { font-weight: 600; color: var(--c-text-tertiary); min-width: 70px; font-size: 12px; }
+    .meta-row-value { font-weight: 500; color: var(--c-text); }
+
+    /* Feedback toast */
+    .toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--c-text); color: white; padding: 8px 20px;
+      border-radius: var(--r-pill); font-size: 13px; font-weight: 600;
+      z-index: 200; box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+<div class="proto-wrap">
+
+  <!-- ================================================================ -->
+  <!-- SCREEN A: Queue List — Compact Cards                             -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Screen A — Queue (compact cards)</div>
+  <p class="proto-note">
+    Карточки компактнее: без productName и reviewDate.<br>
+    Meta-line показывает магазин + тег (если есть).
+  </p>
+
+  <div style="padding: 12px;">
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 0 4px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <span style="font-size: 20px; font-weight: 600;">Очередь</span>
+        <span style="font-size: 14px; color: var(--c-text-secondary);">1874</span>
+      </div>
+      <div style="display: flex; gap: 4px; align-items: center;">
+        <button style="background: none; border: none; padding: 6px 10px; border-radius: var(--r-btn); font-size: 12px; font-weight: 500; color: var(--c-text-secondary); cursor: pointer;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
+        </button>
+        <button style="background: none; border: none; padding: 6px 10px; border-radius: var(--r-btn); font-size: 12px; font-weight: 500; color: var(--c-text-secondary); cursor: pointer;">Выбрать</button>
+        <button style="background: none; border: none; padding: 6px; border-radius: var(--r-btn); color: var(--c-text-secondary); cursor: pointer; display: flex; align-items: center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Status tabs -->
+    <div class="tabs-scroll" style="display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding: 0 2px 4px;">
+      <button style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--r-pill); border: none; font-size: 12px; font-weight: 600; white-space: nowrap; flex-shrink: 0; background: var(--c-primary); color: white; cursor: pointer; box-shadow: var(--sh-card);">
+        Ожидание
+        <span style="font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: var(--r-badge); background: rgba(255,255,255,0.2); min-width: 20px; text-align: center;">116</span>
+      </button>
+      <button style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--r-pill); border: none; font-size: 12px; font-weight: 600; white-space: nowrap; flex-shrink: 0; background: var(--c-primary-soft); color: var(--c-text); cursor: pointer;">
+        Входящие
+        <span style="font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: var(--r-badge); background: rgba(0,0,0,0.06); min-width: 20px; text-align: center;">71</span>
+      </button>
+      <button style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--r-pill); border: none; font-size: 12px; font-weight: 600; white-space: nowrap; flex-shrink: 0; background: var(--c-primary-soft); color: var(--c-text); cursor: pointer;">
+        В работе
+        <span style="font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: var(--r-badge); background: rgba(0,0,0,0.06); min-width: 20px; text-align: center;">1687</span>
+      </button>
+      <button style="display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--r-pill); border: none; font-size: 12px; font-weight: 600; white-space: nowrap; flex-shrink: 0; background: var(--c-primary-soft); color: var(--c-text); cursor: pointer;">
+        Закрытые
+        <span style="font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: var(--r-badge); background: rgba(0,0,0,0.06); min-width: 20px; text-align: center;">42</span>
+      </button>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CARD 1: 1★ — negative, no draft, active sequence, has tag    -->
+    <!-- ============================================================ -->
+    <div class="accent-1" style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); box-shadow: var(--sh-card); overflow: hidden; margin-bottom: 8px; cursor: pointer;">
+      <div style="padding: 12px 14px 12px 14px;">
+        <!-- Row 1: Rating stars + name + time -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; color: var(--r1); letter-spacing: -1px;">★</span>
+            <span style="font-size: 15px; font-weight: 600;">Анна</span>
+          </div>
+          <span style="font-size: 11px; color: var(--c-text-secondary); font-weight: 500;">14:32</span>
+        </div>
+        <!-- Row 2: Message preview -->
+        <div class="line-clamp-2" style="font-size: 13px; color: rgba(17,24,39,0.8); line-height: 1.5;">
+          <span style="font-weight: 600; color: #F97316;">Покупатель: </span>Хочу 300 рублей и 10 тысяч компенсации за моральный ущерб
+        </div>
+        <!-- Row 3: Status indicators -->
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: #F97316;">○ Нет черновика</span>
+          <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--r-badge); background: rgba(37,99,235,0.1); color: var(--c-primary);">Авто 3/15</span>
+        </div>
+        <!-- Row 4: Meta-line (store + tag) -->
+        <div style="margin-top: 6px; font-size: 10px; color: var(--c-text-tertiary); font-weight: 500;">
+          ИП Бобоев С. С. · <span style="color: #92400E;">Кандидат</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CARD 2: 2★ — has draft, no sequence                          -->
+    <!-- ============================================================ -->
+    <div class="accent-2" style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); box-shadow: var(--sh-card); overflow: hidden; margin-bottom: 8px; cursor: pointer;">
+      <div style="padding: 12px 14px 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; color: var(--r2); letter-spacing: -1px;">★★</span>
+            <span style="font-size: 15px; font-weight: 600;">Марина Петровна</span>
+          </div>
+          <span style="font-size: 11px; color: var(--c-text-secondary); font-weight: 500;">12:15</span>
+        </div>
+        <div class="line-clamp-2" style="font-size: 13px; color: rgba(17,24,39,0.8); line-height: 1.5;">
+          <span style="font-weight: 600; color: #F97316;">Покупатель: </span>Ладно, давайте попробуем. Как мне удалить отзыв?
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: var(--c-success);">✓ Черновик готов</span>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--c-text-tertiary); font-weight: 500;">
+          МариКоллекция · <span style="color: #1E40AF;">Оффер отправлен</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CARD 3: 3★ — has draft, active sequence                      -->
+    <!-- ============================================================ -->
+    <div class="accent-3" style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); box-shadow: var(--sh-card); overflow: hidden; margin-bottom: 8px; cursor: pointer;">
+      <div style="padding: 12px 14px 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; color: var(--r3); letter-spacing: -1px;">★★★</span>
+            <span style="font-size: 15px; font-weight: 600;">Иван Сидоров</span>
+          </div>
+          <span style="font-size: 11px; color: var(--c-text-secondary); font-weight: 500;">вчера</span>
+        </div>
+        <div class="line-clamp-2" style="font-size: 13px; color: rgba(17,24,39,0.8); line-height: 1.5;">
+          <span style="font-weight: 600; color: var(--c-primary);">Вы: </span>Здравствуйте! Увидели ваш отзыв и хотели бы обсудить...
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: var(--c-success);">✓ Черновик готов</span>
+          <span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--r-badge); background: rgba(37,99,235,0.1); color: var(--c-primary);">Авто 7/15</span>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--c-text-tertiary); font-weight: 500;">
+          ИП Бобоев С. С.
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CARD 4: 4★ — seller last, compact (1 store user → no meta)   -->
+    <!-- ============================================================ -->
+    <div class="accent-4" style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); box-shadow: var(--sh-card); overflow: hidden; margin-bottom: 8px; cursor: pointer;">
+      <div style="padding: 12px 14px 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 12px; color: var(--r4); letter-spacing: -1px;">★★★★</span>
+            <span style="font-size: 15px; font-weight: 600;">Ольга К.</span>
+          </div>
+          <span style="font-size: 11px; color: var(--c-text-secondary); font-weight: 500;">28.02</span>
+        </div>
+        <div class="line-clamp-2" style="font-size: 13px; color: rgba(17,24,39,0.8); line-height: 1.5;">
+          <span style="font-weight: 600; color: var(--c-primary);">Вы: </span>Спасибо за отзыв! Рады, что вам в целом понравилось...
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: #F97316;">○ Нет черновика</span>
+        </div>
+        <!-- No meta-line: single store, no tag -->
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CARD 5: No rating — OZON, draft ready                        -->
+    <!-- ============================================================ -->
+    <div class="accent-none" style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); box-shadow: var(--sh-card); overflow: hidden; margin-bottom: 8px; cursor: pointer;">
+      <div style="padding: 12px 14px 12px 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 15px; font-weight: 600;">Покупатель-38291</span>
+          </div>
+          <span style="font-size: 11px; color: var(--c-text-secondary); font-weight: 500;">27.02</span>
+        </div>
+        <div class="line-clamp-2" style="font-size: 13px; color: rgba(17,24,39,0.8); line-height: 1.5;">
+          <span style="font-weight: 600; color: #F97316;">Покупатель: </span>Товар не соответствует описанию, хочу вернуть
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: var(--c-success);">✓ Черновик готов</span>
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: var(--c-text-tertiary); font-weight: 500;">
+          МариКоллекция · <span style="display: inline-flex; align-items: center; gap: 2px; padding: 1px 5px; border-radius: 4px; background: #005bff; color: white; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; vertical-align: middle;">OZ</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- SCREEN B: Chat Detail — Compact Header + Messages + Composer     -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Screen B — Chat Detail (compact header)</div>
+  <p class="proto-note">
+    Header: 2 строки ~56px. Вся мета → Info Sheet по кнопке (i).<br>
+    Composer: 1 строка кнопок + overflow menu для редких действий.
+  </p>
+
+  <div style="height: 667px; display: flex; flex-direction: column; overflow: hidden; background: var(--c-bg); border: 1px solid var(--c-border); border-radius: 20px; margin: 0 12px;">
+
+    <!-- === HEADER (compact, ~56px) === -->
+    <div style="padding: 12px 16px; border-bottom: 1px solid var(--c-border); background: var(--c-surface); flex-shrink: 0;">
+      <!-- Row 1: Rating + Name + (i) button -->
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 14px; color: var(--r1); letter-spacing: -1px;">★</span>
+          <span style="font-size: 16px; font-weight: 600;">Анна</span>
+        </div>
+        <button onclick="toggleInfoSheet()" style="width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--c-border); background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--c-text-secondary); font-size: 13px; font-weight: 700; transition: all 0.15s;">
+          i
+        </button>
+      </div>
+      <!-- Row 2: Store + Tag badge -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <span style="font-size: 12px; color: var(--c-text-secondary); font-weight: 500;">ИП Бобоев С. С.</span>
+        <span style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: var(--r-sm); background: var(--c-warning-soft); color: #92400E;">Кандидат</span>
+      </div>
+    </div>
+
+    <!-- === MESSAGES === -->
+    <div style="flex: 1; overflow-y: auto; padding: 12px 16px;">
+
+      <!-- Date separator -->
+      <div class="date-sep"><span>27 февраля</span></div>
+
+      <!-- Seller message (auto) -->
+      <div style="max-width: 85%; margin-left: auto; margin-bottom: 8px;">
+        <div class="bubble-seller" style="padding: 10px 14px; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Здравствуйте! Мы увидели ваш отзыв и хотели бы узнать подробнее, что именно пошло не так. Для нас важен каждый покупатель.
+          <div style="font-size: 10px; opacity: 0.6; margin-top: 6px; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+            27.02 10:00
+            <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; background: rgba(255,255,255,0.15);">авто</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Date separator -->
+      <div class="date-sep"><span>28 февраля</span></div>
+
+      <!-- Seller message (auto) -->
+      <div style="max-width: 85%; margin-left: auto; margin-bottom: 8px;">
+        <div class="bubble-seller" style="padding: 10px 14px; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Возвращаемся к вам — нам правда важно понять ситуацию. Иногда детали помогают нам многое исправить.
+          <div style="font-size: 10px; opacity: 0.6; margin-top: 6px; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+            28.02 10:00
+            <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; background: rgba(255,255,255,0.15);">авто</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Date separator -->
+      <div class="date-sep"><span>Сегодня</span></div>
+
+      <!-- Client message -->
+      <div style="max-width: 85%; margin-right: auto; margin-bottom: 8px;">
+        <div class="bubble-client" style="padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); color: var(--c-text); font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Хочу 300 рублей и 10 тысяч компенсации за моральный ущерб. Платье пришло не того цвета.
+          <div style="font-size: 10px; color: var(--c-text-secondary); margin-top: 6px;">01.03 09:17</div>
+        </div>
+      </div>
+
+      <!-- Seller message (manual) -->
+      <div style="max-width: 85%; margin-left: auto; margin-bottom: 8px;">
+        <div class="bubble-seller" style="padding: 10px 14px; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Понимаем вашу ситуацию. Мы готовы предложить компенсацию 500₽ в качестве извинения. Взамен просим рассмотреть возможность удаления отзыва.
+          <div style="font-size: 10px; opacity: 0.6; margin-top: 6px; text-align: right;">01.03 09:45</div>
+        </div>
+      </div>
+
+      <!-- Client message -->
+      <div style="max-width: 85%; margin-right: auto; margin-bottom: 8px;">
+        <div class="bubble-client" style="padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); color: var(--c-text); font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Ну ладно, 500 устроит. Как удалить?
+          <div style="font-size: 10px; color: var(--c-text-secondary); margin-top: 6px;">01.03 14:22</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- === COMPOSER (sticky bottom) === -->
+    <div style="border-top: 1px solid var(--c-border); background: var(--c-surface); flex-shrink: 0;">
+      <!-- Textarea -->
+      <div style="padding: 10px 16px 6px;">
+        <textarea placeholder="Текст ответа..." style="width: 100%; min-height: 60px; max-height: 120px; padding: 10px 14px; border: 1px solid var(--c-border); border-radius: var(--r-input); font-size: 14px; line-height: 1.5; resize: vertical; background: var(--c-bg); color: var(--c-text); font-family: inherit; outline: none; box-sizing: border-box;">Отлично! Вот инструкция по удалению отзыва:
+
+1. Откройте приложение Wildberries
+2. Перейдите в раздел «Мои отзывы»
+3. Найдите отзыв и нажмите «Удалить»
+
+После удаления мы сразу переведём 500₽.</textarea>
+        <div style="text-align: right; font-size: 11px; margin-top: 2px; font-weight: 500; color: var(--c-text-secondary);">
+          247/1000
+        </div>
+      </div>
+
+      <!-- Action buttons: 1 row, 3 items -->
+      <div style="display: flex; gap: 8px; padding: 6px 16px 12px; position: relative;">
+        <!-- Send (primary) -->
+        <button style="flex: 1; padding: 11px; border-radius: var(--r-btn); border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--c-success); color: white; transition: all 0.15s; box-shadow: var(--sh-card);">
+          Отправить
+        </button>
+        <!-- AI generate -->
+        <button style="flex: 1; padding: 11px; border-radius: var(--r-btn); border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; transition: all 0.15s; box-shadow: var(--sh-card);">
+          AI ответ
+        </button>
+        <!-- More menu button -->
+        <button onclick="toggleMenu()" style="width: 44px; padding: 11px; border-radius: var(--r-btn); border: 2px solid var(--c-border); font-size: 16px; cursor: pointer; background: var(--c-surface); color: var(--c-text-secondary); transition: all 0.15s; display: flex; align-items: center; justify-content: center;">
+          ⋮
+        </button>
+        <!-- Overflow menu -->
+        <div id="overflowMenu" class="overflow-menu">
+          <button class="overflow-item">
+            <span class="overflow-icon">📨</span>
+            <span>Запустить рассылку</span>
+          </button>
+          <button class="overflow-item">
+            <span class="overflow-icon">➡️</span>
+            <span>След. диалог</span>
+          </button>
+          <div style="height: 1px; background: var(--c-border); margin: 4px 8px;"></div>
+          <button class="overflow-item danger">
+            <span class="overflow-icon">✕</span>
+            <span>Закрыть чат</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- SCREEN B2: Chat — After Send (post-action state)                -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Screen B2 — After Send</div>
+  <p class="proto-note">
+    После отправки: textarea скрывается, 2 кнопки на полную ширину.
+  </p>
+
+  <div style="height: 200px; display: flex; flex-direction: column; justify-content: flex-end; background: var(--c-bg); border: 1px solid var(--c-border); border-radius: 20px; margin: 0 12px; overflow: hidden;">
+    <div style="border-top: 1px solid var(--c-border); background: var(--c-surface);">
+      <!-- Feedback -->
+      <div style="text-align: center; font-size: 13px; padding: 10px 0 6px; font-weight: 600; color: var(--c-success);">
+        Отправлено
+      </div>
+      <!-- 2 buttons -->
+      <div style="display: flex; gap: 8px; padding: 6px 16px 12px;">
+        <button style="flex: 1; padding: 12px; border-radius: var(--r-btn); border: 2px solid rgba(239,68,68,0.2); font-size: 14px; font-weight: 700; cursor: pointer; background: rgba(254,226,226,0.5); color: var(--c-danger); transition: all 0.15s;">
+          Закрыть диалог
+        </button>
+        <button style="flex: 1; padding: 12px; border-radius: var(--r-btn); border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; transition: all 0.15s; box-shadow: var(--sh-card);">
+          След. диалог →
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- SCREEN C: Info Sheet (bottom sheet by (i) button)                -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Screen C — Info Sheet</div>
+  <p class="proto-note">
+    Вся мета-информация: контекст, воронка (step indicator),<br>
+    рассылка, справка. Открывается по кнопке (i) в header.
+  </p>
+
+  <div style="background: var(--c-surface); border-radius: 20px 20px 20px 20px; margin: 0 12px; padding: 16px; border: 1px solid var(--c-border); box-shadow: var(--sh-card);">
+    <!-- Handle -->
+    <div style="width: 40px; height: 4px; background: var(--c-border); border-radius: 2px; margin: 0 auto 20px;"></div>
+
+    <!-- Section: КОНТЕКСТ -->
+    <div class="meta-section">Контекст</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;">
+      <span class="meta-chip" style="background: var(--c-primary-soft); color: #1E40AF;">Обе стратегии</span>
+      <span class="meta-chip" style="background: var(--c-violet-soft); color: #5B21B6;">Кешбек до 500₽ (R5)</span>
+      <span class="meta-chip" style="background: var(--c-danger-soft); color: #991B1B;">Жалоба отклонена</span>
+      <span class="meta-chip" style="background: var(--c-success-soft); color: #065F46;">Выкуп</span>
+    </div>
+
+    <!-- Section: ВОРОНКА -->
+    <div class="meta-section">Воронка</div>
+    <div style="padding: 0 8px; margin-bottom: 4px;">
+      <!-- Step indicator -->
+      <div class="step-track">
+        <div class="step-dot completed"></div>
+        <div class="step-line completed"></div>
+        <div class="step-dot active"></div>
+        <div class="step-line"></div>
+        <div class="step-dot"></div>
+        <div class="step-line"></div>
+        <div class="step-dot"></div>
+      </div>
+      <div class="step-labels">
+        <span class="step-label completed" style="margin-left: -16px;">Кандидат</span>
+        <span class="step-label active" style="margin-left: -8px;">Оффер</span>
+        <span class="step-label">Согласен</span>
+        <span class="step-label" style="margin-right: -16px;">Удалён</span>
+      </div>
+    </div>
+    <!-- Transition button -->
+    <button style="width: 100%; margin-top: 12px; padding: 10px; border-radius: var(--r-btn); border: 1.5px dashed var(--c-border); background: none; font-size: 13px; font-weight: 600; color: var(--c-text-secondary); cursor: pointer; transition: all 0.15s; margin-bottom: 20px;">
+      Перевести → Клиент согласен
+    </button>
+
+    <!-- Section: РАССЫЛКА -->
+    <div class="meta-section">Рассылка</div>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--r-btn); background: var(--c-bg); margin-bottom: 20px;">
+      <div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--c-text);">
+          <span style="color: var(--c-primary);">▶</span> Авто 3/15
+        </div>
+        <div style="font-size: 11px; color: var(--c-text-tertiary); margin-top: 2px;">
+          След. сообщение: 03.03 в 10:00
+        </div>
+      </div>
+      <button style="padding: 6px 14px; border-radius: var(--r-badge); border: 1.5px solid var(--c-danger); background: none; font-size: 12px; font-weight: 600; color: var(--c-danger); cursor: pointer; transition: all 0.15s;">
+        Стоп
+      </button>
+    </div>
+
+    <!-- Section: СПРАВКА -->
+    <div class="meta-section">Справка</div>
+    <div style="border-radius: var(--r-btn); background: var(--c-bg); padding: 12px;">
+      <div class="meta-row">
+        <span class="meta-row-label">Продукт</span>
+        <span class="meta-row-value truncate">Платье женское летнее миди</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-row-label">Отзыв</span>
+        <span class="meta-row-value">12.02.26</span>
+      </div>
+      <div class="meta-row" style="align-items: flex-start;">
+        <span class="meta-row-label">Текст</span>
+        <span class="meta-row-value" style="font-size: 12px; line-height: 1.5; color: var(--c-text-secondary);">"Качество ужасное, ткань тонкая, нитки торчат. Платье пришло не того цвета что на фото."</span>
+      </div>
+      <div style="margin-top: 8px;">
+        <a href="#" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--c-primary); text-decoration: none;">
+          Открыть в WB →
+        </a>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- SCREEN D: Chat with tag-specific overflow menu                   -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Screen D — Menu variants by tag</div>
+  <p class="proto-note">
+    Overflow menu адаптируется к текущему тегу.<br>
+    Показаны 3 варианта для разных этапов воронки.
+  </p>
+
+  <div style="display: flex; gap: 12px; padding: 0 12px;">
+    <!-- Menu variant 1: deletion_candidate -->
+    <div style="flex: 1; background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); padding: 8px; box-shadow: var(--sh-card);">
+      <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--c-text-tertiary); padding: 4px 8px; margin-bottom: 4px;">Кандидат</div>
+      <button class="overflow-item" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">📨</span>
+        <span>Рассылку</span>
+      </button>
+      <button class="overflow-item" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">➡️</span>
+        <span>Далее</span>
+      </button>
+      <button class="overflow-item danger" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">✕</span>
+        <span>Закрыть</span>
+      </button>
+    </div>
+    <!-- Menu variant 2: deletion_offered -->
+    <div style="flex: 1; background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); padding: 8px; box-shadow: var(--sh-card);">
+      <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--c-text-tertiary); padding: 4px 8px; margin-bottom: 4px;">Оффер</div>
+      <button class="overflow-item" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">🔔</span>
+        <span>Напомнить</span>
+      </button>
+      <button class="overflow-item" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">➡️</span>
+        <span>Далее</span>
+      </button>
+      <button class="overflow-item danger" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">✕</span>
+        <span>Закрыть</span>
+      </button>
+    </div>
+    <!-- Menu variant 3: deletion_agreed -->
+    <div style="flex: 1; background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); padding: 8px; box-shadow: var(--sh-card);">
+      <div style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--c-text-tertiary); padding: 4px 8px; margin-bottom: 4px;">Согласен</div>
+      <button class="overflow-item" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">📋</span>
+        <span>Инструкция</span>
+      </button>
+      <button class="overflow-item" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">➡️</span>
+        <span>Далее</span>
+      </button>
+      <button class="overflow-item danger" style="padding: 8px 10px; font-size: 12px;">
+        <span class="overflow-icon" style="font-size: 13px;">✕</span>
+        <span>Закрыть</span>
+      </button>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- SCREEN E: Full chat (iPhone simulation with info sheet open)     -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Screen E — Full Chat (с открытым Info Sheet)</div>
+  <p class="proto-note">
+    Интерактивный пример: нажмите (i) чтобы открыть/закрыть Info Sheet.
+  </p>
+
+  <div id="chatScreen" style="height: 667px; display: flex; flex-direction: column; overflow: hidden; background: var(--c-bg); border: 1px solid var(--c-border); border-radius: 20px; margin: 0 12px; position: relative;">
+
+    <!-- Header -->
+    <div style="padding: 12px 16px; border-bottom: 1px solid var(--c-border); background: var(--c-surface); flex-shrink: 0;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 14px; color: var(--r2); letter-spacing: -1px;">★★</span>
+          <span style="font-size: 16px; font-weight: 600;">Марина Петровна</span>
+        </div>
+        <button onclick="toggleInfoSheet2()" id="infoBtn2" style="width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--c-border); background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--c-text-secondary); font-size: 13px; font-weight: 700; transition: all 0.15s;">
+          i
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+        <span style="font-size: 12px; color: var(--c-text-secondary); font-weight: 500;">МариКоллекция</span>
+        <span style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: var(--r-sm); background: rgba(37,99,235,0.1); color: #1E40AF;">Оффер отправлен</span>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div style="flex: 1; overflow-y: auto; padding: 12px 16px;">
+      <div class="date-sep"><span>26 февраля</span></div>
+
+      <div style="max-width: 85%; margin-left: auto; margin-bottom: 8px;">
+        <div class="bubble-seller" style="padding: 10px 14px; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Здравствуйте! Готовы предложить компенсацию 500₽ за удаление отзыва.
+          <div style="font-size: 10px; opacity: 0.6; margin-top: 6px; text-align: right;">26.02 15:30</div>
+        </div>
+      </div>
+
+      <div class="date-sep"><span>01 марта</span></div>
+
+      <div style="max-width: 85%; margin-right: auto; margin-bottom: 8px;">
+        <div class="bubble-client" style="padding: 10px 14px; background: var(--c-surface); border: 1px solid var(--c-border); color: var(--c-text); font-size: 14px; line-height: 1.5; box-shadow: var(--sh-card);">
+          Ладно, давайте попробуем. Как мне удалить отзыв?
+          <div style="font-size: 10px; color: var(--c-text-secondary); margin-top: 6px;">01.03 11:42</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Composer -->
+    <div style="border-top: 1px solid var(--c-border); background: var(--c-surface); flex-shrink: 0;">
+      <div style="padding: 10px 16px 6px;">
+        <textarea placeholder="Текст ответа..." style="width: 100%; min-height: 60px; max-height: 120px; padding: 10px 14px; border: 1px solid var(--c-border); border-radius: var(--r-input); font-size: 14px; line-height: 1.5; resize: vertical; background: var(--c-bg); color: var(--c-text); font-family: inherit; outline: none; box-sizing: border-box;"></textarea>
+      </div>
+      <div style="display: flex; gap: 8px; padding: 6px 16px 12px;">
+        <button style="flex: 1; padding: 11px; border-radius: var(--r-btn); border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: #D1D5DB; color: white; transition: all 0.15s;">
+          Отправить
+        </button>
+        <button style="flex: 1; padding: 11px; border-radius: var(--r-btn); border: none; font-size: 14px; font-weight: 700; cursor: pointer; background: linear-gradient(135deg, #2563EB, #3B82F6); color: white; transition: all 0.15s; box-shadow: var(--sh-card);">
+          AI ответ
+        </button>
+        <button style="width: 44px; padding: 11px; border-radius: var(--r-btn); border: 2px solid var(--c-border); font-size: 16px; cursor: pointer; background: var(--c-surface); color: var(--c-text-secondary); display: flex; align-items: center; justify-content: center;">
+          ⋮
+        </button>
+      </div>
+    </div>
+
+    <!-- Info Sheet (inside this chat screen) -->
+    <div id="infoSheet2" style="position: absolute; inset: 0; pointer-events: none; z-index: 10;">
+      <div id="infoOverlay2" onclick="toggleInfoSheet2()" style="position: absolute; inset: 0; background: rgba(0,0,0,0.3); opacity: 0; transition: opacity 0.2s;"></div>
+      <div id="infoPanel2" style="position: absolute; bottom: 0; left: 0; right: 0; background: var(--c-surface); border-radius: 20px 20px 0 0; padding: 16px; max-height: 75%; overflow-y: auto; box-shadow: var(--sh-sheet); transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);">
+        <div style="width: 40px; height: 4px; background: var(--c-border); border-radius: 2px; margin: 0 auto 20px;"></div>
+
+        <!-- Контекст -->
+        <div class="meta-section">Контекст</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px;">
+          <span class="meta-chip" style="background: var(--c-primary-soft); color: #1E40AF;">Удаление</span>
+          <span class="meta-chip" style="background: var(--c-violet-soft); color: #5B21B6;">Кешбек до 500₽</span>
+          <span class="meta-chip" style="background: var(--c-warning-soft); color: #92400E;">Жалоба на рассмотрении</span>
+        </div>
+
+        <!-- Воронка -->
+        <div class="meta-section">Воронка</div>
+        <div style="padding: 0 8px; margin-bottom: 4px;">
+          <div class="step-track">
+            <div class="step-dot completed"></div>
+            <div class="step-line active"></div>
+            <div class="step-dot active"></div>
+            <div class="step-line"></div>
+            <div class="step-dot"></div>
+            <div class="step-line"></div>
+            <div class="step-dot"></div>
+          </div>
+          <div class="step-labels">
+            <span class="step-label completed" style="margin-left: -16px;">Кандидат</span>
+            <span class="step-label active" style="margin-left: -8px;">Оффер</span>
+            <span class="step-label">Согласен</span>
+            <span class="step-label" style="margin-right: -16px;">Удалён</span>
+          </div>
+        </div>
+        <button style="width: 100%; margin-top: 12px; padding: 10px; border-radius: var(--r-btn); border: 1.5px dashed var(--c-border); background: none; font-size: 13px; font-weight: 600; color: var(--c-text-secondary); cursor: pointer; margin-bottom: 20px;">
+          Перевести → Клиент согласен
+        </button>
+
+        <!-- Рассылка -->
+        <div class="meta-section">Рассылка</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: var(--r-btn); background: var(--c-bg); margin-bottom: 20px;">
+          <div style="font-size: 13px; font-weight: 500; color: var(--c-text-secondary);">
+            Нет активной рассылки
+          </div>
+          <button style="padding: 6px 14px; border-radius: var(--r-badge); border: none; background: var(--c-primary); font-size: 12px; font-weight: 600; color: white; cursor: pointer;">
+            Напомнить
+          </button>
+        </div>
+
+        <!-- Справка -->
+        <div class="meta-section">Справка</div>
+        <div style="border-radius: var(--r-btn); background: var(--c-bg); padding: 12px;">
+          <div class="meta-row">
+            <span class="meta-row-label">Продукт</span>
+            <span class="meta-row-value truncate">Крем для рук увлажняющий 75мл</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-row-label">Отзыв</span>
+            <span class="meta-row-value">24.02.26</span>
+          </div>
+          <div class="meta-row" style="align-items: flex-start;">
+            <span class="meta-row-label">Текст</span>
+            <span class="meta-row-value" style="font-size: 12px; line-height: 1.5; color: var(--c-text-secondary);">"Крем жирный, впитывается плохо, запах неприятный."</span>
+          </div>
+          <div style="margin-top: 8px;">
+            <a href="#" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--c-primary); text-decoration: none;">
+              Открыть в WB →
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ================================================================ -->
+  <!-- COMPARISON: V5 vs V6 header height                              -->
+  <!-- ================================================================ -->
+  <div class="proto-label">Сравнение: V5 header vs V6 header</div>
+  <p class="proto-note">
+    V5: ~180-300px header (store badge + name + details + tag card).<br>
+    V6: ~56px header (name + (i) button). Выигрыш: +120-240px для сообщений.
+  </p>
+
+  <div style="display: flex; gap: 12px; padding: 0 12px;">
+    <!-- V5 header mock -->
+    <div style="flex: 1;">
+      <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--c-text-tertiary); margin-bottom: 6px; text-align: center;">V5 (текущий)</div>
+      <div style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); padding: 12px; box-shadow: var(--sh-card);">
+        <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+          <span style="font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--c-primary); color: white;">ИП Бобоев</span>
+        </div>
+        <div style="display: flex; gap: 4px; align-items: center; margin-bottom: 2px;">
+          <span style="font-size: 13px; font-weight: 600;">Анна</span>
+          <span style="font-size: 9px; padding: 1px 4px; border-radius: 4px; background: var(--r1); color: white;">★</span>
+          <span style="font-size: 9px; color: var(--c-text-secondary);">12.02</span>
+        </div>
+        <div style="font-size: 10px; color: var(--c-text-secondary); margin-bottom: 4px;">Платье женское...</div>
+        <div style="font-size: 9px; padding: 4px 8px; border: 1px solid var(--c-border); border-radius: 8px; display: inline-block; margin-bottom: 4px; color: var(--c-text-secondary);">▼ Детали</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px;">
+          <span style="font-size: 8px; padding: 2px 6px; border-radius: 99px; background: var(--c-success-soft); color: #065F46;">Выкуп</span>
+          <span style="font-size: 8px; padding: 2px 6px; border-radius: 99px; background: var(--c-danger-soft); color: #991B1B;">Жалоба отк.</span>
+          <span style="font-size: 8px; padding: 2px 6px; border-radius: 99px; background: var(--c-primary-soft); color: #1E40AF;">Обе стратег.</span>
+          <span style="font-size: 8px; padding: 2px 6px; border-radius: 99px; background: var(--c-violet-soft); color: #5B21B6;">Кешбек 500₽</span>
+        </div>
+        <div style="background: var(--c-bg); border-radius: 8px; padding: 6px 8px; border: 1px solid var(--c-border-light);">
+          <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+            <span style="font-size: 8px; color: var(--c-text-tertiary); font-weight: 600; text-transform: uppercase;">Этап:</span>
+            <span style="font-size: 8px; padding: 1px 6px; border-radius: 6px; background: var(--c-warning-soft); color: #92400E; font-weight: 700;">Кандидат</span>
+            <span style="font-size: 8px; padding: 1px 4px; border-radius: 4px; border: 1px dashed #D1D5DB; color: var(--c-text-secondary);">→ Оффер</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <span style="font-size: 8px; color: var(--c-text-tertiary); font-weight: 600; text-transform: uppercase;">Рассылка:</span>
+            <span style="font-size: 8px; padding: 1px 6px; border-radius: 6px; background: rgba(37,99,235,0.1); color: var(--c-primary); font-weight: 600;">Авто 3/15</span>
+            <span style="font-size: 8px; padding: 1px 4px; border-radius: 4px; border: 1px solid var(--c-danger); color: var(--c-danger);">Стоп</span>
+          </div>
+        </div>
+        <div style="text-align: center; font-size: 9px; color: var(--c-text-tertiary); margin-top: 6px; font-weight: 600;">
+          ~200px+
+        </div>
+      </div>
+    </div>
+
+    <!-- V6 header mock -->
+    <div style="flex: 1;">
+      <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--c-text-tertiary); margin-bottom: 6px; text-align: center;">V6 (новый)</div>
+      <div style="background: var(--c-surface); border-radius: var(--r-card); border: 1px solid var(--c-border); padding: 12px; box-shadow: var(--sh-card);">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 12px; color: var(--r1);">★</span>
+            <span style="font-size: 14px; font-weight: 600;">Анна</span>
+          </div>
+          <div style="width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--c-border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--c-text-secondary);">i</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+          <span style="font-size: 11px; color: var(--c-text-secondary);">ИП Бобоев</span>
+          <span style="font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--c-warning-soft); color: #92400E;">Кандидат</span>
+        </div>
+        <div style="text-align: center; font-size: 9px; color: var(--c-text-tertiary); margin-top: 8px; font-weight: 600;">
+          ~56px
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Toggle overflow menu in Screen B
+  function toggleMenu() {
+    const menu = document.getElementById('overflowMenu');
+    menu.classList.toggle('active');
+  }
+
+  // Close menu on outside click
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('overflowMenu');
+    if (menu && !e.target.closest('#overflowMenu') && !e.target.closest('[onclick="toggleMenu()"]')) {
+      menu.classList.remove('active');
+    }
+  });
+
+  // Info sheet for Screen E
+  function toggleInfoSheet2() {
+    const sheet = document.getElementById('infoSheet2');
+    const overlay = document.getElementById('infoOverlay2');
+    const panel = document.getElementById('infoPanel2');
+    const btn = document.getElementById('infoBtn2');
+
+    const isOpen = sheet.style.pointerEvents === 'auto';
+
+    if (isOpen) {
+      sheet.style.pointerEvents = 'none';
+      overlay.style.opacity = '0';
+      panel.style.transform = 'translateY(100%)';
+      btn.style.background = 'none';
+      btn.style.borderColor = 'var(--c-border)';
+      btn.style.color = 'var(--c-text-secondary)';
+    } else {
+      sheet.style.pointerEvents = 'auto';
+      overlay.style.opacity = '1';
+      panel.style.transform = 'translateY(0)';
+      btn.style.background = 'var(--c-primary)';
+      btn.style.borderColor = 'var(--c-primary)';
+      btn.style.color = 'white';
+    }
+  }
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ArrowLeft, Package, Star, MessageSquare, Sparkles } from 'lucide-react';
+import { ArrowLeft, Briefcase, Package, Star, MessageSquare, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { StoreSelector } from '@/components/layout/StoreSelector';
@@ -48,6 +48,19 @@ export default function StoreDetailLayout({
   // This makes tab switching instant (no spinners)
   useEffect(() => {
     const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+    // Prefetch Cabinet tab
+    queryClient.prefetchQuery({
+      queryKey: ['cabinet', storeId],
+      queryFn: async () => {
+        const response = await fetch(`/api/stores/${storeId}/cabinet`, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+        if (!response.ok) throw new Error('Failed to prefetch cabinet');
+        return response.json();
+      },
+      staleTime: 2 * 60 * 1000,
+    });
 
     // Prefetch Products tab
     queryClient.prefetchQuery({
@@ -139,6 +152,7 @@ export default function StoreDetailLayout({
   }, [storeId, queryClient]);
 
   const tabs = [
+    { href: `/stores/${storeId}/cabinet`, label: 'Кабинет', icon: Briefcase },
     { href: `/stores/${storeId}/products`, label: 'Товары', icon: Package },
     { href: `/stores/${storeId}/reviews`, label: 'Отзывы', icon: Star },
     { href: `/stores/${storeId}/chats`, label: 'Чаты', icon: MessageSquare },

@@ -126,8 +126,19 @@ export async function upsertReviewsFromExtension(
           date = EXCLUDED.date,
           review_status_wb = EXCLUDED.review_status_wb,
           product_status_by_review = EXCLUDED.product_status_by_review,
-          chat_status_by_review = EXCLUDED.chat_status_by_review,
-          complaint_status = EXCLUDED.complaint_status,
+          chat_status_by_review = CASE
+            WHEN EXCLUDED.chat_status_by_review = 'unknown'
+              THEN COALESCE(reviews.chat_status_by_review, 'unknown'::chat_status_by_review)
+            WHEN reviews.chat_status_by_review = 'opened' AND EXCLUDED.chat_status_by_review != 'opened'
+              THEN reviews.chat_status_by_review
+            ELSE COALESCE(EXCLUDED.chat_status_by_review, reviews.chat_status_by_review)
+          END,
+          complaint_status = CASE
+            WHEN reviews.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
+              AND EXCLUDED.complaint_status IN ('not_sent', 'draft')
+              THEN reviews.complaint_status
+            ELSE COALESCE(EXCLUDED.complaint_status, reviews.complaint_status)
+          END,
           purchase_date = EXCLUDED.purchase_date,
           parsed_at = EXCLUDED.parsed_at,
           page_number = EXCLUDED.page_number,
@@ -250,9 +261,11 @@ export async function autoGenerateComplaintsForReviews(
         ]
       );
 
-      // Update review complaint_status
+      // Update review complaint_status (only if not already progressed past draft)
       await query(
-        `UPDATE reviews SET complaint_status = 'draft', updated_at = NOW() WHERE id = $1`,
+        `UPDATE reviews SET complaint_status = 'draft', updated_at = NOW()
+         WHERE id = $1
+           AND (complaint_status IS NULL OR complaint_status IN ('not_sent'))`,
         [review.id]
       );
 
@@ -462,12 +475,16 @@ export async function getUserByApiToken(token: string) {
  * (for owner/admin) or assigned stores (for manager).
  * Falls back to legacy owner_id filter if user has no org membership.
  */
-export async function getUserStores(userId: string): Promise<Array<{
+export async function getUserStores(userId: string, options?: { marketplace?: string }): Promise<Array<{
   id: string;
   name: string;
   marketplace: string;
   total_reviews: number;
 }>> {
+  const marketplaceFilter = options?.marketplace
+    ? ` AND marketplace = '${options.marketplace}'`
+    : '';
+
   // Try org-based access first
   const { getAccessibleStoreIds } = await import('@/db/auth-helpers');
   const storeIds = await getAccessibleStoreIds(userId);
@@ -479,7 +496,7 @@ export async function getUserStores(userId: string): Promise<Array<{
       marketplace: string;
       total_reviews: number;
     }>(
-      'SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) AND status = \'active\' ORDER BY name ASC',
+      `SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) AND status = 'active'${marketplaceFilter} ORDER BY name ASC`,
       [storeIds]
     );
     return result.rows;
@@ -492,7 +509,7 @@ export async function getUserStores(userId: string): Promise<Array<{
     marketplace: string;
     total_reviews: number;
   }>(
-    'SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 AND status = \'active\' ORDER BY name ASC',
+    `SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 AND status = 'active'${marketplaceFilter} ORDER BY name ASC`,
     [userId]
   );
 

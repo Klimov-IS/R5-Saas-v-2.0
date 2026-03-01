@@ -910,7 +910,7 @@ idx_rcl_review_key(store_id, review_key)
 
 ### `chat_auto_sequences`
 
-**Purpose:** Track automated follow-up message sequences for chats in `awaiting_reply` status. 1 message/day, up to 14 days.
+**Purpose:** Track automated follow-up message sequences for review-linked chats. 30-day system: 15 msgs/2 days for 1-3★ (`no_reply_followup_30d`), 10 msgs/3 days for 4★ (`no_reply_followup_4star_30d`). Legacy 14-day types still exist in DB.
 
 ```sql
 CREATE TABLE chat_auto_sequences (

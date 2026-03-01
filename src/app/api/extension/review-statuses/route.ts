@@ -349,7 +349,8 @@ export async function POST(request: NextRequest) {
 
       const reviewsProductId = `${storeId}_${review.productId}`;
 
-      // 5a. Sync chat_status_by_review (always, if present)
+      // 5a. Sync chat_status_by_review (with downgrade protection)
+      // Never overwrite 'opened' — opened chat is permanent
       const mappedChatStatus = mapChatStatus(review.chatStatus);
       if (mappedChatStatus) {
         try {
@@ -363,6 +364,9 @@ export async function POST(request: NextRequest) {
                AND product_id = $3
                AND rating = $4
                AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
+               AND (chat_status_by_review IS NULL
+                 OR chat_status_by_review != 'opened'
+                 OR $1::chat_status_by_review = 'opened')
              RETURNING id`,
             [mappedChatStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
           );

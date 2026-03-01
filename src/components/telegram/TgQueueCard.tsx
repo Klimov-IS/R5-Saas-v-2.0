@@ -20,6 +20,20 @@ const ACCENT_COLORS: Record<number, string> = {
   1: '#EF4444', 2: '#F97316', 3: '#F59E0B', 4: '#84CC16', 5: '#22C55E',
 };
 
+const TAG_LABELS: Record<string, string> = {
+  deletion_candidate: 'Кандидат',
+  deletion_offered: 'Оффер отправлен',
+  deletion_agreed: 'Клиент согласен',
+  deletion_confirmed: 'Отзыв удалён',
+};
+
+const TAG_META_COLORS: Record<string, string> = {
+  deletion_candidate: '#92400E',
+  deletion_offered: '#1E40AF',
+  deletion_agreed: '#065F46',
+  deletion_confirmed: '#065F46',
+};
+
 interface TgQueueCardProps {
   id: string;
   storeId: string;
@@ -33,6 +47,7 @@ interface TgQueueCardProps {
   hasDraft: boolean;
   draftPreview: string | null;
   status?: string;
+  tag?: string | null;
   completionReason?: string | null;
   isSkipped?: boolean;
   isSelected?: boolean;
@@ -51,12 +66,12 @@ export default function TgQueueCard({
   storeName,
   marketplace,
   clientName,
-  productName,
   lastMessageText,
   lastMessageDate,
   lastMessageSender,
   hasDraft,
   status,
+  tag,
   completionReason,
   isSkipped,
   isSelected,
@@ -64,7 +79,6 @@ export default function TgQueueCard({
   onToggleSelect,
   onClick,
   reviewRating,
-  reviewDate,
   seqCurrentStep,
   seqMaxSteps,
   seqStatus,
@@ -76,23 +90,24 @@ export default function TgQueueCard({
         const isToday = d.toDateString() === now.toDateString();
         const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
         if (isToday) return time;
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (d.toDateString() === yesterday.toDateString()) return `вчера ${time}`;
         const date = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-        return `${date} ${time}`;
+        return `${date}`;
       })()
     : '';
-
-  const reviewDateFormatted = reviewDate
-    ? (() => {
-        const d = new Date(reviewDate);
-        const date = d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
-        const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-        return `${date} ${time}`;
-      })()
-    : null;
 
   const senderPrefix = lastMessageSender === 'seller' ? 'Вы: ' : lastMessageSender === 'client' ? 'Покупатель: ' : '';
   const isClosed = status === 'closed';
   const accentColor = reviewRating ? (ACCENT_COLORS[reviewRating] || '#E6E8EC') : '#E6E8EC';
+  const ratingStars = reviewRating != null ? '★'.repeat(reviewRating) : null;
+  const ratingColor = reviewRating != null ? (RATING_COLORS[reviewRating] || '#9CA3AF') : undefined;
+
+  // Build meta-line parts: store name + optional tag
+  const tagLabel = tag && TAG_LABELS[tag] ? TAG_LABELS[tag] : null;
+  const tagColor = tag && TAG_META_COLORS[tag] ? TAG_META_COLORS[tag] : undefined;
+  const ozonBadge = marketplace === 'ozon';
 
   return (
     <div
@@ -100,7 +115,7 @@ export default function TgQueueCard({
       style={{
         backgroundColor: isSelected ? 'rgba(37,99,235,0.08)' : '#FFFFFF',
         borderRadius: '16px',
-        padding: '14px 14px 14px 16px',
+        padding: '12px 14px 12px 14px',
         marginBottom: '8px',
         cursor: 'pointer',
         transition: 'all 0.15s ease-out',
@@ -111,8 +126,8 @@ export default function TgQueueCard({
         overflow: 'hidden',
       }}
     >
-      {/* Top row: checkbox + store badge + time */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+      {/* Row 1: Rating stars + name + time */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {selectionMode && (
             <div
@@ -135,77 +150,26 @@ export default function TgQueueCard({
               )}
             </div>
           )}
-          <span style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            padding: '2px 8px',
-            borderRadius: '8px',
-            backgroundColor: '#2563EB',
-            color: '#FFFFFF',
-          }}>
-            {storeName}
-          </span>
-          {marketplace === 'ozon' && (
-            <span style={{
-              fontSize: '10px',
-              fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: '8px',
-              backgroundColor: '#005bff',
-              color: '#fff',
-            }}>
-              OZON
+          {ratingStars && (
+            <span style={{ fontSize: '12px', color: ratingColor, letterSpacing: '-1px', flexShrink: 0 }}>
+              {ratingStars}
             </span>
           )}
+          <span style={{ fontSize: '15px', fontWeight: 600, color: '#111827' }}>
+            {clientName}
+          </span>
         </div>
-        <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500 }}>
+        <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500, flexShrink: 0 }}>
           {timeAgo}
         </span>
       </div>
 
-      {/* Client name + rating + review date */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-        <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
-          {clientName}
-        </span>
-        {reviewRating != null && (
-          <span style={{
-            fontSize: '11px',
-            fontWeight: 700,
-            padding: '1px 6px',
-            borderRadius: '6px',
-            backgroundColor: RATING_COLORS[reviewRating] || '#9ca3af',
-            color: '#fff',
-            flexShrink: 0,
-            lineHeight: '16px',
-          }}>
-            {'★'.repeat(reviewRating)}
-          </span>
-        )}
-        {reviewDateFormatted && (
-          <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500, flexShrink: 0 }}>
-            {reviewDateFormatted}
-          </span>
-        )}
-      </div>
-
-      {/* Product */}
-      {productName && (
-        <div style={{
-          fontSize: '13px', color: '#6B7280', marginBottom: '4px',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {productName}
-        </div>
-      )}
-
-      {/* Message preview */}
+      {/* Row 2: Message preview */}
       {lastMessageText && (
         <div className="line-clamp-2" style={{
           fontSize: '13px',
           color: 'rgba(17,24,39,0.8)',
           lineHeight: 1.5,
-          marginTop: '4px',
         }}>
           {senderPrefix && (
             <span style={{
@@ -219,7 +183,7 @@ export default function TgQueueCard({
         </div>
       )}
 
-      {/* Footer: draft + sequence */}
+      {/* Row 3: Status indicators (draft + sequence) */}
       <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         {isClosed && completionReason ? (
           <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>
@@ -245,6 +209,30 @@ export default function TgQueueCard({
           }}>
             Авто {seqCurrentStep}/{seqMaxSteps}
           </span>
+        )}
+      </div>
+
+      {/* Row 4: Meta-line (store + tag + OZON badge) — only if useful */}
+      <div style={{ marginTop: '6px', fontSize: '10px', color: '#9CA3AF', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <span>{storeName}</span>
+        {ozonBadge && (
+          <>
+            <span style={{ color: '#D1D5DB' }}>·</span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center',
+              padding: '1px 5px', borderRadius: '4px',
+              background: '#005bff', color: 'white',
+              fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px',
+            }}>
+              OZ
+            </span>
+          </>
+        )}
+        {tagLabel && (
+          <>
+            <span style={{ color: '#D1D5DB' }}>·</span>
+            <span style={{ color: tagColor, fontWeight: 600 }}>{tagLabel}</span>
+          </>
         )}
       </div>
     </div>

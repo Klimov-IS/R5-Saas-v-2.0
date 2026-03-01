@@ -88,27 +88,23 @@ const TAG_LABELS: Record<string, string> = {
 
 const TAG_COLORS: Record<string, { bg: string; color: string }> = {
   deletion_candidate: { bg: '#FEF3C7', color: '#92400E' },
-  deletion_offered: { bg: '#DBEAFE', color: '#1E40AF' },
+  deletion_offered: { bg: 'rgba(37,99,235,0.1)', color: '#1E40AF' },
   deletion_agreed: { bg: '#D1FAE5', color: '#065F46' },
   deletion_confirmed: { bg: '#D1FAE5', color: '#065F46' },
 };
 
-/** Tag progression: current tag → available next tags */
-const TAG_TRANSITIONS: Record<string, Array<{ tag: string; label: string }>> = {
-  deletion_candidate: [
-    { tag: 'deletion_offered', label: 'Оффер отправлен' },
-  ],
-  deletion_offered: [
-    { tag: 'deletion_agreed', label: 'Клиент согласен' },
-  ],
-  deletion_agreed: [
-    { tag: 'deletion_confirmed', label: 'Отзыв удалён' },
-  ],
-  deletion_confirmed: [],
+/** Workflow steps in order */
+const WORKFLOW_STEPS = ['deletion_candidate', 'deletion_offered', 'deletion_agreed', 'deletion_confirmed'];
+
+/** Tag progression: current tag → next tag */
+const TAG_NEXT: Record<string, { tag: string; label: string }> = {
+  deletion_candidate: { tag: 'deletion_offered', label: 'Оффер отправлен' },
+  deletion_offered: { tag: 'deletion_agreed', label: 'Клиент согласен' },
+  deletion_agreed: { tag: 'deletion_confirmed', label: 'Отзыв удалён' },
 };
 
-/** Sequence button labels by tag */
-const SEQUENCE_BUTTON_LABELS: Record<string, string> = {
+/** Sequence button labels by tag (for overflow menu) */
+const SEQUENCE_MENU_LABELS: Record<string, string> = {
   deletion_candidate: 'Запустить рассылку',
   deletion_offered: 'Напомнить об оффере',
   deletion_agreed: 'Напомнить об инструкции',
@@ -129,14 +125,15 @@ export default function TgChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
-  const [reviewTextExpanded, setReviewTextExpanded] = useState(false);
+  const [showInfoSheet, setShowInfoSheet] = useState(false);
+  const [showOverflow, setShowOverflow] = useState(false);
   const [sequence, setSequence] = useState<SequenceInfo | null>(null);
   const [seqLoading, setSeqLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [showTagMenu, setShowTagMenu] = useState(false);
   const [tagLoading, setTagLoading] = useState(false);
+  const [messageSent, setMessageSent] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Haptic feedback helper
   const haptic = useCallback((type: 'success' | 'error' | 'warning') => {
@@ -148,36 +145,31 @@ export default function TgChatPage() {
     } catch {}
   }, []);
 
-  // Navigate to next chat in queue (or back to queue if none)
+  // Show feedback with auto-hide
+  const showFeedback = useCallback((msg: string) => {
+    setFeedback(msg);
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedback(null), 2500);
+  }, []);
+
+  // Navigate to next chat in queue
   const goToNextChat = useCallback(() => {
     try {
       const queueOrder = JSON.parse(sessionStorage.getItem('tg_queue_order') || '[]') as Array<{ id: string; storeId: string }>;
       const currentIndex = queueOrder.findIndex(item => item.id === chatId);
-
-      // Add current to skipped so it sorts to end
       const skipped = JSON.parse(sessionStorage.getItem('tg_skipped_chats') || '[]');
       if (!skipped.includes(chatId)) skipped.push(chatId);
       sessionStorage.setItem('tg_skipped_chats', JSON.stringify(skipped));
-
-      // Find next non-skipped chat
       const skippedSet = new Set(skipped);
       let nextItem = null;
       for (let i = currentIndex + 1; i < queueOrder.length; i++) {
-        if (!skippedSet.has(queueOrder[i].id)) {
-          nextItem = queueOrder[i];
-          break;
-        }
+        if (!skippedSet.has(queueOrder[i].id)) { nextItem = queueOrder[i]; break; }
       }
-      // If nothing found after current, wrap around from start
       if (!nextItem) {
         for (let i = 0; i < currentIndex; i++) {
-          if (!skippedSet.has(queueOrder[i].id)) {
-            nextItem = queueOrder[i];
-            break;
-          }
+          if (!skippedSet.has(queueOrder[i].id)) { nextItem = queueOrder[i]; break; }
         }
       }
-
       if (nextItem) {
         const devUser = new URLSearchParams(window.location.search).get('dev_user');
         router.replace(`/tg/chat/${nextItem.id}?storeId=${nextItem.storeId}${devUser ? `&dev_user=${devUser}` : ''}`);
@@ -208,7 +200,6 @@ export default function TgChatPage() {
       const data = await response.json();
       setChat(data.chat);
       setMessages(data.messages || []);
-      // Prefer server draft, then local backup (unsaved user edits), then empty
       const serverDraft = data.chat.draftReply || '';
       try {
         const localDraft = localStorage.getItem(`tg_draft_${chatId}`);
@@ -216,23 +207,18 @@ export default function TgChatPage() {
       } catch {
         setDraftText(serverDraft);
       }
-    } catch (err: any) {
-      setFeedback('Ошибка загрузки чата');
+    } catch {
+      showFeedback('Ошибка загрузки чата');
     } finally {
       setIsLoading(false);
     }
-  }, [chatId, apiFetch]);
+  }, [chatId, apiFetch, showFeedback]);
 
-  useEffect(() => {
-    fetchChat();
-  }, [fetchChat]);
+  useEffect(() => { fetchChat(); }, [fetchChat]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  const [messageSent, setMessageSent] = useState(false);
 
   // Send message
   const handleSend = async () => {
@@ -247,7 +233,6 @@ export default function TgChatPage() {
         body: JSON.stringify({ message: sentText }),
       });
       if (!response.ok) throw new Error('Failed to send');
-      // Optimistic update: show sent message immediately without waiting for sync
       setMessages(prev => [...prev, {
         id: `optimistic-${Date.now()}`,
         text: sentText,
@@ -255,13 +240,13 @@ export default function TgChatPage() {
         timestamp: new Date().toISOString(),
       }]);
       haptic('success');
-      setFeedback('✅ Отправлено');
+      showFeedback('Отправлено');
       setMessageSent(true);
       setDraftText('');
       try { localStorage.removeItem(`tg_draft_${chatId}`); } catch {}
     } catch {
       haptic('error');
-      setFeedback('❌ Ошибка отправки');
+      showFeedback('Ошибка отправки');
     } finally {
       setIsSending(false);
     }
@@ -284,7 +269,7 @@ export default function TgChatPage() {
       haptic('success');
     } catch {
       haptic('error');
-      setFeedback('❌ Ошибка генерации');
+      showFeedback('Ошибка генерации');
     } finally {
       setIsGenerating(false);
     }
@@ -302,11 +287,11 @@ export default function TgChatPage() {
       });
       if (!response.ok) throw new Error('Failed to close');
       haptic('success');
-      setFeedback('✅ Чат закрыт');
+      showFeedback('Чат закрыт');
       setTimeout(() => router.back(), 800);
     } catch {
       haptic('error');
-      setFeedback('❌ Ошибка закрытия');
+      showFeedback('Ошибка закрытия');
     }
   };
 
@@ -321,35 +306,7 @@ export default function TgChatPage() {
     } catch {}
   }, [chatId, apiFetch]);
 
-  useEffect(() => {
-    fetchSequence();
-  }, [fetchSequence]);
-
-  // Start sequence
-  const handleStartSequence = async () => {
-    setSeqLoading(true);
-    try {
-      const res = await apiFetch(`/api/telegram/chats/${chatId}/sequence/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        haptic('error');
-        setFeedback(err.error || 'Ошибка запуска рассылки');
-      } else {
-        haptic('success');
-        setFeedback('Рассылка запущена');
-        fetchSequence();
-      }
-    } catch {
-      haptic('error');
-      setFeedback('Ошибка запуска рассылки');
-    } finally {
-      setSeqLoading(false);
-    }
-  };
+  useEffect(() => { fetchSequence(); }, [fetchSequence]);
 
   // Stop sequence
   const handleStopSequence = async () => {
@@ -362,15 +319,15 @@ export default function TgChatPage() {
       });
       if (!res.ok) {
         haptic('error');
-        setFeedback('Ошибка остановки рассылки');
+        showFeedback('Ошибка остановки рассылки');
       } else {
         haptic('success');
-        setFeedback('Рассылка остановлена');
+        showFeedback('Рассылка остановлена');
         fetchSequence();
       }
     } catch {
       haptic('error');
-      setFeedback('Ошибка остановки рассылки');
+      showFeedback('Ошибка остановки рассылки');
     } finally {
       setSeqLoading(false);
     }
@@ -378,7 +335,6 @@ export default function TgChatPage() {
 
   // Change tag (deletion workflow progression)
   const handleTagChange = async (newTag: string) => {
-    setShowTagMenu(false);
     setTagLoading(true);
     setFeedback(null);
     try {
@@ -392,14 +348,11 @@ export default function TgChatPage() {
       });
       if (!response.ok) throw new Error('Failed to change tag');
       haptic('success');
-      setFeedback(`Тег: ${TAG_LABELS[newTag] || newTag}`);
-      // Update local state
-      if (chat) {
-        setChat({ ...chat, tag: newTag });
-      }
+      showFeedback(`Этап: ${TAG_LABELS[newTag] || newTag}`);
+      if (chat) setChat({ ...chat, tag: newTag });
     } catch {
       haptic('error');
-      setFeedback('Ошибка смены тега');
+      showFeedback('Ошибка смены тега');
     } finally {
       setTagLoading(false);
     }
@@ -407,40 +360,54 @@ export default function TgChatPage() {
 
   // Start tag-specific sequence
   const handleStartTagSequence = async () => {
-    if (!chat?.tag) return;
     setSeqLoading(true);
+    setShowOverflow(false);
+    setShowInfoSheet(false);
     try {
       const res = await apiFetch(`/api/telegram/chats/${chatId}/sequence/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sequenceType: chat.tag !== 'deletion_candidate' ? chat.tag : undefined,
+          sequenceType: chat?.tag && chat.tag !== 'deletion_candidate' ? chat.tag : undefined,
         }),
       });
       if (!res.ok) {
         const err = await res.json();
         haptic('error');
-        setFeedback(err.error || 'Ошибка запуска рассылки');
+        showFeedback(err.error || 'Ошибка запуска рассылки');
       } else {
         haptic('success');
-        setFeedback('Рассылка запущена');
+        showFeedback('Рассылка запущена');
         fetchSequence();
       }
     } catch {
       haptic('error');
-      setFeedback('Ошибка запуска рассылки');
+      showFeedback('Ошибка запуска рассылки');
     } finally {
       setSeqLoading(false);
     }
   };
+
+  // Group messages by date for date separators
+  const getDateLabel = (timestamp: string): string => {
+    const d = new Date(timestamp);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return 'Сегодня';
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return 'Вчера';
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  };
+
+  // Workflow step index for step indicator
+  const currentStepIndex = chat?.tag ? WORKFLOW_STEPS.indexOf(chat.tag) : -1;
 
   // Loading
   if (isLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F7F8FA' }}>
         <div style={{ textAlign: 'center', color: '#6B7280' }}>
-          <div style={{ fontSize: '24px', marginBottom: '8px' }}>⏳</div>
-          <div style={{ fontSize: '14px' }}>Загрузка чата...</div>
+          <div style={{ fontSize: '14px' }}>Загрузка...</div>
         </div>
       </div>
     );
@@ -456,679 +423,646 @@ export default function TgChatPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: '#F7F8FA' }}>
-      {/* Header */}
+
+      {/* === COMPACT HEADER (~56px) === */}
       <div style={{
-        padding: '14px 16px',
+        padding: '12px 16px',
         borderBottom: '1px solid #E6E8EC',
         backgroundColor: '#FFFFFF',
         flexShrink: 0,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <span style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            padding: '2px 10px',
-            borderRadius: '8px',
-            backgroundColor: '#2563EB',
-            color: '#FFFFFF',
-          }}>
+        {/* Row 1: Rating + Name + (i) button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {chat.reviewRating != null && (
+              <span style={{
+                fontSize: '14px',
+                color: RATING_COLORS[chat.reviewRating] || '#9CA3AF',
+                letterSpacing: '-1px',
+                flexShrink: 0,
+              }}>
+                {'★'.repeat(chat.reviewRating)}
+              </span>
+            )}
+            <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>
+              {chat.clientName}
+            </span>
+          </div>
+          <button
+            onClick={() => setShowInfoSheet(true)}
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              border: '1.5px solid #E6E8EC',
+              background: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#6B7280',
+              fontSize: '13px',
+              fontWeight: 700,
+              transition: 'all 0.15s',
+              flexShrink: 0,
+            }}
+          >
+            i
+          </button>
+        </div>
+        {/* Row 2: Store + Tag badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+          <span style={{ fontSize: '12px', color: '#6B7280', fontWeight: 500 }}>
             {chat.storeName}
           </span>
           {chat.marketplace === 'ozon' && (
             <span style={{
+              fontSize: '9px', fontWeight: 700, padding: '2px 5px', borderRadius: '4px',
+              backgroundColor: '#005bff', color: '#fff', letterSpacing: '0.5px',
+            }}>
+              OZ
+            </span>
+          )}
+          {chat.tag && TAG_LABELS[chat.tag] && (
+            <span style={{
               fontSize: '10px',
               fontWeight: 700,
-              padding: '2px 6px',
-              borderRadius: '8px',
-              backgroundColor: '#005bff',
-              color: '#fff',
-            }}>
-              OZON
-            </span>
-          )}
-        </div>
-        {/* Client name + review rating & date */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '16px', fontWeight: 600, color: '#111827' }}>{chat.clientName}</span>
-          {chat.reviewRating != null && (
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 700,
-              padding: '1px 6px',
+              padding: '2px 8px',
               borderRadius: '6px',
-              backgroundColor: RATING_COLORS[chat.reviewRating] || '#9ca3af',
-              color: '#fff',
-              flexShrink: 0,
-              lineHeight: '16px',
+              backgroundColor: TAG_COLORS[chat.tag]?.bg || '#F3F4F6',
+              color: TAG_COLORS[chat.tag]?.color || '#6B7280',
             }}>
-              {'★'.repeat(chat.reviewRating)}
-            </span>
-          )}
-          {chat.reviewDate && (
-            <span style={{ fontSize: '11px', color: '#6B7280', fontWeight: 500, flexShrink: 0 }}>
-              {new Date(chat.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+              {TAG_LABELS[chat.tag]}
             </span>
           )}
         </div>
-        {chat.productName && (
-          <div style={{ fontSize: '13px', color: '#6B7280', marginTop: '2px' }}>{chat.productName}</div>
-        )}
-
-        {/* Expandable details section */}
-        {(chat.productStatus || chat.complaintStatus || chat.chatStrategy || chat.offerCompensation || chat.reviewText || chat.chatUrl) && (
-          <>
-            <button
-              onClick={() => setShowDetails(!showDetails)}
-              style={{
-                marginTop: '8px',
-                padding: '6px 12px',
-                fontSize: '11px',
-                fontWeight: 600,
-                border: showDetails ? '1px solid rgba(37,99,235,0.15)' : '1px solid #E6E8EC',
-                borderRadius: '10px',
-                backgroundColor: showDetails ? '#EEF2FF' : 'transparent',
-                color: showDetails ? '#2563EB' : '#6B7280',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease-out',
-              }}
-            >
-              {showDetails ? '▲ Скрыть' : '▼ Детали'}
-            </button>
-            {showDetails && (
-              <div style={{
-                marginTop: '8px',
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '6px',
-              }}>
-                {chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified' && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
-                    backgroundColor: chat.productStatus === 'refused' ? '#FEE2E2' :
-                      chat.productStatus === 'purchased' ? '#D1FAE5' : '#F3F4F6',
-                    color: chat.productStatus === 'refused' ? '#991B1B' :
-                      chat.productStatus === 'purchased' ? '#065F46' : '#6B7280',
-                  }}>
-                    {PRODUCT_STATUS_LABELS[chat.productStatus] || chat.productStatus}
-                  </span>
-                )}
-                {chat.complaintStatus && chat.complaintStatus !== 'not_sent' && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
-                    backgroundColor: chat.complaintStatus === 'rejected' ? '#FEE2E2' :
-                      chat.complaintStatus === 'approved' ? '#D1FAE5' : '#FEF3C7',
-                    color: chat.complaintStatus === 'rejected' ? '#991B1B' :
-                      chat.complaintStatus === 'approved' ? '#065F46' : '#92400E',
-                  }}>
-                    Жалоба: {COMPLAINT_STATUS_LABELS[chat.complaintStatus] || chat.complaintStatus}
-                  </span>
-                )}
-                {chat.chatStrategy && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
-                    backgroundColor: '#EEF2FF', color: '#1E40AF',
-                  }}>
-                    {STRATEGY_LABELS[chat.chatStrategy] || chat.chatStrategy}
-                  </span>
-                )}
-                {chat.offerCompensation && chat.maxCompensation && (chat.reviewRating == null || chat.reviewRating <= 3) && (
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
-                    backgroundColor: '#EDE9FE', color: '#5B21B6',
-                  }}>
-                    Кешбек {chat.maxCompensation}₽ {chat.compensationBy === 'r5' ? '(R5)' : chat.compensationBy === 'seller' ? '(продавец)' : ''}
-                  </span>
-                )}
-                {chat.chatUrl && (
-                  <a
-                    href={chat.chatUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '4px',
-                      fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
-                      backgroundColor: '#EEF2FF', color: '#2563EB',
-                      textDecoration: 'none', transition: 'all 0.15s ease-out',
-                    }}
-                  >
-                    Открыть в WB
-                  </a>
-                )}
-                {chat.reviewText && (
-                  <div style={{ width: '100%', marginTop: '4px' }}>
-                    <button
-                      onClick={() => setReviewTextExpanded(!reviewTextExpanded)}
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: '#6B7280',
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        cursor: 'pointer',
-                        transition: 'color 0.15s',
-                      }}
-                    >
-                      {reviewTextExpanded ? '▲ Скрыть отзыв' : '▼ Текст отзыва'}
-                    </button>
-                    {reviewTextExpanded && (
-                      <div style={{
-                        marginTop: '6px',
-                        padding: '8px 12px',
-                        backgroundColor: '#F7F8FA',
-                        borderRadius: '12px',
-                        border: '1px solid rgba(230,232,236,0.5)',
-                        fontSize: '12px',
-                        color: '#111827',
-                        lineHeight: '1.5',
-                        maxHeight: '120px',
-                        overflowY: 'auto',
-                      }}>
-                        {chat.reviewText}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* === Workflow: Tag + Sequence (visually separated) === */}
-        {chat.tag && TAG_LABELS[chat.tag] && (
-          <div style={{
-            marginTop: '10px',
-            padding: '10px 12px',
-            backgroundColor: '#F7F8FA',
-            borderRadius: '12px',
-            border: '1px solid rgba(230,232,236,0.5)',
-          }}>
-            {/* Row 1: Current tag badge */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '10px', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Этап:
-              </span>
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                padding: '3px 10px',
-                borderRadius: '10px',
-                backgroundColor: TAG_COLORS[chat.tag]?.bg || '#F3F4F6',
-                color: TAG_COLORS[chat.tag]?.color || '#6B7280',
-              }}>
-                {TAG_LABELS[chat.tag]}
-              </span>
-              {/* Tag progression: subtle arrow buttons */}
-              {chat.status !== 'closed' && TAG_TRANSITIONS[chat.tag]?.map(t => (
-                <button
-                  key={t.tag}
-                  onClick={() => handleTagChange(t.tag)}
-                  disabled={tagLoading}
-                  style={{
-                    fontSize: '10px',
-                    fontWeight: 600,
-                    padding: '3px 8px',
-                    borderRadius: '8px',
-                    border: '1px dashed #D1D5DB',
-                    backgroundColor: 'transparent',
-                    color: '#6B7280',
-                    cursor: 'pointer',
-                    opacity: tagLoading ? 0.5 : 1,
-                    transition: 'all 0.15s ease-out',
-                  }}
-                >
-                  → {t.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Row 2: Sequence controls */}
-            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '10px', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Рассылка:
-              </span>
-              {sequence?.status === 'active' ? (
-                <>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    padding: '3px 10px',
-                    borderRadius: '10px',
-                    backgroundColor: 'rgba(37,99,235,0.1)',
-                    color: '#2563EB',
-                  }}>
-                    Авто {sequence.currentStep}/{sequence.maxSteps}
-                  </span>
-                  <button
-                    onClick={handleStopSequence}
-                    disabled={seqLoading}
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      padding: '3px 10px',
-                      borderRadius: '10px',
-                      border: '1px solid #EF4444',
-                      backgroundColor: 'transparent',
-                      color: '#EF4444',
-                      cursor: 'pointer',
-                      opacity: seqLoading ? 0.5 : 1,
-                      transition: 'all 0.15s ease-out',
-                    }}
-                  >
-                    Стоп
-                  </button>
-                </>
-              ) : sequence?.status === 'completed' ? (
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  padding: '3px 10px',
-                  borderRadius: '10px',
-                  backgroundColor: '#F3F4F6',
-                  color: '#6B7280',
-                }}>
-                  Завершена
-                </span>
-              ) : sequence?.status === 'stopped' ? (
-                <>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    padding: '3px 10px',
-                    borderRadius: '10px',
-                    backgroundColor: '#FEF3C7',
-                    color: '#92400E',
-                  }}>
-                    Пауза ({sequence.currentStep}/{sequence.maxSteps})
-                  </span>
-                  <button
-                    onClick={handleStartTagSequence}
-                    disabled={seqLoading}
-                    style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      padding: '3px 10px',
-                      borderRadius: '10px',
-                      border: '1px solid #2563EB',
-                      backgroundColor: '#2563EB',
-                      color: '#FFFFFF',
-                      cursor: 'pointer',
-                      opacity: seqLoading ? 0.5 : 1,
-                      transition: 'all 0.15s ease-out',
-                    }}
-                  >
-                    Продолжить
-                  </button>
-                </>
-              ) : chat.status !== 'closed' ? (
-                <button
-                  onClick={handleStartTagSequence}
-                  disabled={seqLoading}
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    padding: '4px 12px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    backgroundColor: '#2563EB',
-                    color: '#FFFFFF',
-                    cursor: 'pointer',
-                    opacity: seqLoading ? 0.5 : 1,
-                    transition: 'all 0.15s ease-out',
-                  }}
-                >
-                  {SEQUENCE_BUTTON_LABELS[chat.tag || ''] || 'Запустить рассылку'}
-                </button>
-              ) : (
-                <span style={{ fontSize: '11px', color: '#9CA3AF' }}>—</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Sequence for non-tagged chats (fallback) */}
-        {(!chat.tag || !TAG_LABELS[chat.tag]) && chat.status !== 'closed' && (
-          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {sequence?.status === 'active' ? (
-              <>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  padding: '4px 10px',
-                  borderRadius: '10px',
-                  backgroundColor: 'rgba(37,99,235,0.1)',
-                  color: '#2563EB',
-                }}>
-                  Авто {sequence.currentStep}/{sequence.maxSteps}
-                </span>
-                <button
-                  onClick={handleStopSequence}
-                  disabled={seqLoading}
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    padding: '4px 10px',
-                    borderRadius: '10px',
-                    border: '1px solid #EF4444',
-                    backgroundColor: 'transparent',
-                    color: '#EF4444',
-                    cursor: 'pointer',
-                    opacity: seqLoading ? 0.5 : 1,
-                    transition: 'all 0.15s ease-out',
-                  }}
-                >
-                  Стоп
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={handleStartTagSequence}
-                disabled={seqLoading}
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  padding: '4px 12px',
-                  borderRadius: '10px',
-                  border: '1px solid #2563EB',
-                  backgroundColor: 'transparent',
-                  color: '#2563EB',
-                  cursor: 'pointer',
-                  opacity: seqLoading ? 0.5 : 1,
-                  transition: 'all 0.15s ease-out',
-                }}
-              >
-                Запустить рассылку
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Messages */}
+      {/* === MESSAGES === */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
         padding: '12px 16px',
         backgroundColor: '#F7F8FA',
       }}>
-        {messages.slice(-15).map(msg => (
-          <div
-            key={msg.id}
-            style={{
-              maxWidth: '85%',
-              marginLeft: msg.sender === 'seller' ? 'auto' : '0',
-              marginRight: msg.sender === 'client' ? 'auto' : '0',
-              marginBottom: '8px',
-              padding: '10px 14px',
-              borderRadius: msg.sender === 'seller' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-              ...(msg.sender === 'seller' ? {
-                background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
-                color: '#FFFFFF',
-              } : {
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #E6E8EC',
-                color: '#111827',
-              }),
-              fontSize: '14px',
-              lineHeight: 1.5,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-            }}
-          >
-            {msg.text}
-            <div style={{
-              fontSize: '10px',
-              opacity: 0.6,
-              marginTop: '6px',
-              textAlign: msg.sender === 'seller' ? 'right' : 'left',
-              color: msg.sender === 'seller' ? 'rgba(255,255,255,0.6)' : '#6B7280',
-            }}>
-              {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ru-RU', {
-                day: '2-digit', month: '2-digit',
-                hour: '2-digit', minute: '2-digit',
-              }) : ''}
+        {messages.map((msg, idx) => {
+          // Date separator
+          const prevMsg = idx > 0 ? messages[idx - 1] : null;
+          const currentDate = getDateLabel(msg.timestamp);
+          const prevDate = prevMsg ? getDateLabel(prevMsg.timestamp) : null;
+          const showDateSep = !prevMsg || currentDate !== prevDate;
+
+          return (
+            <div key={msg.id}>
+              {showDateSep && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  margin: '16px 0', padding: '0 8px',
+                }}>
+                  <div style={{ flex: 1, height: '1px', background: '#E6E8EC' }} />
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+                    {currentDate}
+                  </span>
+                  <div style={{ flex: 1, height: '1px', background: '#E6E8EC' }} />
+                </div>
+              )}
+              <div style={{
+                maxWidth: '85%',
+                marginLeft: msg.sender === 'seller' ? 'auto' : '0',
+                marginRight: msg.sender === 'client' ? 'auto' : '0',
+                marginBottom: '8px',
+              }}>
+                <div style={{
+                  padding: '10px 14px',
+                  borderRadius: msg.sender === 'seller' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                  ...(msg.sender === 'seller' ? {
+                    background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
+                    color: '#FFFFFF',
+                  } : {
+                    backgroundColor: '#FFFFFF',
+                    border: '1px solid #E6E8EC',
+                    color: '#111827',
+                  }),
+                  fontSize: '14px',
+                  lineHeight: 1.5,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}>
+                  {msg.text}
+                  <div style={{
+                    fontSize: '10px',
+                    opacity: msg.sender === 'seller' ? 0.6 : 1,
+                    marginTop: '6px',
+                    textAlign: msg.sender === 'seller' ? 'right' : 'left',
+                    color: msg.sender === 'seller' ? 'rgba(255,255,255,0.6)' : '#6B7280',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: msg.sender === 'seller' ? 'flex-end' : 'flex-start',
+                    gap: '4px',
+                  }}>
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleString('ru-RU', {
+                      day: '2-digit', month: '2-digit',
+                      hour: '2-digit', minute: '2-digit',
+                    }) : ''}
+                    {msg.isAutoReply && (
+                      <span style={{
+                        fontSize: '9px', padding: '1px 4px', borderRadius: '4px',
+                        background: msg.sender === 'seller' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)',
+                      }}>
+                        авто
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Draft area */}
+      {/* === COMPOSER (sticky bottom) === */}
       <div style={{
-        padding: '12px 16px',
         borderTop: '1px solid #E6E8EC',
         backgroundColor: '#FFFFFF',
         flexShrink: 0,
       }}>
-        {isGenerating ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '16px',
-            color: '#6B7280',
-            fontSize: '14px',
-          }}>
-            ⏳ Генерация ИИ-ответа...
-          </div>
-        ) : (
-          <>
-            <textarea
-              value={draftText}
-              onChange={e => {
-                setDraftText(e.target.value);
-                try { localStorage.setItem(`tg_draft_${chatId}`, e.target.value); } catch {}
-              }}
-              placeholder="Текст ответа..."
-              style={{
-                width: '100%',
-                minHeight: '80px',
-                maxHeight: '150px',
-                padding: '10px 14px',
-                border: '1px solid #E6E8EC',
-                borderRadius: '12px',
-                fontSize: '14px',
-                lineHeight: 1.5,
-                resize: 'vertical',
-                backgroundColor: '#F7F8FA',
-                color: '#111827',
-                fontFamily: 'inherit',
-                boxSizing: 'border-box',
-                outline: 'none',
-                transition: 'border-color 0.15s',
-              }}
-            />
-            <div style={{
-              textAlign: 'right',
-              fontSize: '11px',
-              marginTop: '4px',
-              fontWeight: 500,
-              color: draftText.length > 900 ? '#EF4444' : '#6B7280',
-            }}>
-              {draftText.length}/1000
-            </div>
-          </>
-        )}
-
-        {/* Feedback */}
+        {/* Feedback toast */}
         {feedback && (
-          <div style={{ textAlign: 'center', fontSize: '13px', padding: '4px 0', fontWeight: 500, color: '#111827' }}>
+          <div style={{
+            textAlign: 'center', fontSize: '13px', padding: '6px 0',
+            fontWeight: 600, color: '#111827',
+          }}>
             {feedback}
           </div>
         )}
-      </div>
 
-      {/* Action buttons */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '8px',
-        padding: '10px 16px',
-        paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
-        backgroundColor: '#FFFFFF',
-        borderTop: '1px solid #E6E8EC',
-        flexShrink: 0,
-      }}>
-        {!messageSent ? (
-          <>
-            {/* Send */}
-            <button
-              onClick={handleSend}
-              disabled={!draftText.trim() || isSending || isGenerating}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                padding: '12px',
-                borderRadius: '12px',
-                border: 'none',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                backgroundColor: (!draftText.trim() || isSending || isGenerating) ? '#D1D5DB' : '#10B981',
-                color: '#fff',
-                opacity: isSending ? 0.7 : 1,
-                transition: 'all 0.15s ease-out',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-              }}
-            >
-              {isSending ? '⏳...' : 'Отправить'}
-            </button>
-
-            {/* AI reply */}
-            <button
-              onClick={handleGenerate}
-              disabled={isGenerating || isSending}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                padding: '12px',
-                borderRadius: '12px',
-                border: 'none',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
-                color: '#FFFFFF',
-                opacity: isGenerating ? 0.7 : 1,
-                transition: 'all 0.15s ease-out',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-              }}
-            >
-              {isGenerating ? '⏳...' : 'AI ответ'}
-            </button>
-
-            {/* Close */}
-            <button
-              onClick={() => setShowReasons(true)}
-              disabled={isSending || isGenerating}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                padding: '12px',
-                borderRadius: '12px',
-                border: '2px solid rgba(239,68,68,0.2)',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                backgroundColor: 'rgba(254,226,226,0.5)',
-                color: '#EF4444',
-                transition: 'all 0.15s ease-out',
-              }}
-            >
-              Закрыть
-            </button>
-
-            {/* Next dialog */}
-            <button
-              onClick={goToNextChat}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                padding: '12px',
-                borderRadius: '12px',
-                border: '2px solid #E6E8EC',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                backgroundColor: '#FFFFFF',
-                color: '#6B7280',
-                transition: 'all 0.15s ease-out',
-              }}
-            >
-              След. диалог
-            </button>
-          </>
-        ) : (
-          <>
-            {/* After send: close or next */}
+        {messageSent ? (
+          /* Post-send state: 2 full-width buttons */
+          <div style={{ display: 'flex', gap: '8px', padding: '10px 16px', paddingBottom: 'max(10px, env(safe-area-inset-bottom))' }}>
             <button
               onClick={() => setShowReasons(true)}
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                padding: '12px',
-                borderRadius: '12px',
+                flex: 1, padding: '12px', borderRadius: '12px',
                 border: '2px solid rgba(239,68,68,0.2)',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                backgroundColor: 'rgba(254,226,226,0.5)',
-                color: '#EF4444',
+                fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                backgroundColor: 'rgba(254,226,226,0.5)', color: '#EF4444',
                 transition: 'all 0.15s ease-out',
               }}
             >
               Закрыть диалог
             </button>
-
             <button
               onClick={goToNextChat}
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                padding: '12px',
-                borderRadius: '12px',
-                border: 'none',
-                fontSize: '14px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
-                color: '#FFFFFF',
+                flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
+                fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                background: 'linear-gradient(135deg, #2563EB, #3B82F6)', color: '#FFFFFF',
                 transition: 'all 0.15s ease-out',
                 boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
               }}
             >
-              След. диалог
+              След. диалог →
             </button>
+          </div>
+        ) : (
+          /* Normal state: textarea + 3 inline buttons */
+          <>
+            {isGenerating ? (
+              <div style={{ textAlign: 'center', padding: '16px', color: '#6B7280', fontSize: '14px' }}>
+                Генерация ИИ-ответа...
+              </div>
+            ) : (
+              <div style={{ padding: '10px 16px 4px' }}>
+                <textarea
+                  value={draftText}
+                  onChange={e => {
+                    setDraftText(e.target.value);
+                    try { localStorage.setItem(`tg_draft_${chatId}`, e.target.value); } catch {}
+                  }}
+                  placeholder="Текст ответа..."
+                  style={{
+                    width: '100%', minHeight: '60px', maxHeight: '120px',
+                    padding: '10px 14px', border: '1px solid #E6E8EC', borderRadius: '12px',
+                    fontSize: '14px', lineHeight: 1.5, resize: 'vertical',
+                    backgroundColor: '#F7F8FA', color: '#111827', fontFamily: 'inherit',
+                    boxSizing: 'border-box', outline: 'none', transition: 'border-color 0.15s',
+                  }}
+                />
+                <div style={{
+                  textAlign: 'right', fontSize: '11px', marginTop: '2px',
+                  fontWeight: 500, color: draftText.length > 900 ? '#EF4444' : '#6B7280',
+                }}>
+                  {draftText.length}/1000
+                </div>
+              </div>
+            )}
+
+            {/* 3 inline action buttons */}
+            <div style={{
+              display: 'flex', gap: '8px', padding: '6px 16px 10px',
+              paddingBottom: 'max(10px, env(safe-area-inset-bottom))',
+              position: 'relative',
+            }}>
+              {/* Send */}
+              <button
+                onClick={handleSend}
+                disabled={!draftText.trim() || isSending || isGenerating}
+                style={{
+                  flex: 1, padding: '11px', borderRadius: '12px', border: 'none',
+                  fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                  backgroundColor: (!draftText.trim() || isSending || isGenerating) ? '#D1D5DB' : '#10B981',
+                  color: '#fff', opacity: isSending ? 0.7 : 1,
+                  transition: 'all 0.15s ease-out',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}
+              >
+                {isSending ? '...' : 'Отправить'}
+              </button>
+              {/* AI reply */}
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating || isSending}
+                style={{
+                  flex: 1, padding: '11px', borderRadius: '12px', border: 'none',
+                  fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                  background: 'linear-gradient(135deg, #2563EB, #3B82F6)', color: '#FFFFFF',
+                  opacity: isGenerating ? 0.7 : 1,
+                  transition: 'all 0.15s ease-out',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}
+              >
+                {isGenerating ? '...' : 'AI ответ'}
+              </button>
+              {/* Overflow menu button */}
+              <button
+                onClick={() => setShowOverflow(!showOverflow)}
+                style={{
+                  width: '44px', padding: '11px', borderRadius: '12px',
+                  border: '2px solid #E6E8EC', fontSize: '16px', cursor: 'pointer',
+                  backgroundColor: '#FFFFFF', color: '#6B7280',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.15s ease-out',
+                }}
+              >
+                ⋮
+              </button>
+
+              {/* Overflow menu */}
+              {showOverflow && (
+                <div style={{
+                  position: 'absolute', bottom: '100%', right: '16px', marginBottom: '8px',
+                  background: '#FFFFFF', borderRadius: '16px', border: '1px solid #E6E8EC',
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.12)', minWidth: '220px',
+                  padding: '6px', zIndex: 50,
+                }}>
+                  {/* Sequence button (tag-specific) */}
+                  {chat.status !== 'closed' && (
+                    <button
+                      onClick={handleStartTagSequence}
+                      disabled={seqLoading || sequence?.status === 'active'}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '10px 12px', borderRadius: '10px', border: 'none',
+                        background: 'none', width: '100%', fontSize: '14px', fontWeight: 500,
+                        color: sequence?.status === 'active' ? '#9CA3AF' : '#111827',
+                        cursor: sequence?.status === 'active' ? 'default' : 'pointer',
+                        textAlign: 'left', transition: 'background 0.1s',
+                      }}
+                    >
+                      <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>📨</span>
+                      <span>{SEQUENCE_MENU_LABELS[chat.tag || ''] || 'Запустить рассылку'}</span>
+                    </button>
+                  )}
+                  {/* Next dialog */}
+                  <button
+                    onClick={() => { setShowOverflow(false); goToNextChat(); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '10px 12px', borderRadius: '10px', border: 'none',
+                      background: 'none', width: '100%', fontSize: '14px', fontWeight: 500,
+                      color: '#111827', cursor: 'pointer', textAlign: 'left',
+                      transition: 'background 0.1s',
+                    }}
+                  >
+                    <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>→</span>
+                    <span>След. диалог</span>
+                  </button>
+                  {/* Divider */}
+                  <div style={{ height: '1px', background: '#E6E8EC', margin: '4px 8px' }} />
+                  {/* Close */}
+                  <button
+                    onClick={() => { setShowOverflow(false); setShowReasons(true); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '10px 12px', borderRadius: '10px', border: 'none',
+                      background: 'none', width: '100%', fontSize: '14px', fontWeight: 500,
+                      color: '#EF4444', cursor: 'pointer', textAlign: 'left',
+                      transition: 'background 0.1s',
+                    }}
+                  >
+                    <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>✕</span>
+                    <span>Закрыть чат</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
 
-      {/* Completion reason bottom sheet */}
+      {/* === INFO SHEET (bottom sheet) === */}
+      {showInfoSheet && (
+        <>
+          <div
+            onClick={() => setShowInfoSheet(false)}
+            style={{
+              position: 'fixed', inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 100,
+            }}
+          />
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0,
+            backgroundColor: '#FFFFFF', borderRadius: '20px 20px 0 0',
+            padding: '16px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+            zIndex: 101, maxHeight: '75vh', overflowY: 'auto',
+            boxShadow: '0 -4px 24px rgba(0,0,0,0.1)',
+            borderTop: '1px solid #E6E8EC',
+          }}>
+            {/* Handle */}
+            <div style={{
+              width: '40px', height: '4px', backgroundColor: '#E6E8EC',
+              borderRadius: '2px', margin: '0 auto 20px',
+            }} />
+
+            {/* Section: КОНТЕКСТ */}
+            {(chat.chatStrategy || (chat.offerCompensation && chat.reviewRating != null && chat.reviewRating <= 3) ||
+              (chat.complaintStatus && chat.complaintStatus !== 'not_sent') ||
+              (chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified')) && (
+              <>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9CA3AF', marginBottom: '8px' }}>
+                  Контекст
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '20px' }}>
+                  {chat.chatStrategy && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '100px',
+                      backgroundColor: '#EEF2FF', color: '#1E40AF',
+                    }}>
+                      {STRATEGY_LABELS[chat.chatStrategy] || chat.chatStrategy}
+                    </span>
+                  )}
+                  {chat.offerCompensation && chat.maxCompensation && (chat.reviewRating == null || chat.reviewRating <= 3) && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '100px',
+                      backgroundColor: '#EDE9FE', color: '#5B21B6',
+                    }}>
+                      Кешбек до {chat.maxCompensation}₽ {chat.compensationBy === 'r5' ? '(R5)' : chat.compensationBy === 'seller' ? '(продавец)' : ''}
+                    </span>
+                  )}
+                  {chat.complaintStatus && chat.complaintStatus !== 'not_sent' && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '100px',
+                      backgroundColor: chat.complaintStatus === 'rejected' ? '#FEE2E2' :
+                        chat.complaintStatus === 'approved' ? '#D1FAE5' : '#FEF3C7',
+                      color: chat.complaintStatus === 'rejected' ? '#991B1B' :
+                        chat.complaintStatus === 'approved' ? '#065F46' : '#92400E',
+                    }}>
+                      Жалоба: {COMPLAINT_STATUS_LABELS[chat.complaintStatus] || chat.complaintStatus}
+                    </span>
+                  )}
+                  {chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified' && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '100px',
+                      backgroundColor: chat.productStatus === 'refused' ? '#FEE2E2' :
+                        chat.productStatus === 'purchased' ? '#D1FAE5' : '#F3F4F6',
+                      color: chat.productStatus === 'refused' ? '#991B1B' :
+                        chat.productStatus === 'purchased' ? '#065F46' : '#6B7280',
+                    }}>
+                      {PRODUCT_STATUS_LABELS[chat.productStatus] || chat.productStatus}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Section: ВОРОНКА */}
+            {currentStepIndex >= 0 && (
+              <>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9CA3AF', marginBottom: '8px' }}>
+                  Воронка
+                </div>
+                {/* Step indicator */}
+                <div style={{ padding: '0 8px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    {WORKFLOW_STEPS.map((step, i) => {
+                      const isCompleted = i < currentStepIndex;
+                      const isActive = i === currentStepIndex;
+                      return (
+                        <div key={step} style={{ display: 'contents' }}>
+                          <div style={{
+                            width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0,
+                            border: `2px solid ${isCompleted ? '#10B981' : isActive ? '#2563EB' : '#E6E8EC'}`,
+                            background: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#FFFFFF',
+                          }} />
+                          {i < WORKFLOW_STEPS.length - 1 && (
+                            <div style={{
+                              flex: 1, height: '2px',
+                              background: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#E6E8EC',
+                            }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+                    {WORKFLOW_STEPS.map((step, i) => {
+                      const isCompleted = i < currentStepIndex;
+                      const isActive = i === currentStepIndex;
+                      const labels = ['Кандидат', 'Оффер', 'Согласен', 'Удалён'];
+                      return (
+                        <span key={step} style={{
+                          fontSize: '9px', fontWeight: isActive ? 700 : 600, textAlign: 'center', width: '60px',
+                          color: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#9CA3AF',
+                        }}>
+                          {labels[i]}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Transition button */}
+                {chat.status !== 'closed' && TAG_NEXT[chat.tag || ''] && (
+                  <button
+                    onClick={() => handleTagChange(TAG_NEXT[chat.tag || ''].tag)}
+                    disabled={tagLoading}
+                    style={{
+                      width: '100%', marginTop: '12px', padding: '10px', borderRadius: '12px',
+                      border: '1.5px dashed #D1D5DB', background: 'none',
+                      fontSize: '13px', fontWeight: 600, color: '#6B7280',
+                      cursor: 'pointer', opacity: tagLoading ? 0.5 : 1,
+                      transition: 'all 0.15s', marginBottom: '20px',
+                    }}
+                  >
+                    Перевести → {TAG_NEXT[chat.tag || ''].label}
+                  </button>
+                )}
+                {!TAG_NEXT[chat.tag || ''] && <div style={{ marginBottom: '20px' }} />}
+              </>
+            )}
+
+            {/* Section: РАССЫЛКА */}
+            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9CA3AF', marginBottom: '8px' }}>
+              Рассылка
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', borderRadius: '12px', background: '#F7F8FA', marginBottom: '20px',
+            }}>
+              {sequence?.status === 'active' ? (
+                <>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#111827' }}>
+                      <span style={{ color: '#2563EB' }}>▶</span> Авто {sequence.currentStep}/{sequence.maxSteps}
+                    </div>
+                    {sequence.nextSendAt && (
+                      <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px' }}>
+                        След: {new Date(sequence.nextSendAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} в {new Date(sequence.nextSendAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleStopSequence}
+                    disabled={seqLoading}
+                    style={{
+                      padding: '6px 14px', borderRadius: '8px',
+                      border: '1.5px solid #EF4444', background: 'none',
+                      fontSize: '12px', fontWeight: 600, color: '#EF4444',
+                      cursor: 'pointer', opacity: seqLoading ? 0.5 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    Стоп
+                  </button>
+                </>
+              ) : sequence?.status === 'stopped' ? (
+                <>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#92400E' }}>
+                    Пауза ({sequence.currentStep}/{sequence.maxSteps})
+                  </div>
+                  <button
+                    onClick={handleStartTagSequence}
+                    disabled={seqLoading}
+                    style={{
+                      padding: '6px 14px', borderRadius: '8px', border: 'none',
+                      background: '#2563EB', fontSize: '12px', fontWeight: 600,
+                      color: 'white', cursor: 'pointer', opacity: seqLoading ? 0.5 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    Продолжить
+                  </button>
+                </>
+              ) : sequence?.status === 'completed' ? (
+                <div style={{ fontSize: '13px', fontWeight: 500, color: '#9CA3AF' }}>
+                  Завершена ({sequence.currentStep}/{sequence.maxSteps})
+                </div>
+              ) : chat.status !== 'closed' ? (
+                <>
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#9CA3AF' }}>
+                    Нет активной рассылки
+                  </div>
+                  <button
+                    onClick={handleStartTagSequence}
+                    disabled={seqLoading}
+                    style={{
+                      padding: '6px 14px', borderRadius: '8px', border: 'none',
+                      background: '#2563EB', fontSize: '12px', fontWeight: 600,
+                      color: 'white', cursor: 'pointer', opacity: seqLoading ? 0.5 : 1,
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {SEQUENCE_MENU_LABELS[chat.tag || '']?.replace('Запустить рассылку', 'Запустить') || 'Запустить'}
+                  </button>
+                </>
+              ) : (
+                <div style={{ fontSize: '13px', fontWeight: 500, color: '#9CA3AF' }}>—</div>
+              )}
+            </div>
+
+            {/* Section: СПРАВКА */}
+            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9CA3AF', marginBottom: '8px' }}>
+              Справка
+            </div>
+            <div style={{ borderRadius: '12px', background: '#F7F8FA', padding: '12px' }}>
+              {chat.productName && (
+                <div style={{ fontSize: '13px', color: '#6B7280', padding: '6px 0', display: 'flex', gap: '8px' }}>
+                  <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Продукт</span>
+                  <span style={{ fontWeight: 500, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {chat.productName}
+                  </span>
+                </div>
+              )}
+              {chat.reviewDate && (
+                <div style={{ fontSize: '13px', color: '#6B7280', padding: '6px 0', display: 'flex', gap: '8px' }}>
+                  <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Отзыв</span>
+                  <span style={{ fontWeight: 500, color: '#111827' }}>
+                    {new Date(chat.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                  </span>
+                </div>
+              )}
+              {chat.reviewText && (
+                <div style={{ fontSize: '13px', color: '#6B7280', padding: '6px 0', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Текст</span>
+                  <span style={{
+                    fontWeight: 500, color: '#6B7280', fontSize: '12px', lineHeight: 1.5,
+                    maxHeight: '80px', overflowY: 'auto',
+                  }}>
+                    "{chat.reviewText}"
+                  </span>
+                </div>
+              )}
+              {chat.chatUrl && (
+                <div style={{ marginTop: '8px' }}>
+                  <a
+                    href={chat.chatUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '6px',
+                      fontSize: '12px', fontWeight: 600, color: '#2563EB', textDecoration: 'none',
+                    }}
+                  >
+                    Открыть в WB →
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* === COMPLETION REASON BOTTOM SHEET === */}
       {showReasons && (
         <>
           <div
             onClick={() => setShowReasons(false)}
             style={{
-              position: 'fixed',
-              inset: 0,
-              backgroundColor: 'rgba(0,0,0,0.3)',
-              zIndex: 100,
+              position: 'fixed', inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 100,
             }}
           />
           <div style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            backgroundColor: '#FFFFFF',
-            borderRadius: '20px 20px 0 0',
-            padding: '16px',
-            paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
-            zIndex: 101,
-            maxHeight: '60vh',
-            overflowY: 'auto',
+            position: 'fixed', bottom: 0, left: 0, right: 0,
+            backgroundColor: '#FFFFFF', borderRadius: '20px 20px 0 0',
+            padding: '16px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
+            zIndex: 101, maxHeight: '60vh', overflowY: 'auto',
             boxShadow: '0 -4px 24px rgba(0,0,0,0.1)',
             borderTop: '1px solid #E6E8EC',
           }}>
-            {/* Handle bar */}
             <div style={{
               width: '40px', height: '4px', backgroundColor: '#E6E8EC',
               borderRadius: '2px', margin: '0 auto 16px',
@@ -1141,21 +1075,10 @@ export default function TgChatPage() {
                 key={r.value}
                 onClick={() => handleClose(r.value)}
                 style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px 16px',
-                  marginBottom: '6px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  backgroundColor: '#F7F8FA',
-                  color: '#111827',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.15s ease-out',
+                  width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '12px 16px', marginBottom: '6px', borderRadius: '12px', border: 'none',
+                  backgroundColor: '#F7F8FA', color: '#111827', fontSize: '14px', fontWeight: 500,
+                  cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease-out',
                 }}
               >
                 <span style={{ fontSize: '16px' }}>{r.icon}</span>
@@ -1165,23 +1088,24 @@ export default function TgChatPage() {
             <button
               onClick={() => setShowReasons(false)}
               style={{
-                width: '100%',
-                padding: '12px',
-                marginTop: '8px',
-                borderRadius: '12px',
-                border: '2px solid #E6E8EC',
-                backgroundColor: '#FFFFFF',
-                color: '#6B7280',
-                fontSize: '14px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease-out',
+                width: '100%', padding: '12px', marginTop: '8px', borderRadius: '12px',
+                border: '2px solid #E6E8EC', backgroundColor: '#FFFFFF',
+                color: '#6B7280', fontSize: '14px', fontWeight: 600,
+                cursor: 'pointer', transition: 'all 0.15s ease-out',
               }}
             >
               Отмена
             </button>
           </div>
         </>
+      )}
+
+      {/* Overflow menu backdrop (close on tap outside) */}
+      {showOverflow && (
+        <div
+          onClick={() => setShowOverflow(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+        />
       )}
     </div>
   );

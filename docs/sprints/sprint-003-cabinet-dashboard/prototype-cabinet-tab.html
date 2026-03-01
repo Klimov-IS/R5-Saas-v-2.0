@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>R5 — Кабинет (Прототип v1)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ============================================
+     R5 Design System Variables (copied from globals.css)
+     ============================================ */
+  :root {
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 20px;
+    --spacing-2xl: 24px;
+    --spacing-3xl: 32px;
+    --spacing-4xl: 40px;
+
+    --font-size-xs: 12px;
+    --font-size-sm: 13px;
+    --font-size-base: 14px;
+    --font-size-lg: 16px;
+    --font-size-xl: 18px;
+    --font-size-2xl: 20px;
+    --font-size-3xl: 24px;
+
+    --radius-sm: 4px;
+    --radius-base: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+    --shadow-base: 0 4px 6px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 6px 12px rgba(0, 0, 0, 0.1);
+
+    --color-foreground: #0f172a;
+    --color-muted: #64748b;
+    --color-border: #e2e8f0;
+    --color-border-light: #f1f5f9;
+    --color-primary: #3b82f6;
+    --color-primary-hover: #2563eb;
+    --color-success: #10b981;
+    --color-success-bg: #d1fae5;
+    --color-warning: #f59e0b;
+    --color-warning-bg: #fef3c7;
+    --color-error: #ef4444;
+    --color-error-bg: #fee2e2;
+    --color-background: #f8fafc;
+
+    --category-reviews-bg: #f3f4f6;
+    --category-reviews-text: #374151;
+    --category-chats-bg: #dbeafe;
+    --category-chats-text: #1e40af;
+    --category-products-bg: #f3e8ff;
+    --category-products-text: #6b21a8;
+    --category-warnings-bg: #fef3c7;
+    --category-warnings-text: #92400e;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    line-height: 1.5;
+  }
+
+  /* ============================================
+     Header (matches store layout.tsx)
+     ============================================ */
+  .header-unified {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-xl) 0;
+    border-bottom: 2px solid var(--color-border);
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-3xl);
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex: 1;
+  }
+
+  .btn-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background-color: white;
+    color: var(--color-foreground);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    text-decoration: none;
+    box-shadow: var(--shadow-xs);
+    flex-shrink: 0;
+    font-size: 18px;
+  }
+
+  .header-tabs {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+  }
+
+  .tab-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-xl);
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    color: var(--color-muted);
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    transition: all 0.2s ease;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .tab-item:hover {
+    color: var(--color-foreground);
+    background-color: var(--color-border-light);
+  }
+
+  .tab-item.active {
+    color: var(--color-primary);
+    background-color: rgba(59, 130, 246, 0.08);
+    border-color: var(--color-primary);
+  }
+
+  .tab-icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .header-right {
+    flex-shrink: 0;
+  }
+
+  .store-selector-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background-color: white;
+    color: var(--color-foreground);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: var(--shadow-xs);
+    min-width: 200px;
+    justify-content: space-between;
+  }
+
+  .store-icon-badge {
+    width: 20px;
+    height: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  /* ============================================
+     Dashboard Container
+     ============================================ */
+  .dashboard-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0 20px;
+  }
+
+  /* ============================================
+     Cabinet Page Content
+     ============================================ */
+  .cabinet-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3xl);
+    padding-bottom: 60px;
+  }
+
+  /* ── Store Identity Card ── */
+  .store-identity {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: white;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-2xl) var(--spacing-3xl);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .store-identity-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xl);
+  }
+
+  .store-avatar {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 22px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .store-identity-info h1 {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .store-identity-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    font-size: var(--font-size-sm);
+    color: var(--color-muted);
+  }
+
+  .store-identity-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+  }
+
+  .status-active {
+    background-color: var(--color-success-bg);
+    color: #059669;
+  }
+
+  .status-paused {
+    background-color: var(--color-warning-bg);
+    color: #d97706;
+  }
+
+  .status-stopped {
+    background-color: var(--color-error-bg);
+    color: var(--color-error);
+  }
+
+  .sync-info {
+    font-size: var(--font-size-xs);
+    color: var(--color-muted);
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  .sync-ok { color: var(--color-success); }
+  .sync-err { color: var(--color-error); }
+
+  /* ── KPI Row ── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-lg);
+  }
+
+  .kpi-card {
+    background: white;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-xl) var(--spacing-2xl);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    transition: box-shadow 0.2s, transform 0.2s;
+    cursor: default;
+  }
+
+  .kpi-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+
+  .kpi-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 22px;
+  }
+
+  .kpi-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-muted);
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  .kpi-value {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--color-foreground);
+    line-height: 1.2;
+  }
+
+  .kpi-sub {
+    font-size: var(--font-size-xs);
+    color: var(--color-muted);
+    margin-top: 2px;
+  }
+
+  .kpi-sub-green { color: var(--color-success); }
+
+  /* ── Two-column layout ── */
+  .two-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-2xl);
+  }
+
+  .three-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--spacing-2xl);
+  }
+
+  /* ── Section Card ── */
+  .section-card {
+    background: white;
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .section-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-xl) var(--spacing-2xl);
+    border-bottom: 1px solid var(--color-border-light);
+  }
+
+  .section-card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+  }
+
+  .section-card-action {
+    font-size: var(--font-size-sm);
+    color: var(--color-primary);
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .section-card-action:hover {
+    text-decoration: underline;
+  }
+
+  .section-card-body {
+    padding: var(--spacing-2xl);
+  }
+
+  /* ── Complaints Stats ── */
+  .complaint-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+  }
+
+  .complaint-stat {
+    text-align: center;
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+  }
+
+  .complaint-stat-value {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .complaint-stat-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-muted);
+    font-weight: 500;
+  }
+
+  .cs-filed { color: var(--color-primary); }
+  .cs-approved { color: var(--color-success); }
+  .cs-rejected { color: var(--color-error); }
+  .cs-deleted { color: #8b5cf6; }
+
+  .complaint-rate-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-background);
+    border-radius: var(--radius-md);
+  }
+
+  .complaint-rate-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+
+  .complaint-rate-track {
+    flex: 1;
+    height: 8px;
+    background: var(--color-border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .complaint-rate-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--color-success), #34d399);
+    transition: width 0.5s ease;
+  }
+
+  .complaint-rate-value {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: var(--color-success);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  /* ── Chat Operations ── */
+  .chat-status-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+  }
+
+  .chat-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+  }
+
+  .chat-status-label {
+    font-size: var(--font-size-sm);
+    color: var(--color-foreground);
+    font-weight: 500;
+  }
+
+  .chat-status-value {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 16px;
+  }
+
+  .csv-active { background: var(--color-success-bg); color: #059669; }
+  .csv-paused { background: var(--color-warning-bg); color: #d97706; }
+  .csv-disabled { background: var(--color-error-bg); color: var(--color-error); }
+  .csv-agreed { background: #dbeafe; color: #1e40af; }
+  .csv-not-agreed { background: #f3f4f6; color: #6b7280; }
+
+  .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-green { background: var(--color-success); }
+  .dot-yellow { background: var(--color-warning); }
+  .dot-red { background: var(--color-error); }
+  .dot-blue { background: var(--color-primary); }
+  .dot-gray { background: #9ca3af; }
+
+  /* ── Review Rules ── */
+  .rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .rule-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    font-size: var(--font-size-sm);
+  }
+
+  .rule-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+    margin-top: 1px;
+  }
+
+  .rule-text {
+    color: var(--color-foreground);
+    line-height: 1.5;
+  }
+
+  .rule-text strong {
+    font-weight: 600;
+  }
+
+  .rule-text .muted {
+    color: var(--color-muted);
+  }
+
+  /* ── Google Drive Links ── */
+  .gdrive-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .gdrive-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-light);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    color: var(--color-foreground);
+  }
+
+  .gdrive-item:hover {
+    border-color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.03);
+  }
+
+  .gdrive-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 18px;
+  }
+
+  .gdrive-icon-sheet { background: #e8f5e9; }
+  .gdrive-icon-doc { background: #e3f2fd; }
+  .gdrive-icon-folder { background: #fef3c7; }
+
+  .gdrive-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .gdrive-name {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    margin-bottom: 1px;
+  }
+
+  .gdrive-desc {
+    font-size: var(--font-size-xs);
+    color: var(--color-muted);
+  }
+
+  .gdrive-arrow {
+    color: var(--color-muted);
+    font-size: 14px;
+  }
+
+  /* ── Company Details ── */
+  .details-grid {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: var(--spacing-sm) var(--spacing-lg);
+    font-size: var(--font-size-sm);
+  }
+
+  .details-label {
+    color: var(--color-muted);
+    font-weight: 500;
+  }
+
+  .details-value {
+    color: var(--color-foreground);
+    font-weight: 500;
+  }
+
+  .details-divider {
+    grid-column: 1 / -1;
+    height: 1px;
+    background: var(--color-border-light);
+    margin: var(--spacing-sm) 0;
+  }
+
+  /* ── Cost Card ── */
+  .cost-highlight {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-xl) var(--spacing-2xl);
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1px solid #bbf7d0;
+    border-radius: var(--radius-lg);
+  }
+
+  .cost-label {
+    font-size: var(--font-size-base);
+    color: #166534;
+    font-weight: 500;
+  }
+
+  .cost-value {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: #15803d;
+  }
+
+  .cost-note {
+    font-size: var(--font-size-xs);
+    color: #16a34a;
+    margin-top: var(--spacing-sm);
+  }
+
+  /* ── Notes / Sticky ── */
+  .notes-area {
+    width: 100%;
+    min-height: 100px;
+    padding: var(--spacing-lg);
+    font-size: var(--font-size-sm);
+    font-family: inherit;
+    line-height: 1.6;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+    color: var(--color-foreground);
+  }
+
+  .notes-area:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  /* ── Tags / chips ── */
+  .tag-row {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    border-radius: 16px;
+  }
+
+  .tag-purple { background: var(--category-products-bg); color: var(--category-products-text); }
+  .tag-blue { background: var(--category-chats-bg); color: var(--category-chats-text); }
+  .tag-gray { background: var(--category-reviews-bg); color: var(--category-reviews-text); }
+  .tag-green { background: var(--color-success-bg); color: #059669; }
+  .tag-yellow { background: var(--category-warnings-bg); color: var(--category-warnings-text); }
+
+  /* ── AI summary ── */
+  .ai-summary-card {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    background: var(--color-background);
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .ai-summary-icon {
+    font-size: 20px;
+  }
+
+  .ai-summary-text {
+    font-size: var(--font-size-sm);
+    color: var(--color-foreground);
+  }
+
+  .ai-summary-text .val {
+    font-weight: 600;
+  }
+
+  /* ── Empty state for editable fields ── */
+  .empty-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-3xl);
+    color: var(--color-muted);
+    font-size: var(--font-size-sm);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .empty-placeholder:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.03);
+  }
+
+  /* ── Buttons inside cards ── */
+  .btn-edit-small {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-base);
+    background: white;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-edit-small:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  /* ── Rating bars ── */
+  .rating-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .rating-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-xs);
+  }
+
+  .rating-label {
+    width: 16px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+
+  .rating-star { color: #f59e0b; font-size: 12px; }
+
+  .rating-track {
+    flex: 1;
+    height: 6px;
+    background: var(--color-border-light);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .rating-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .rf-1 { background: #ef4444; }
+  .rf-2 { background: #f97316; }
+  .rf-3 { background: #f59e0b; }
+  .rf-4 { background: #84cc16; }
+  .rf-5 { background: #22c55e; }
+
+  .rating-count {
+    min-width: 40px;
+    text-align: right;
+    color: var(--color-muted);
+    font-weight: 500;
+  }
+
+  /* ── Editable inline ── */
+  .editable-field {
+    padding: 6px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-base);
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+
+  .editable-field:hover {
+    border-color: var(--color-border);
+    background: var(--color-background);
+  }
+
+  /* ── Full-width card ── */
+  .full-width {
+    grid-column: 1 / -1;
+  }
+
+  /* ── Review deletion stats (mini) ── */
+  .deletion-mini-stats {
+    display: flex;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-md) 0;
+  }
+
+  .deletion-mini-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--font-size-sm);
+    color: var(--color-foreground);
+    font-weight: 500;
+  }
+
+  .deletion-mini-stat .num {
+    font-weight: 700;
+    font-size: var(--font-size-lg);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 1200px) {
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .two-cols { grid-template-columns: 1fr; }
+    .three-cols { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 768px) {
+    .kpi-row { grid-template-columns: 1fr; }
+    .complaint-stats { grid-template-columns: 1fr; }
+    .store-identity { flex-direction: column; align-items: flex-start; gap: var(--spacing-lg); }
+    .header-tabs { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================
+     HEADER (matches store layout.tsx exactly)
+     ============================================ -->
+<div class="dashboard-container">
+  <div class="header-unified">
+    <div class="header-left">
+      <a href="#" class="btn-back" title="Все магазины">&larr;</a>
+      <nav class="header-tabs">
+        <a class="tab-item active">
+          <span class="tab-icon">&#128188;</span> Кабинет
+        </a>
+        <a class="tab-item">
+          <span class="tab-icon">&#128230;</span> Товары
+        </a>
+        <a class="tab-item">
+          <span class="tab-icon">&#11088;</span> Отзывы
+        </a>
+        <a class="tab-item">
+          <span class="tab-icon">&#128172;</span> Чаты
+        </a>
+        <a class="tab-item">
+          <span class="tab-icon">&#10024;</span> AI
+        </a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <div class="store-selector-trigger">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="store-icon-badge">Б</div>
+          <span>Бьюти Маркет</span>
+        </div>
+        <span style="font-size:12px;">&#9660;</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+       CABINET PAGE CONTENT
+       ============================================ -->
+  <div class="cabinet-page">
+
+    <!-- ── 1. Store Identity Card ── -->
+    <div class="store-identity">
+      <div class="store-identity-left">
+        <div class="store-avatar">БМ</div>
+        <div class="store-identity-info">
+          <h1>Бьюти Маркет</h1>
+          <div class="store-identity-meta">
+            <span>WB &middot; Подключен 15 сен 2025</span>
+            <span>&middot;</span>
+            <span>ID: wb-beauty-market-001</span>
+          </div>
+        </div>
+      </div>
+      <div class="store-identity-right">
+        <span class="status-badge status-active">
+          <span class="dot dot-green"></span>
+          Активен
+        </span>
+        <div class="sync-info">
+          <span class="sync-ok">&#10003;</span> Товары: 2 мин назад<br>
+          <span class="sync-ok">&#10003;</span> Отзывы: 5 мин назад<br>
+          <span class="sync-ok">&#10003;</span> Чаты: 12 мин назад
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 2. KPI Row ── -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: var(--category-products-bg); color: var(--category-products-text);">&#128230;</div>
+        <div>
+          <div class="kpi-label">Товаров</div>
+          <div class="kpi-value">1 245</div>
+          <div class="kpi-sub">347 в работе (28%)</div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: var(--category-reviews-bg); color: var(--category-reviews-text);">&#11088;</div>
+        <div>
+          <div class="kpi-label">Отзывов 1-3&#9733;</div>
+          <div class="kpi-value">2 890</div>
+          <div class="kpi-sub">из 18 450 всего</div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: var(--category-chats-bg); color: var(--category-chats-text);">&#128172;</div>
+        <div>
+          <div class="kpi-label">Чатов</div>
+          <div class="kpi-value">4 312</div>
+          <div class="kpi-sub">156 активных сейчас</div>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <div class="kpi-icon" style="background: #fce4ec; color: #c62828;">&#128203;</div>
+        <div>
+          <div class="kpi-label">Жалоб подано</div>
+          <div class="kpi-value">1 847</div>
+          <div class="kpi-sub kpi-sub-green">94% одобрено</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 3. Complaints + Deleted Reviews ── -->
+    <div class="two-cols">
+
+      <!-- Complaints Workflow -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128203; Жалобы и удаления</div>
+          <a class="section-card-action">Перейти к отзывам &rarr;</a>
+        </div>
+        <div class="section-card-body">
+          <div class="complaint-stats">
+            <div class="complaint-stat">
+              <div class="complaint-stat-value cs-filed">1 847</div>
+              <div class="complaint-stat-label">Подано жалоб</div>
+            </div>
+            <div class="complaint-stat">
+              <div class="complaint-stat-value cs-approved">1 736</div>
+              <div class="complaint-stat-label">Одобрено</div>
+            </div>
+            <div class="complaint-stat">
+              <div class="complaint-stat-value cs-rejected">111</div>
+              <div class="complaint-stat-label">Отклонено</div>
+            </div>
+          </div>
+
+          <!-- Approval rate bar -->
+          <div class="complaint-rate-bar">
+            <span class="complaint-rate-label">Процент одобрения</span>
+            <div class="complaint-rate-track">
+              <div class="complaint-rate-fill" style="width: 94%;"></div>
+            </div>
+            <span class="complaint-rate-value">94%</span>
+          </div>
+
+          <div style="height: 16px;"></div>
+
+          <!-- Deleted reviews -->
+          <div style="display: flex; align-items:center; justify-content: space-between; padding: 14px 16px; background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border-radius: 8px; border: 1px solid #e9d5ff;">
+            <div>
+              <div style="font-size: 13px; color: #7c3aed; font-weight:500; margin-bottom: 2px;">Удалено с WB</div>
+              <div style="font-size: 11px; color: #a78bfa;">Отзывы со статусом deleted</div>
+            </div>
+            <div style="font-size: 28px; font-weight: 700; color: #7c3aed;">1 412</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Operations Status -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128172; Статус работы в чатах</div>
+          <span class="btn-edit-small">&#9998; Изменить</span>
+        </div>
+        <div class="section-card-body">
+          <div class="chat-status-grid">
+            <div class="chat-status-row">
+              <span class="chat-status-label">Чаты согласованы</span>
+              <span class="chat-status-value csv-agreed">
+                <span class="dot dot-blue"></span> Да, согласовано
+              </span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">Работаем в чатах</span>
+              <span class="chat-status-value csv-active">
+                <span class="dot dot-green"></span> Активно работаем
+              </span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">Статус паузы</span>
+              <span class="chat-status-value csv-not-agreed">
+                <span class="dot dot-gray"></span> Не на паузе
+              </span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">Опция в WB</span>
+              <span class="chat-status-value csv-active">
+                <span class="dot dot-green"></span> Включена
+              </span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">Авто-цепочки</span>
+              <span class="chat-status-value csv-active">
+                <span class="dot dot-green"></span> 2 активных
+              </span>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px; padding: 12px 16px; background: var(--color-background); border-radius: 8px;">
+            <div style="font-size: 12px; color: var(--color-muted); margin-bottom: 6px; font-weight: 500;">Стратегия в чатах</div>
+            <div class="tag-row">
+              <span class="tag tag-blue">&#127919; Вывод на 5 звёзд</span>
+              <span class="tag tag-purple">&#128176; Компенсация до 500&#8381;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 4. Review Rules + Rating breakdown ── -->
+    <div class="two-cols">
+
+      <!-- Review Work Rules -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128221; Правила работы с отзывами</div>
+          <span class="btn-edit-small">&#9998; Изменить</span>
+        </div>
+        <div class="section-card-body">
+          <div class="rules-list">
+            <div class="rule-item">
+              <span class="rule-icon">&#128203;</span>
+              <div class="rule-text">
+                <strong>Жалобы:</strong> подаём на отзывы <strong>1-3 &#9733;</strong>
+                <span class="muted">&mdash; автоматически по всем активным товарам</span>
+              </div>
+            </div>
+            <div class="rule-item">
+              <span class="rule-icon">&#128172;</span>
+              <div class="rule-text">
+                <strong>Чаты:</strong> работаем с <strong>1-4 &#9733;</strong>
+                <span class="muted">&mdash; стратегия "вывод на 5 звёзд" + компенсация</span>
+              </div>
+            </div>
+            <div class="rule-item">
+              <span class="rule-icon">&#128176;</span>
+              <div class="rule-text">
+                <strong>Компенсация:</strong> до <strong>500 &#8381;</strong> на карту
+                <span class="muted">&mdash; согласовано с клиентом</span>
+              </div>
+            </div>
+            <div class="rule-item">
+              <span class="rule-icon">&#9888;&#65039;</span>
+              <div class="rule-text">
+                <strong>Исключения:</strong> не подаём жалобы на 4 &#9733;
+                <span class="muted">&mdash; только чаты для повышения</span>
+              </div>
+            </div>
+            <div class="rule-item">
+              <span class="rule-icon">&#128336;</span>
+              <div class="rule-text">
+                <strong>Авто-закрытие:</strong> через <strong>14 дней</strong> без ответа
+                <span class="muted">&mdash; отправляется стоп-сообщение</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rating Breakdown -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#11088; Распределение отзывов</div>
+          <a class="section-card-action">Подробнее &rarr;</a>
+        </div>
+        <div class="section-card-body">
+          <div class="rating-breakdown">
+            <div class="rating-row">
+              <span class="rating-label">5</span>
+              <span class="rating-star">&#9733;</span>
+              <div class="rating-track"><div class="rating-fill rf-5" style="width: 67%;"></div></div>
+              <span class="rating-count">12 362</span>
+            </div>
+            <div class="rating-row">
+              <span class="rating-label">4</span>
+              <span class="rating-star">&#9733;</span>
+              <div class="rating-track"><div class="rating-fill rf-4" style="width: 15%;"></div></div>
+              <span class="rating-count">2 768</span>
+            </div>
+            <div class="rating-row">
+              <span class="rating-label">3</span>
+              <span class="rating-star">&#9733;</span>
+              <div class="rating-track"><div class="rating-fill rf-3" style="width: 8%;"></div></div>
+              <span class="rating-count">1 478</span>
+            </div>
+            <div class="rating-row">
+              <span class="rating-label">2</span>
+              <span class="rating-star">&#9733;</span>
+              <div class="rating-track"><div class="rating-fill rf-2" style="width: 5%;"></div></div>
+              <span class="rating-count">923</span>
+            </div>
+            <div class="rating-row">
+              <span class="rating-label">1</span>
+              <span class="rating-star">&#9733;</span>
+              <div class="rating-track"><div class="rating-fill rf-1" style="width: 3%;"></div></div>
+              <span class="rating-count">489</span>
+            </div>
+          </div>
+
+          <div style="height: 20px;"></div>
+
+          <!-- Summary chips -->
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <div style="flex:1; text-align:center; padding: 12px; background: var(--color-background); border-radius: 8px;">
+              <div style="font-size: 20px; font-weight: 700; color: var(--color-foreground);">18 020</div>
+              <div style="font-size: 11px; color: var(--color-muted);">Всего отзывов</div>
+            </div>
+            <div style="flex:1; text-align:center; padding: 12px; background: #fef2f2; border-radius: 8px;">
+              <div style="font-size: 20px; font-weight: 700; color: #dc2626;">2 890</div>
+              <div style="font-size: 11px; color: #ef4444;">Негативных (1-3&#9733;)</div>
+            </div>
+            <div style="flex:1; text-align:center; padding: 12px; background: #f0fdf4; border-radius: 8px;">
+              <div style="font-size: 20px; font-weight: 700; color: #16a34a;">4.3</div>
+              <div style="font-size: 11px; color: #22c55e;">Средний рейтинг</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 5. Google Drive + Company Details + Cost ── -->
+    <div class="three-cols">
+
+      <!-- Google Drive Links -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128193; Файлы Google Drive</div>
+          <span class="btn-edit-small">+ Добавить</span>
+        </div>
+        <div class="section-card-body">
+          <div class="gdrive-list">
+            <a class="gdrive-item" href="#" target="_blank">
+              <div class="gdrive-icon gdrive-icon-sheet">&#128200;</div>
+              <div class="gdrive-info">
+                <div class="gdrive-name">Жалобы V 2.0</div>
+                <div class="gdrive-desc">Google Sheets &middot; Обновлено вчера</div>
+              </div>
+              <span class="gdrive-arrow">&rarr;</span>
+            </a>
+            <a class="gdrive-item" href="#" target="_blank">
+              <div class="gdrive-icon gdrive-icon-sheet">&#128200;</div>
+              <div class="gdrive-info">
+                <div class="gdrive-name">Отчёт по удалениям</div>
+                <div class="gdrive-desc">Google Sheets &middot; Обновлено 3 дня назад</div>
+              </div>
+              <span class="gdrive-arrow">&rarr;</span>
+            </a>
+            <a class="gdrive-item" href="#" target="_blank">
+              <div class="gdrive-icon gdrive-icon-doc">&#128196;</div>
+              <div class="gdrive-info">
+                <div class="gdrive-name">Договор оказания услуг</div>
+                <div class="gdrive-desc">Google Docs</div>
+              </div>
+              <span class="gdrive-arrow">&rarr;</span>
+            </a>
+            <a class="gdrive-item" href="#" target="_blank">
+              <div class="gdrive-icon gdrive-icon-folder">&#128194;</div>
+              <div class="gdrive-info">
+                <div class="gdrive-name">Папка клиента</div>
+                <div class="gdrive-desc">Google Drive &middot; 12 файлов</div>
+              </div>
+              <span class="gdrive-arrow">&rarr;</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Company Details (Requisites) -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#127970; Реквизиты компании</div>
+          <span class="btn-edit-small">&#9998; Изменить</span>
+        </div>
+        <div class="section-card-body">
+          <div class="details-grid">
+            <span class="details-label">Компания</span>
+            <span class="details-value">ООО "Бьюти Маркет"</span>
+
+            <span class="details-label">ИНН</span>
+            <span class="details-value">7712345678</span>
+
+            <span class="details-label">ОГРН</span>
+            <span class="details-value">1177746123456</span>
+
+            <div class="details-divider"></div>
+
+            <span class="details-label">Контакт</span>
+            <span class="details-value">Анна Петрова</span>
+
+            <span class="details-label">Телефон</span>
+            <span class="details-value">+7 (926) 123-45-67</span>
+
+            <span class="details-label">E-mail</span>
+            <span class="details-value">anna@beautymarket.ru</span>
+
+            <div class="details-divider"></div>
+
+            <span class="details-label">Менеджер R5</span>
+            <span class="details-value">Иван Сергеев</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cost per deleted review -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128176; Стоимость услуг</div>
+          <span class="btn-edit-small">&#9998; Изменить</span>
+        </div>
+        <div class="section-card-body">
+          <div class="cost-highlight">
+            <div>
+              <div class="cost-label">За удалённый отзыв</div>
+            </div>
+            <div class="cost-value">350 &#8381;</div>
+          </div>
+
+          <div style="height: 16px;"></div>
+
+          <!-- Cost summary -->
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: var(--color-background); border-radius: 8px; font-size: 13px;">
+              <span style="color: var(--color-muted);">Удалено отзывов (факт)</span>
+              <span style="font-weight: 600;">1 412</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: var(--color-background); border-radius: 8px; font-size: 13px;">
+              <span style="color: var(--color-muted);">Итого к оплате</span>
+              <span style="font-weight: 700; color: var(--color-foreground);">494 200 &#8381;</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: #f0fdf4; border-radius: 8px; font-size: 13px;">
+              <span style="color: #16a34a;">Оплачено</span>
+              <span style="font-weight: 600; color: #16a34a;">450 000 &#8381;</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 14px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
+              <span style="color: #92400e;">Задолженность</span>
+              <span style="font-weight: 700; color: #92400e;">44 200 &#8381;</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 6. AI Summary + Notes ── -->
+    <div class="two-cols">
+
+      <!-- AI Configuration Summary -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#10024; AI конфигурация</div>
+          <a class="section-card-action">Настроить &rarr;</a>
+        </div>
+        <div class="section-card-body">
+          <div class="ai-summary-card">
+            <span class="ai-summary-icon">&#128221;</span>
+            <span class="ai-summary-text">Инструкции: <span class="val">Настроены</span> (342 символа)</span>
+          </div>
+          <div class="ai-summary-card">
+            <span class="ai-summary-icon">&#10067;</span>
+            <span class="ai-summary-text">FAQ: <span class="val">5 записей</span> (все активны)</span>
+          </div>
+          <div class="ai-summary-card">
+            <span class="ai-summary-icon">&#128218;</span>
+            <span class="ai-summary-text">Гайды: <span class="val">3 гайда</span> (стандартные)</span>
+          </div>
+          <div class="ai-summary-card">
+            <span class="ai-summary-icon">&#9889;</span>
+            <span class="ai-summary-text">Модель: <span class="val">deepseek-chat</span></span>
+          </div>
+          <div class="ai-summary-card">
+            <span class="ai-summary-icon">&#128176;</span>
+            <span class="ai-summary-text">AI расходы: <span class="val">$2.34</span> за текущий месяц</span>
+          </div>
+
+          <div style="margin-top: 12px; padding: 12px 16px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;">
+            <div style="font-size: 12px; color: #92400e; font-weight: 500;">Краткая выжимка из инструкций:</div>
+            <div style="font-size: 12px; color: #78716c; margin-top: 4px; line-height: 1.5;">
+              "Используй вежливый деловой тон. Всегда упоминай гарантию. Предлагай компенсацию только после 2-го сообщения..."
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Internal Notes -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128466;&#65039; Заметки по клиенту</div>
+        </div>
+        <div class="section-card-body">
+          <textarea class="notes-area" placeholder="Внутренние заметки о клиенте, важные договорённости, особые условия...">Клиент с сентября 2025.
+
+Особенности:
+— Согласовал компенсацию до 500р на карту (не на WB кошелёк!)
+— Просит не трогать отзывы по бренду "NatureLine" — у них свой менеджер
+— Раз в месяц просит отчёт в PDF
+
+Контакт: Анна — отвечает быстро в Telegram @anna_bm
+Платит всегда вовремя.</textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 7. Telegram + History ── -->
+    <div class="two-cols">
+
+      <!-- Telegram Integration -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128233; Telegram интеграция</div>
+        </div>
+        <div class="section-card-body">
+          <div class="chat-status-grid">
+            <div class="chat-status-row">
+              <span class="chat-status-label">Уведомления</span>
+              <span class="chat-status-value csv-active">
+                <span class="dot dot-green"></span> Включены
+              </span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">TG пользователь</span>
+              <span style="font-size: 13px; font-weight: 500;">@anna_bm</span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">Последнее уведомление</span>
+              <span style="font-size: 13px; color: var(--color-muted);">Сегодня, 14:22</span>
+            </div>
+            <div class="chat-status-row">
+              <span class="chat-status-label">Чатов в TG очереди</span>
+              <span style="font-size: 13px; font-weight: 600;">12 чатов</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Activity Timeline -->
+      <div class="section-card">
+        <div class="section-card-header">
+          <div class="section-card-title">&#128197; Последние события</div>
+        </div>
+        <div class="section-card-body">
+          <div style="display: flex; flex-direction: column; gap: 0;">
+            <div style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border-light);">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); margin-top: 6px; flex-shrink: 0;"></div>
+              <div>
+                <div style="font-size: 13px; font-weight: 500;">Синхронизация отзывов завершена</div>
+                <div style="font-size: 11px; color: var(--color-muted);">Сегодня, 14:30 &middot; +12 новых отзывов</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border-light);">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); margin-top: 6px; flex-shrink: 0;"></div>
+              <div>
+                <div style="font-size: 13px; font-weight: 500;">Подано 3 жалобы</div>
+                <div style="font-size: 11px; color: var(--color-muted);">Сегодня, 13:15 &middot; Автоматически</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border-light);">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6; margin-top: 6px; flex-shrink: 0;"></div>
+              <div>
+                <div style="font-size: 13px; font-weight: 500;">2 отзыва удалены с WB</div>
+                <div style="font-size: 11px; color: var(--color-muted);">Сегодня, 11:40 &middot; Жалобы одобрены</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--color-border-light);">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); margin-top: 6px; flex-shrink: 0;"></div>
+              <div>
+                <div style="font-size: 13px; font-weight: 500;">Авто-цепочка завершена</div>
+                <div style="font-size: 11px; color: var(--color-muted);">Вчера, 22:00 &middot; Клиент не ответил (14 дней)</div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 12px; padding: 10px 0;">
+              <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); margin-top: 6px; flex-shrink: 0;"></div>
+              <div>
+                <div style="font-size: 13px; font-weight: 500;">Рейтинг повышен: 2&#9733; &rarr; 5&#9733;</div>
+                <div style="font-size: 11px; color: var(--color-muted);">Вчера, 18:45 &middot; Чат успешно завершён</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /cabinet-page -->
+</div><!-- /dashboard-container -->
+
+</body>
+</html>

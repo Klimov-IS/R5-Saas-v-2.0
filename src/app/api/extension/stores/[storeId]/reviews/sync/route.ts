@@ -112,15 +112,27 @@ export async function POST(
         );
 
         if (existingReview.rows.length > 0) {
-          // UPDATE existing review
+          // UPDATE existing review with downgrade protection:
+          // - chat_status_by_review: never rollback to 'unknown', never downgrade 'opened'
+          // - complaint_status: never rollback sent/pending/approved/rejected to not_sent/draft
           await query(
             `
             UPDATE reviews
             SET
               review_status_wb = $1::review_status_wb,
               product_status_by_review = $2::product_status_by_review,
-              chat_status_by_review = $3::chat_status_by_review,
-              complaint_status = $4::complaint_status,
+              chat_status_by_review = CASE
+                WHEN $3 = 'unknown' THEN reviews.chat_status_by_review
+                WHEN reviews.chat_status_by_review = 'opened' AND $3 != 'opened'
+                  THEN reviews.chat_status_by_review
+                ELSE COALESCE($3::chat_status_by_review, reviews.chat_status_by_review)
+              END,
+              complaint_status = CASE
+                WHEN reviews.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
+                  AND $4 IN ('not_sent', 'draft')
+                  THEN reviews.complaint_status
+                ELSE COALESCE($4::complaint_status, reviews.complaint_status)
+              END,
               parsed_at = $5,
               page_number = $6,
               updated_at = NOW()
