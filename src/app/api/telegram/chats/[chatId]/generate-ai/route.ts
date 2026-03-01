@@ -6,6 +6,7 @@ import * as dbHelpers from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
+import { findLinkByChatId } from '@/db/review-chat-link-helpers';
 
 /**
  * POST /api/telegram/chats/[chatId]/generate-ai
@@ -61,9 +62,17 @@ export async function POST(
       const rules = await dbHelpers.getProductRulesByNmId(chat.store_id, chat.product_nm_id);
       if (rules) {
         productRulesContext = `\n**Правила товара:**\nРабота в чатах: ${rules.work_in_chats ? 'включена' : 'отключена'}`;
-        if (rules.offer_compensation) {
+
+        // Check review rating — compensation only for 1-3★ reviews
+        const rcl = await findLinkByChatId(chatId);
+        const reviewRating = rcl?.review_rating;
+        const isNegativeReview = reviewRating != null && reviewRating <= 3;
+
+        if (rules.offer_compensation && isNegativeReview) {
           productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
-        } else {
+        } else if (reviewRating != null && reviewRating >= 4) {
+          productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — только повышение до 5★, без кешбека)`;
+        } else if (!rules.offer_compensation) {
           productRulesContext += `\nКомпенсация: не предлагать`;
         }
         if (rules.chat_strategy) {

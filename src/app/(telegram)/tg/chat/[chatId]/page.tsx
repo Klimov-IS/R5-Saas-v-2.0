@@ -84,7 +84,6 @@ const TAG_LABELS: Record<string, string> = {
   deletion_offered: 'Оффер отправлен',
   deletion_agreed: 'Клиент согласен',
   deletion_confirmed: 'Отзыв удалён',
-  refund_requested: 'Возврат',
 };
 
 const TAG_COLORS: Record<string, { bg: string; color: string }> = {
@@ -92,23 +91,19 @@ const TAG_COLORS: Record<string, { bg: string; color: string }> = {
   deletion_offered: { bg: '#DBEAFE', color: '#1E40AF' },
   deletion_agreed: { bg: '#D1FAE5', color: '#065F46' },
   deletion_confirmed: { bg: '#D1FAE5', color: '#065F46' },
-  refund_requested: { bg: '#EDE9FE', color: '#5B21B6' },
 };
 
 /** Tag progression: current tag → available next tags */
 const TAG_TRANSITIONS: Record<string, Array<{ tag: string; label: string }>> = {
   deletion_candidate: [
     { tag: 'deletion_offered', label: 'Оффер отправлен' },
-    { tag: 'refund_requested', label: 'Запрос возврата' },
   ],
   deletion_offered: [
     { tag: 'deletion_agreed', label: 'Клиент согласен' },
-    { tag: 'refund_requested', label: 'Запрос возврата' },
   ],
   deletion_agreed: [
     { tag: 'deletion_confirmed', label: 'Отзыв удалён' },
   ],
-  refund_requested: [],
   deletion_confirmed: [],
 };
 
@@ -117,7 +112,6 @@ const SEQUENCE_BUTTON_LABELS: Record<string, string> = {
   deletion_candidate: 'Запустить рассылку',
   deletion_offered: 'Напомнить об оффере',
   deletion_agreed: 'Напомнить об инструкции',
-  refund_requested: 'Follow-up по возврату',
 };
 
 export default function TgChatPage() {
@@ -583,7 +577,7 @@ export default function TgChatPage() {
                     {STRATEGY_LABELS[chat.chatStrategy] || chat.chatStrategy}
                   </span>
                 )}
-                {chat.offerCompensation && chat.maxCompensation && (
+                {chat.offerCompensation && chat.maxCompensation && (chat.reviewRating == null || chat.reviewRating <= 3) && (
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: '4px',
                     fontSize: '11px', fontWeight: 600, padding: '4px 12px', borderRadius: '100px',
@@ -647,58 +641,161 @@ export default function TgChatPage() {
           </>
         )}
 
-        {/* Tag badge + tag progression */}
+        {/* === Workflow: Tag + Sequence (visually separated) === */}
         {chat.tag && TAG_LABELS[chat.tag] && (
           <div style={{
             marginTop: '10px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            flexWrap: 'wrap',
+            padding: '10px 12px',
+            backgroundColor: '#F7F8FA',
+            borderRadius: '12px',
+            border: '1px solid rgba(230,232,236,0.5)',
           }}>
-            <span style={{
-              fontSize: '11px',
-              fontWeight: 700,
-              padding: '4px 10px',
-              borderRadius: '10px',
-              backgroundColor: TAG_COLORS[chat.tag]?.bg || '#F3F4F6',
-              color: TAG_COLORS[chat.tag]?.color || '#6B7280',
-            }}>
-              {TAG_LABELS[chat.tag]}
-            </span>
-            {/* Tag progression buttons */}
-            {chat.status !== 'closed' && TAG_TRANSITIONS[chat.tag]?.map(t => (
-              <button
-                key={t.tag}
-                onClick={() => handleTagChange(t.tag)}
-                disabled={tagLoading}
-                style={{
+            {/* Row 1: Current tag badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '10px', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Этап:
+              </span>
+              <span style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: '10px',
+                backgroundColor: TAG_COLORS[chat.tag]?.bg || '#F3F4F6',
+                color: TAG_COLORS[chat.tag]?.color || '#6B7280',
+              }}>
+                {TAG_LABELS[chat.tag]}
+              </span>
+              {/* Tag progression: subtle arrow buttons */}
+              {chat.status !== 'closed' && TAG_TRANSITIONS[chat.tag]?.map(t => (
+                <button
+                  key={t.tag}
+                  onClick={() => handleTagChange(t.tag)}
+                  disabled={tagLoading}
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: '8px',
+                    border: '1px dashed #D1D5DB',
+                    backgroundColor: 'transparent',
+                    color: '#6B7280',
+                    cursor: 'pointer',
+                    opacity: tagLoading ? 0.5 : 1,
+                    transition: 'all 0.15s ease-out',
+                  }}
+                >
+                  → {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Row 2: Sequence controls */}
+            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '10px', color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Рассылка:
+              </span>
+              {sequence?.status === 'active' ? (
+                <>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    borderRadius: '10px',
+                    backgroundColor: 'rgba(37,99,235,0.1)',
+                    color: '#2563EB',
+                  }}>
+                    Авто {sequence.currentStep}/{sequence.maxSteps}
+                  </span>
+                  <button
+                    onClick={handleStopSequence}
+                    disabled={seqLoading}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '3px 10px',
+                      borderRadius: '10px',
+                      border: '1px solid #EF4444',
+                      backgroundColor: 'transparent',
+                      color: '#EF4444',
+                      cursor: 'pointer',
+                      opacity: seqLoading ? 0.5 : 1,
+                      transition: 'all 0.15s ease-out',
+                    }}
+                  >
+                    Стоп
+                  </button>
+                </>
+              ) : sequence?.status === 'completed' ? (
+                <span style={{
                   fontSize: '11px',
                   fontWeight: 600,
-                  padding: '4px 10px',
+                  padding: '3px 10px',
                   borderRadius: '10px',
-                  border: '1px solid #D1D5DB',
-                  backgroundColor: 'transparent',
-                  color: '#374151',
-                  cursor: 'pointer',
-                  opacity: tagLoading ? 0.5 : 1,
-                  transition: 'all 0.15s ease-out',
-                }}
-              >
-                → {t.label}
-              </button>
-            ))}
+                  backgroundColor: '#F3F4F6',
+                  color: '#6B7280',
+                }}>
+                  Завершена
+                </span>
+              ) : sequence?.status === 'stopped' ? (
+                <>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '3px 10px',
+                    borderRadius: '10px',
+                    backgroundColor: '#FEF3C7',
+                    color: '#92400E',
+                  }}>
+                    Пауза ({sequence.currentStep}/{sequence.maxSteps})
+                  </span>
+                  <button
+                    onClick={handleStartTagSequence}
+                    disabled={seqLoading}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '3px 10px',
+                      borderRadius: '10px',
+                      border: '1px solid #2563EB',
+                      backgroundColor: '#2563EB',
+                      color: '#FFFFFF',
+                      cursor: 'pointer',
+                      opacity: seqLoading ? 0.5 : 1,
+                      transition: 'all 0.15s ease-out',
+                    }}
+                  >
+                    Продолжить
+                  </button>
+                </>
+              ) : chat.status !== 'closed' ? (
+                <button
+                  onClick={handleStartTagSequence}
+                  disabled={seqLoading}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    padding: '4px 12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: '#2563EB',
+                    color: '#FFFFFF',
+                    cursor: 'pointer',
+                    opacity: seqLoading ? 0.5 : 1,
+                    transition: 'all 0.15s ease-out',
+                  }}
+                >
+                  {SEQUENCE_BUTTON_LABELS[chat.tag || ''] || 'Запустить рассылку'}
+                </button>
+              ) : (
+                <span style={{ fontSize: '11px', color: '#9CA3AF' }}>—</span>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Auto-sequence section */}
-        {(sequence || chat.status !== 'closed') && (
-          <div style={{
-            marginTop: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}>
+        {/* Sequence for non-tagged chats (fallback) */}
+        {(!chat.tag || !TAG_LABELS[chat.tag]) && chat.status !== 'closed' && (
+          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {sequence?.status === 'active' ? (
               <>
                 <span style={{
@@ -730,71 +827,26 @@ export default function TgChatPage() {
                   Стоп
                 </button>
               </>
-            ) : sequence?.status === 'completed' ? (
-              <span style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                padding: '4px 10px',
-                borderRadius: '10px',
-                backgroundColor: '#F3F4F6',
-                color: '#6B7280',
-              }}>
-                Рассылка завершена
-              </span>
-            ) : sequence?.status === 'stopped' ? (
-              <>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: 600,
-                  padding: '4px 10px',
-                  borderRadius: '10px',
-                  backgroundColor: '#FEF3C7',
-                  color: '#92400E',
-                }}>
-                  Остановлена ({sequence.currentStep}/{sequence.maxSteps})
-                </span>
-                <button
-                  onClick={handleStartTagSequence}
-                  disabled={seqLoading}
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    padding: '4px 10px',
-                    borderRadius: '10px',
-                    border: '1px solid #2563EB',
-                    backgroundColor: 'transparent',
-                    color: '#2563EB',
-                    cursor: 'pointer',
-                    opacity: seqLoading ? 0.5 : 1,
-                    transition: 'all 0.15s ease-out',
-                  }}
-                >
-                  Запустить
-                </button>
-              </>
-            ) : chat.status !== 'closed' ? (
+            ) : (
               <button
                 onClick={handleStartTagSequence}
                 disabled={seqLoading}
                 style={{
                   fontSize: '11px',
                   fontWeight: 600,
-                  padding: '4px 10px',
+                  padding: '4px 12px',
                   borderRadius: '10px',
                   border: '1px solid #2563EB',
                   backgroundColor: 'transparent',
                   color: '#2563EB',
                   cursor: 'pointer',
                   opacity: seqLoading ? 0.5 : 1,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
                   transition: 'all 0.15s ease-out',
                 }}
               >
-                {SEQUENCE_BUTTON_LABELS[chat.tag || ''] || 'Запустить рассылку'}
+                Запустить рассылку
               </button>
-            ) : null}
+            )}
           </div>
         )}
       </div>

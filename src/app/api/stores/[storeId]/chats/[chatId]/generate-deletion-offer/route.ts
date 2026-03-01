@@ -5,6 +5,7 @@ import { verifyApiKey } from '@/lib/server-utils';
 import { generateDeletionOffer } from '@/ai/flows/generate-deletion-offer-flow';
 import { createDeletionCase, getDeletionCaseByChatId } from '@/db/deletion-case-helpers';
 import { buildStoreInstructions } from '@/lib/ai-context';
+import { findLinkByChatId } from '@/db/review-chat-link-helpers';
 
 /**
  * Generate deletion offer for a specific chat
@@ -190,6 +191,20 @@ export async function POST(
       );
     }
 
+    // Step 5b: Check review rating — compensation only for 1-3★
+    const rcl = await findLinkByChatId(chatId);
+    const reviewRating = rcl?.review_rating;
+    if (reviewRating != null && reviewRating >= 4) {
+      return NextResponse.json(
+        {
+          error: 'Compensation not offered for 4-5★ reviews',
+          reviewRating,
+          hint: 'Only negative reviews (1-3★) are eligible for compensation offers',
+        },
+        { status: 400 }
+      );
+    }
+
     // Step 6: Get chat messages for history
     const messages = await dbHelpers.getChatMessages(chatId);
     const chatHistory = messages
@@ -204,8 +219,8 @@ export async function POST(
       clientName: chat.client_name,
       productName: chat.product_name || product.name,
       productVendorCode: product.vendor_code,
-      reviewRating: undefined, // TODO: Link to review
-      reviewText: undefined,
+      reviewRating: reviewRating || undefined,
+      reviewText: undefined, // TODO: fetch review text from reviews table
       compensationType: (productRule.compensation_type as 'cashback' | 'refund') || 'refund',
       maxCompensation: parseInt(productRule.max_compensation || '500', 10),
       chatStrategy: productRule.chat_strategy,
@@ -235,7 +250,7 @@ export async function POST(
       offer_strategy: offerResult.strategy,
 
       client_name: chat.client_name,
-      review_rating: undefined,
+      review_rating: reviewRating || undefined,
       review_text: undefined,
 
       ai_confidence: undefined, // From classification step
