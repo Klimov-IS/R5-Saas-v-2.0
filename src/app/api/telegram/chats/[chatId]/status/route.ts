@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
-import type { ChatStatus, CompletionReason } from '@/db/helpers';
+import type { ChatStatus, ChatTag, CompletionReason } from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
 import { validateTransition } from '@/lib/chat-transitions';
 
@@ -13,11 +13,20 @@ const validReasons: CompletionReason[] = [
   'not_our_issue', 'spam', 'negative', 'other',
 ];
 
+/** Tags that managers can set manually from TG Mini App (deletion workflow progression) */
+const manuallySettableTags: ChatTag[] = [
+  'deletion_candidate', 'deletion_offered', 'deletion_agreed',
+  'deletion_confirmed', 'refund_requested',
+];
+
 /**
  * PATCH /api/telegram/chats/[chatId]/status
  *
- * Change chat status via TG Mini App.
- * Requires completion_reason when status = 'closed'.
+ * Change chat status and/or tag via TG Mini App.
+ * Accepts: { status, completion_reason?, tag? }
+ * - status is required
+ * - completion_reason required when status = 'closed'
+ * - tag is optional — updates deletion workflow stage
  */
 export async function PATCH(
   request: NextRequest,
@@ -30,7 +39,7 @@ export async function PATCH(
     }
 
     const { chatId } = params;
-    const { status, completion_reason } = await request.json();
+    const { status, completion_reason, tag } = await request.json();
 
     // Validate status
     if (!status || !validStatuses.includes(status)) {
@@ -42,6 +51,11 @@ export async function PATCH(
       if (!completion_reason || !validReasons.includes(completion_reason)) {
         return NextResponse.json({ error: 'completion_reason is required for closed status' }, { status: 400 });
       }
+    }
+
+    // Validate tag if provided
+    if (tag && !manuallySettableTags.includes(tag)) {
+      return NextResponse.json({ error: 'Invalid tag' }, { status: 400 });
     }
 
     // Org-based access check
@@ -67,7 +81,7 @@ export async function PATCH(
       }
     }
 
-    // Update status
+    // Update status + optionally tag
     const updateData: Record<string, any> = {
       status,
       status_updated_at: new Date().toISOString(),
@@ -77,9 +91,14 @@ export async function PATCH(
       updateData.completion_reason = completion_reason;
     }
 
+    if (tag) {
+      updateData.tag = tag;
+      console.log(`[TG-STATUS] Tag changed: chat ${chatId}, ${currentChat?.tag} → ${tag}`);
+    }
+
     await dbHelpers.updateChat(chatId, updateData);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, tag: tag || undefined });
   } catch (error: any) {
     console.error('[TG-STATUS] Error:', error.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

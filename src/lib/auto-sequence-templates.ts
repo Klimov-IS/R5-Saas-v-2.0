@@ -406,6 +406,80 @@ export const DEFAULT_OZON_FOLLOWUP_TEMPLATES_4STAR_30D: SequenceMessage[] = [
  * OZON 30-day follow-up templates for negative reviews (1-2-3 stars).
  * Same 15-message cadence as WB. Separate export for future OZON-specific customization.
  */
+// ============================================================================
+// Tag-Based Funnel Templates (short follow-up sequences)
+// ============================================================================
+
+/**
+ * Offer Reminder templates for `deletion_offered` tag.
+ * 5 messages over 14 days, every 3 days.
+ * Use case: seller sent compensation offer → buyer went silent.
+ * Sequence type: 'offer_reminder'
+ */
+export const DEFAULT_OFFER_REMINDER_TEMPLATES: SequenceMessage[] = [
+  { day: 3, text: 'Здравствуйте! Хотели уточнить — вы видели наше предложение? Будем рады обсудить детали.' },
+  { day: 6, text: 'Наше предложение по компенсации всё ещё актуально. Если есть вопросы — напишите, ответим быстро.' },
+  { day: 9, text: 'Понимаем, что сейчас может быть не до этого. Но мы по-прежнему готовы помочь и обсудить удобный вариант.' },
+  { day: 12, text: 'Напоминаем о нашем предложении. Мы можем адаптировать условия — просто напишите.' },
+  { day: 14, text: 'Закрываем обращение по предложению. Если передумаете — мы всегда на связи.' },
+];
+
+/**
+ * Agreement Follow-up templates for `deletion_agreed` tag.
+ * 4 messages over 10 days, every 2-3 days.
+ * Use case: buyer agreed to delete/change review → went silent.
+ * Sequence type: 'agreement_followup'
+ */
+export const DEFAULT_AGREEMENT_FOLLOWUP_TEMPLATES: SequenceMessage[] = [
+  { day: 3, text: 'Здравствуйте! Удалось ли удалить/изменить отзыв? Если нужна инструкция — с удовольствием отправим ещё раз.' },
+  { day: 6, text: 'Проверили — отзыв пока на месте. Может, нужна помощь с процессом? Можем пошагово подсказать.' },
+  { day: 8, text: 'Компенсация готова к отправке сразу после изменения/удаления отзыва. Напишите, если что-то не получается.' },
+  { day: 10, text: 'Закрываем обращение. Если решите вернуться к вопросу — мы здесь.' },
+];
+
+/**
+ * Refund Follow-up templates for `refund_requested` tag.
+ * 3 messages over 7 days, every 2-3 days.
+ * Use case: buyer wants a refund, process started → buyer went silent.
+ * Sequence type: 'refund_followup'
+ */
+export const DEFAULT_REFUND_FOLLOWUP_TEMPLATES: SequenceMessage[] = [
+  { day: 3, text: 'Здравствуйте! Хотели узнать — получилось ли оформить возврат? Если нужна помощь — подскажем.' },
+  { day: 5, text: 'Мы можем проверить статус возврата с нашей стороны. Напишите номер заказа, если удобно.' },
+  { day: 7, text: 'Надеемся, что вопрос с возвратом решился. Если что-то ещё потребуется — обращайтесь.' },
+];
+
+/**
+ * Maps chat tag → sequence type + templates for tag-based sequences.
+ * Only includes tags that have dedicated follow-up sequences.
+ * The base `deletion_candidate` tag uses the existing 30-day sequence (not in this map).
+ */
+export const TAG_SEQUENCE_CONFIG: Record<string, {
+  sequenceType: string;
+  templates: SequenceMessage[];
+  familyPrefix: string;
+  label: string;
+}> = {
+  deletion_offered: {
+    sequenceType: 'offer_reminder',
+    templates: DEFAULT_OFFER_REMINDER_TEMPLATES,
+    familyPrefix: 'offer_reminder',
+    label: 'Напомнить об оффере',
+  },
+  deletion_agreed: {
+    sequenceType: 'agreement_followup',
+    templates: DEFAULT_AGREEMENT_FOLLOWUP_TEMPLATES,
+    familyPrefix: 'agreement_followup',
+    label: 'Напомнить об инструкции',
+  },
+  refund_requested: {
+    sequenceType: 'refund_followup',
+    templates: DEFAULT_REFUND_FOLLOWUP_TEMPLATES,
+    familyPrefix: 'refund_followup',
+    label: 'Follow-up по возврату',
+  },
+};
+
 export const DEFAULT_OZON_FOLLOWUP_TEMPLATES_30D: SequenceMessage[] = [
   // Phase 1: Discovery (Day 0-6)
   { day: 0, text: 'Мы увидели ваш отзыв и немного переживаем, что покупка вас расстроила. Подскажите, пожалуйста, что именно пошло не так?' },

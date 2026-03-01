@@ -901,7 +901,17 @@ Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decision
 - Review resolved (complaint approved / review excluded — checked before each send)
 - Chat status changed away from `awaiting_reply`/`inbox` (checked in cron)
 - Seller already sent a message today (skip + reschedule, not stop)
-- All messages sent (15 for negatives, 10 for 4★) → СТОП message + close
+- All messages sent → СТОП message + close (for base sequences only; funnel sequences just stop)
+
+**Sequence Types (as of 2026-03-01):**
+
+| sequence_type | Msgs | Period | Tag | Purpose |
+|---|---|---|---|---|
+| `no_reply_followup_30d` | 15 | ~30 дней | `deletion_candidate` | Базовая рассылка (1-3★) |
+| `no_reply_followup_4star_30d` | 10 | ~30 дней | `deletion_candidate` | Базовая рассылка (4★) |
+| `offer_reminder` | 5 | ~14 дней | `deletion_offered` | Напоминание об оффере |
+| `agreement_followup` | 4 | ~10 дней | `deletion_agreed` | Напоминание об инструкции |
+| `refund_followup` | 3 | ~7 дней | `refund_requested` | Follow-up по возврату |
 
 **Database Table:** `chat_auto_sequences`
 - See `migrations/005_create_chat_auto_sequences.sql`
@@ -909,8 +919,8 @@ Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decision
 
 **Source Files:**
 - [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — Cron job definition
-- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (30D sets), `getNextSlotTime()` slot distributor
-- [src/lib/auto-sequence-launcher.ts](../src/lib/auto-sequence-launcher.ts) — Auto-launch logic (`maybeStartAutoSequence`)
+- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (30D + funnel sets), `TAG_SEQUENCE_CONFIG` mapping, `getNextSlotTime()` slot distributor
+- [src/lib/auto-sequence-launcher.ts](../src/lib/auto-sequence-launcher.ts) — Auto-launch logic (`maybeStartAutoSequence`) — DEAD CODE
 - [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, advanceSequence, etc.)
 - [src/db/review-chat-link-helpers.ts](../src/db/review-chat-link-helpers.ts) — `isReviewResolvedForChat()` guard
 - [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) — Auto-launch trigger (Step 3.5) + awaiting_reply protection

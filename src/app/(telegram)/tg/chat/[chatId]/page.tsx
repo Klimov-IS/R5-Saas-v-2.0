@@ -20,6 +20,7 @@ interface ChatDetail {
   clientName: string;
   productName: string | null;
   status: string;
+  tag: string | null;
   draftReply: string | null;
   // Review & product rules
   reviewRating?: number | null;
@@ -78,6 +79,47 @@ const STRATEGY_LABELS: Record<string, string> = {
   upgrade_to_5: 'Повышение до 5', delete: 'Удаление', both: 'Обе стратегии',
 };
 
+const TAG_LABELS: Record<string, string> = {
+  deletion_candidate: 'Кандидат',
+  deletion_offered: 'Оффер отправлен',
+  deletion_agreed: 'Клиент согласен',
+  deletion_confirmed: 'Отзыв удалён',
+  refund_requested: 'Возврат',
+};
+
+const TAG_COLORS: Record<string, { bg: string; color: string }> = {
+  deletion_candidate: { bg: '#FEF3C7', color: '#92400E' },
+  deletion_offered: { bg: '#DBEAFE', color: '#1E40AF' },
+  deletion_agreed: { bg: '#D1FAE5', color: '#065F46' },
+  deletion_confirmed: { bg: '#D1FAE5', color: '#065F46' },
+  refund_requested: { bg: '#EDE9FE', color: '#5B21B6' },
+};
+
+/** Tag progression: current tag → available next tags */
+const TAG_TRANSITIONS: Record<string, Array<{ tag: string; label: string }>> = {
+  deletion_candidate: [
+    { tag: 'deletion_offered', label: 'Оффер отправлен' },
+    { tag: 'refund_requested', label: 'Запрос возврата' },
+  ],
+  deletion_offered: [
+    { tag: 'deletion_agreed', label: 'Клиент согласен' },
+    { tag: 'refund_requested', label: 'Запрос возврата' },
+  ],
+  deletion_agreed: [
+    { tag: 'deletion_confirmed', label: 'Отзыв удалён' },
+  ],
+  refund_requested: [],
+  deletion_confirmed: [],
+};
+
+/** Sequence button labels by tag */
+const SEQUENCE_BUTTON_LABELS: Record<string, string> = {
+  deletion_candidate: 'Запустить рассылку',
+  deletion_offered: 'Напомнить об оффере',
+  deletion_agreed: 'Напомнить об инструкции',
+  refund_requested: 'Follow-up по возврату',
+};
+
 export default function TgChatPage() {
   const router = useRouter();
   const params = useParams();
@@ -98,6 +140,8 @@ export default function TgChatPage() {
   const [sequence, setSequence] = useState<SequenceInfo | null>(null);
   const [seqLoading, setSeqLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [showTagMenu, setShowTagMenu] = useState(false);
+  const [tagLoading, setTagLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Haptic feedback helper
@@ -338,6 +382,64 @@ export default function TgChatPage() {
     }
   };
 
+  // Change tag (deletion workflow progression)
+  const handleTagChange = async (newTag: string) => {
+    setShowTagMenu(false);
+    setTagLoading(true);
+    setFeedback(null);
+    try {
+      const response = await apiFetch(`/api/telegram/chats/${chatId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: chat?.status || 'in_progress',
+          tag: newTag,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to change tag');
+      haptic('success');
+      setFeedback(`Тег: ${TAG_LABELS[newTag] || newTag}`);
+      // Update local state
+      if (chat) {
+        setChat({ ...chat, tag: newTag });
+      }
+    } catch {
+      haptic('error');
+      setFeedback('Ошибка смены тега');
+    } finally {
+      setTagLoading(false);
+    }
+  };
+
+  // Start tag-specific sequence
+  const handleStartTagSequence = async () => {
+    if (!chat?.tag) return;
+    setSeqLoading(true);
+    try {
+      const res = await apiFetch(`/api/telegram/chats/${chatId}/sequence/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sequenceType: chat.tag !== 'deletion_candidate' ? chat.tag : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        haptic('error');
+        setFeedback(err.error || 'Ошибка запуска рассылки');
+      } else {
+        haptic('success');
+        setFeedback('Рассылка запущена');
+        fetchSequence();
+      }
+    } catch {
+      haptic('error');
+      setFeedback('Ошибка запуска рассылки');
+    } finally {
+      setSeqLoading(false);
+    }
+  };
+
   // Loading
   if (isLoading) {
     return (
@@ -545,10 +647,54 @@ export default function TgChatPage() {
           </>
         )}
 
+        {/* Tag badge + tag progression */}
+        {chat.tag && TAG_LABELS[chat.tag] && (
+          <div style={{
+            marginTop: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap',
+          }}>
+            <span style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              padding: '4px 10px',
+              borderRadius: '10px',
+              backgroundColor: TAG_COLORS[chat.tag]?.bg || '#F3F4F6',
+              color: TAG_COLORS[chat.tag]?.color || '#6B7280',
+            }}>
+              {TAG_LABELS[chat.tag]}
+            </span>
+            {/* Tag progression buttons */}
+            {chat.status !== 'closed' && TAG_TRANSITIONS[chat.tag]?.map(t => (
+              <button
+                key={t.tag}
+                onClick={() => handleTagChange(t.tag)}
+                disabled={tagLoading}
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '4px 10px',
+                  borderRadius: '10px',
+                  border: '1px solid #D1D5DB',
+                  backgroundColor: 'transparent',
+                  color: '#374151',
+                  cursor: 'pointer',
+                  opacity: tagLoading ? 0.5 : 1,
+                  transition: 'all 0.15s ease-out',
+                }}
+              >
+                → {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Auto-sequence section */}
         {(sequence || chat.status !== 'closed') && (
           <div style={{
-            marginTop: '10px',
+            marginTop: '8px',
             display: 'flex',
             alignItems: 'center',
             gap: '8px',
@@ -608,7 +754,7 @@ export default function TgChatPage() {
                   Остановлена ({sequence.currentStep}/{sequence.maxSteps})
                 </span>
                 <button
-                  onClick={handleStartSequence}
+                  onClick={handleStartTagSequence}
                   disabled={seqLoading}
                   style={{
                     fontSize: '11px',
@@ -628,7 +774,7 @@ export default function TgChatPage() {
               </>
             ) : chat.status !== 'closed' ? (
               <button
-                onClick={handleStartSequence}
+                onClick={handleStartTagSequence}
                 disabled={seqLoading}
                 style={{
                   fontSize: '11px',
@@ -646,7 +792,7 @@ export default function TgChatPage() {
                   transition: 'all 0.15s ease-out',
                 }}
               >
-                Запустить рассылку
+                {SEQUENCE_BUTTON_LABELS[chat.tag || ''] || 'Запустить рассылку'}
               </button>
             ) : null}
           </div>

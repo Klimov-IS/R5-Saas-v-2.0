@@ -9,15 +9,20 @@ import { findLinkByChatId } from '@/db/review-chat-link-helpers';
 import {
   DEFAULT_FOLLOWUP_TEMPLATES_30D,
   DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D,
+  TAG_SEQUENCE_CONFIG,
   getNextSlotTime,
 } from '@/lib/auto-sequence-templates';
 
 /**
  * POST /api/telegram/chats/[chatId]/sequence/start
  *
- * Manually start a 30-day auto-sequence for a chat.
+ * Manually start an auto-sequence for a chat.
+ * Supports two modes:
+ *   1. Default (no body.sequenceType) — 30-day base sequence (by rating: 4★ vs 1-3★)
+ *   2. Tag-based (body.sequenceType) — short funnel follow-up (offer_reminder, agreement_followup, refund_followup)
+ *
  * Skips buyer_messages_count check (manual = manager decision).
- * Still checks: no active/completed family sequence, rating known.
+ * Still checks: no active sequence, no completed family sequence.
  */
 export async function POST(
   request: NextRequest,
@@ -30,11 +35,13 @@ export async function POST(
     }
 
     const { chatId } = params;
+    const body = await request.json().catch(() => ({}));
+    const requestedType = body.sequenceType as string | undefined;
 
     // Org-based access check
     const storeIds = await getAccessibleStoreIds(auth.userId);
     const chatResult = await query(
-      'SELECT id, store_id, owner_id FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
+      'SELECT id, store_id, owner_id, tag FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
       [chatId, storeIds]
     );
 
@@ -53,25 +60,44 @@ export async function POST(
       );
     }
 
-    // Determine rating from RCL
-    const rcl = await findLinkByChatId(chatId);
-    const rating = rcl?.review_rating;
-
-    // Determine sequence type and templates based on rating
     let sequenceType: string;
     let templates;
+    let familyPrefix: string;
+    let chatTag: ChatTag;
 
-    if (rating === 4) {
-      sequenceType = 'no_reply_followup_4star_30d';
-      templates = DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D;
+    if (requestedType && TAG_SEQUENCE_CONFIG[requestedType]) {
+      // Tag-based sequence: use config from TAG_SEQUENCE_CONFIG keyed by tag name
+      const config = TAG_SEQUENCE_CONFIG[requestedType];
+      sequenceType = config.sequenceType;
+      templates = config.templates;
+      familyPrefix = config.familyPrefix;
+      chatTag = requestedType as ChatTag;
+    } else if (requestedType && Object.values(TAG_SEQUENCE_CONFIG).some(c => c.sequenceType === requestedType)) {
+      // Accept sequence type name directly (e.g., 'offer_reminder')
+      const config = Object.values(TAG_SEQUENCE_CONFIG).find(c => c.sequenceType === requestedType)!;
+      const tagName = Object.entries(TAG_SEQUENCE_CONFIG).find(([, c]) => c.sequenceType === requestedType)?.[0];
+      sequenceType = config.sequenceType;
+      templates = config.templates;
+      familyPrefix = config.familyPrefix;
+      chatTag = (tagName || chat.tag) as ChatTag;
     } else {
-      // Default to negative templates (1-3★ or unknown rating)
-      sequenceType = 'no_reply_followup_30d';
-      templates = DEFAULT_FOLLOWUP_TEMPLATES_30D;
+      // Default: 30-day base sequence by rating
+      const rcl = await findLinkByChatId(chatId);
+      const rating = rcl?.review_rating;
+
+      if (rating === 4) {
+        sequenceType = 'no_reply_followup_4star_30d';
+        templates = DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D;
+        familyPrefix = 'no_reply_followup_4star';
+      } else {
+        sequenceType = 'no_reply_followup_30d';
+        templates = DEFAULT_FOLLOWUP_TEMPLATES_30D;
+        familyPrefix = 'no_reply_followup';
+      }
+      chatTag = 'deletion_candidate' as ChatTag;
     }
 
     // Check family dedup (active/completed of same family)
-    const familyPrefix = rating === 4 ? 'no_reply_followup_4star' : 'no_reply_followup';
     const hasFamily = await dbHelpers.hasCompletedSequenceFamily(chatId, familyPrefix);
     if (hasFamily) {
       return NextResponse.json(
@@ -80,8 +106,9 @@ export async function POST(
       );
     }
 
-    // Create sequence with Day 0 = today
-    const nextSendAt = getNextSlotTime(0);
+    // Create sequence — Day 0 for base, Day 3 for funnel (first message starts at day 3)
+    const firstDay = templates[0]?.day ?? 0;
+    const nextSendAt = getNextSlotTime(firstDay === 0 ? 0 : firstDay);
     const seq = await query(
       `INSERT INTO chat_auto_sequences
         (chat_id, store_id, owner_id, sequence_type, messages, max_steps, next_send_at)
@@ -94,16 +121,15 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create sequence' }, { status: 500 });
     }
 
-    // Update chat tag and status
+    // Update chat status to awaiting_reply (sequence is sending messages)
     await dbHelpers.updateChat(chatId, {
-      tag: 'deletion_candidate' as ChatTag,
       status: 'awaiting_reply' as ChatStatus,
       status_updated_at: new Date().toISOString(),
     });
 
     console.log(
       `[TG-SEQUENCE] Manual start: chat ${chatId}, type=${sequenceType}, ` +
-      `${templates.length} msgs, rating=${rating ?? 'unknown'}★`
+      `${templates.length} msgs, tag=${chatTag}`
     );
 
     return NextResponse.json({

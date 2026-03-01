@@ -1,7 +1,7 @@
 # Домен: AI в чатах
 
-**Дата:** 2026-02-28
-**Версия:** 3.0
+**Дата:** 2026-03-01
+**Версия:** 3.1
 **AI Model:** Deepseek Chat (`deepseek-chat`)
 **API Endpoint:** `https://api.deepseek.com/chat/completions`
 
@@ -654,14 +654,26 @@ INSERT INTO ai_logs (
 
 > **Обновлено 2026-02-28:** Все автоматические механизмы запуска удалены (trigger phrases, auto-launch из dialogue sync, auto-create при смене статуса). Рассылки создаются **только вручную** менеджером из TG Mini App.
 
-### Два типа рассылок
+### Типы рассылок
+
+#### Базовые рассылки (30-дневные, для первого контакта)
 
 | Тип | sequence_type | Рейтинг | Сообщений | Интервал | Общий период |
 |-----|---------------|---------|-----------|----------|-------------|
 | Негативные | `no_reply_followup_30d` | 1-3★ | 15 | каждые 2 дня | ~30 дней |
 | Четвёрки | `no_reply_followup_4star_30d` | 4★ | 10 | каждые 3 дня | ~30 дней |
 
-> Legacy типы `no_reply_followup` и `no_reply_followup_4star` — старая 14-дневная система (trigger-phrase). Новые рассылки создаются только с суффиксом `_30d`.
+#### Рассылки по этапам воронки (короткие follow-up, добавлено 2026-03-01)
+
+| Тип | sequence_type | Тег | Сообщений | Интервал | Общий период | Кнопка в TG |
+|-----|---------------|-----|-----------|----------|-------------|-------------|
+| Напоминание об оффере | `offer_reminder` | `deletion_offered` | 5 | каждые 3 дня | ~14 дней | "Напомнить об оффере" |
+| Напоминание об инструкции | `agreement_followup` | `deletion_agreed` | 4 | каждые 2-3 дня | ~10 дней | "Напомнить об инструкции" |
+| Follow-up по возврату | `refund_followup` | `refund_requested` | 3 | каждые 2-3 дня | ~7 дней | "Follow-up по возврату" |
+
+**Логика:** Базовая 30-дневная рассылка запускается для `deletion_candidate`. Если покупатель ответил и диалог продвинулся (тег сменился), но потом замолчал — менеджер запускает короткую рассылку, актуальную для нового этапа.
+
+> Legacy типы `no_reply_followup` и `no_reply_followup_4star` — старая 14-дневная система (trigger-phrase). Новые рассылки создаются только с суффиксом `_30d` или funnel-типами.
 
 ### Набор 1: Негативные отзывы (1-3★)
 
@@ -689,16 +701,40 @@ INSERT INTO ai_logs (
 
 Рассылка запускается **только вручную** менеджером из TG Mini App:
 - Менеджер открывает детальную страницу чата
-- Нажимает кнопку "Запустить рассылку"
+- Нажимает кнопку рассылки (текст зависит от текущего тега чата)
 - API: `POST /api/telegram/chats/[chatId]/sequence/start`
-- Создаёт sequence + ставит `tag='deletion_candidate'`, `status='awaiting_reply'`
+- Body (опционально): `{ "sequenceType": "deletion_offered" }` — для tag-based рассылок
+- Создаёт sequence + ставит `status='awaiting_reply'`
 
 **Файл:** `src/app/api/telegram/chats/[chatId]/sequence/start/route.ts`
+
+**Два режима запуска:**
+
+1. **Базовая рассылка** (без `sequenceType` в body):
+   - Определение типа по рейтингу: 4★ → `_4star_30d`, остальные → `_30d`
+   - Family dedup по `no_reply_followup` / `no_reply_followup_4star`
+
+2. **Tag-based рассылка** (`sequenceType` = имя тега или sequence_type):
+   - Маппинг из `TAG_SEQUENCE_CONFIG` в `auto-sequence-templates.ts`
+   - Family dedup по `offer_reminder` / `agreement_followup` / `refund_followup`
 
 **Проверки при ручном запуске:**
 1. Нет активной рассылки для этого чата
 2. Нет completed рассылки в той же «семье» (dedup)
-3. Определение типа по рейтингу: 4★ → `_4star_30d`, остальные → `_30d`
+
+### Смена тега из TG Mini App (добавлено 2026-03-01)
+
+Менеджер может вручную продвигать чат по воронке удаления через кнопки в TG Mini App:
+
+```
+deletion_candidate → deletion_offered | refund_requested
+deletion_offered   → deletion_agreed  | refund_requested
+deletion_agreed    → deletion_confirmed
+```
+
+**API:** `PATCH /api/telegram/chats/[chatId]/status` с полем `tag` в body.
+
+**Допустимые теги для ручной смены:** `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`, `refund_requested`.
 
 > **Удалено:** `maybeStartAutoSequence()` из `auto-sequence-launcher.ts` — dead code, не вызывается. Trigger phrase detection из dialogue sync (Step 5b) и OZON sync (Step 3.5) — удалены. Auto-create при смене статуса на `awaiting_reply` — удалён.
 
@@ -744,9 +780,12 @@ Dialogue sync при обнаружении seller message НЕ переводи
 | `scripts/_check_sequences.mjs` | Диагностика состояния рассылок |
 
 **Таблица:** `chat_auto_sequences` (поле `sequence_type` определяет набор)
-**Шаблоны:** `src/lib/auto-sequence-templates.ts` (дефолты — `DEFAULT_FOLLOWUP_TEMPLATES_30D`, `DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D`)
+**Шаблоны:** `src/lib/auto-sequence-templates.ts`:
+- Базовые: `DEFAULT_FOLLOWUP_TEMPLATES_30D`, `DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D`
+- По воронке: `DEFAULT_OFFER_REMINDER_TEMPLATES`, `DEFAULT_AGREEMENT_FOLLOWUP_TEMPLATES`, `DEFAULT_REFUND_FOLLOWUP_TEMPLATES`
+- Маппинг: `TAG_SEQUENCE_CONFIG` — тег → sequence_type + шаблоны + label
 **Ручной запуск:** `src/app/api/telegram/chats/[chatId]/sequence/start/route.ts`
-**Cron job:** `startAutoSequenceProcessor` в `src/lib/cron-jobs.ts`
+**Cron job:** `startAutoSequenceProcessor` в `src/lib/cron-jobs.ts` (работает с ЛЮБЫМ sequence_type — универсален)
 **Review-resolved check:** `src/db/review-chat-link-helpers.ts` → `isReviewResolvedForChat()`
 **Dead code:** `src/lib/auto-sequence-launcher.ts` — НЕ вызывается, оставлен для справки
 
