@@ -505,6 +505,13 @@ CREATE INDEX idx_reviews_store_answer_date ON reviews(store_id, answer, date DES
 -- Marketplace (migration 013)
 CREATE INDEX idx_reviews_marketplace ON reviews(marketplace);
 CREATE INDEX idx_reviews_ozon_sku ON reviews(ozon_sku) WHERE ozon_sku IS NOT NULL;
+
+-- Extension stores counters (2026-03-02)
+CREATE INDEX idx_reviews_parse_pending ON reviews(product_id, store_id, rating, review_status_wb)
+  WHERE marketplace = 'wb' AND rating_excluded = FALSE
+    AND (chat_status_by_review IS NULL OR chat_status_by_review = 'unknown');
+CREATE INDEX idx_reviews_chat_status_store ON reviews(store_id, chat_status_by_review)
+  WHERE marketplace = 'wb' AND rating_excluded = FALSE;
 ```
 
 **Triggers:**
@@ -904,6 +911,7 @@ idx_rcl_chat(chat_id) WHERE chat_id IS NOT NULL
 idx_rcl_status(store_id, status)
 idx_rcl_chat_url(chat_url)
 idx_rcl_review_key(store_id, review_key)
+idx_rcl_matching(store_id, review_nm_id, review_rating, review_date)  -- NOT EXISTS dedup (2026-03-02)
 ```
 
 ---

@@ -216,7 +216,13 @@ Authorization: Bearer wbrm_<token>
 | pendingChatsCount | number | Количество чатов к открытию/привязке. Сумма chatOpens (rejected complaint + available chat) и chatLinks (opened chat без связки в review_chat_links). Аналог `totalCounts.chatOpens` из `/tasks` |
 | pendingStatusParsesCount | number | Количество отзывов, требующих парсинга статусов расширением (`chat_status_by_review IS NULL` или `unknown`). Аналог `totalCounts.statusParses` из `/tasks` |
 
-> **Важно:** Все счётчики учитывают только активные товары (`work_status = 'active'`) и применяют фильтры `product_rules` (рейтинги, флаги `submit_complaints`/`work_in_chats`). Если товар поставлен на стоп — его данные не считаются.
+> **Важно:** Все счётчики учитывают только активные магазины (`status = 'active'`), активные товары (`work_status = 'active'`) и применяют фильтры `product_rules` (рейтинги, флаги `submit_complaints`/`work_in_chats`). 5★ отзывы полностью исключены. Если товар поставлен на стоп — его данные не считаются.
+
+**Производительность (2026-03-02):**
+- 3 параллельных запроса через `Promise.all`, ~2s на 76 магазинов / 2.7M отзывов
+- Q1 (drafts): subquery scoped к `store_id IN (owner's stores)` — 165ms
+- Q2 (statusParses): reversed JOIN `FROM products → reviews`, использует partial index `idx_reviews_parse_pending` — 1.7s
+- Q3 (pendingChats): использует `idx_rcl_matching` для NOT EXISTS — 2s
 
 ---
 
