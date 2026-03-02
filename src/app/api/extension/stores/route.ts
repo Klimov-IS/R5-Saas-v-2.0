@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
          FROM reviews r
          JOIN products p ON r.product_id = p.id
          JOIN product_rules pr ON pr.product_id = p.id
-         JOIN stores s ON s.id = r.store_id AND s.owner_id = $1
+         JOIN stores s ON s.id = r.store_id AND s.owner_id = $1 AND s.status = 'active'
          WHERE r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
@@ -181,7 +181,7 @@ export async function GET(request: NextRequest) {
           JOIN review_complaints rc ON rc.review_id = r.id
           JOIN products p ON r.product_id = p.id
           JOIN product_rules pr ON pr.product_id = p.id
-          JOIN stores s ON s.id = r.store_id AND s.owner_id = $1
+          JOIN stores s ON s.id = r.store_id AND s.owner_id = $1 AND s.status = 'active'
           WHERE rc.status = 'rejected'
             AND pr.work_in_chats = TRUE
             AND r.chat_status_by_review = 'available'
@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
           FROM reviews r
           JOIN products p ON r.product_id = p.id
           JOIN product_rules pr ON pr.product_id = p.id
-          JOIN stores s ON s.id = r.store_id AND s.owner_id = $1
+          JOIN stores s ON s.id = r.store_id AND s.owner_id = $1 AND s.status = 'active'
           WHERE r.chat_status_by_review = 'opened'
             AND pr.work_in_chats = TRUE
             AND r.review_status_wb != 'deleted'
