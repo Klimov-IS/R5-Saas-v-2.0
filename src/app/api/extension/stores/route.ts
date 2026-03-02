@@ -112,8 +112,9 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Run all count queries in parallel for performance
+    // Optimized: Q1 scoped to owner's stores, Q2 starts from products (uses idx_reviews_parse_pending)
     const [storesResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Existing: stores + draftComplaintsCount ──
+      // ── Q1: stores + draftComplaintsCount (scoped subquery) ──
       query<{
         id: string;
         name: string;
@@ -135,6 +136,7 @@ export async function GET(request: NextRequest) {
             AND p.work_status = 'active'
             AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
             AND r.review_status_wb != 'deleted'
+            AND rc.store_id IN (SELECT id FROM stores WHERE owner_id = $1)
           GROUP BY rc.store_id
         ) cnt ON cnt.store_id = s.id
         WHERE s.owner_id = $1
@@ -142,38 +144,30 @@ export async function GET(request: NextRequest) {
         [user.id]
       ),
 
-      // ── statusParses count by store (same logic as /tasks Query A) ──
+      // ── Q2: statusParses — start from products (small table), join reviews via partial index ──
       query<{ store_id: string; count: string }>(
         `SELECT r.store_id, COUNT(*)::text as count
-         FROM reviews r
-         JOIN products p ON r.product_id = p.id
+         FROM products p
          JOIN product_rules pr ON pr.product_id = p.id
-         JOIN stores s ON s.id = r.store_id AND s.owner_id = $1 AND s.status = 'active'
-         WHERE r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
+         JOIN stores s ON s.id = p.store_id AND s.owner_id = $1 AND s.status = 'active'
+         JOIN reviews r ON r.product_id = p.id
+           AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
-           AND p.work_status = 'active'
            AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
-           AND (
-             (pr.submit_complaints = TRUE AND (
-               (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
-               (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
-               (r.rating = 3 AND pr.complaint_rating_3 = TRUE) OR
-               (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
-             ))
-             OR
-             (pr.work_in_chats = TRUE AND (
-               (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-               (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-               (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
-               (r.rating = 4 AND pr.chat_rating_4 = TRUE)
-             ))
-           )
+           AND r.rating = ANY(ARRAY_REMOVE(ARRAY[
+             CASE WHEN (pr.submit_complaints AND pr.complaint_rating_1) OR (pr.work_in_chats AND pr.chat_rating_1) THEN 1 END,
+             CASE WHEN (pr.submit_complaints AND pr.complaint_rating_2) OR (pr.work_in_chats AND pr.chat_rating_2) THEN 2 END,
+             CASE WHEN (pr.submit_complaints AND pr.complaint_rating_3) OR (pr.work_in_chats AND pr.chat_rating_3) THEN 3 END,
+             CASE WHEN (pr.submit_complaints AND pr.complaint_rating_4) OR (pr.work_in_chats AND pr.chat_rating_4) THEN 4 END
+           ], NULL))
+         WHERE p.work_status = 'active'
+           AND (pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE)
          GROUP BY r.store_id`,
         [user.id]
       ),
 
-      // ── pendingChats count by store (chatOpens + chatLinks, same logic as /tasks Query B+C) ──
+      // ── Q3: pendingChats (chatOpens + chatLinks) ──
       query<{ store_id: string; count: string }>(
         `SELECT store_id, SUM(cnt)::text as count FROM (
           SELECT r.store_id, COUNT(DISTINCT r.id) as cnt
