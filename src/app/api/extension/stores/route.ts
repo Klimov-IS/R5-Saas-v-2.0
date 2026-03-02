@@ -111,8 +111,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Helper: wrap a query in a timeout — returns empty rows on timeout instead of blocking
+    const QUERY_TIMEOUT_MS = 8000;
+    function queryWithTimeout<T extends Record<string, any>>(sql: string, params: any[]) {
+      return Promise.race([
+        query<T>(sql, params),
+        new Promise<{ rows: T[] }>((resolve) =>
+          setTimeout(() => resolve({ rows: [] } as any), QUERY_TIMEOUT_MS)
+        ),
+      ]);
+    }
+
     // 4. Run all count queries in parallel for performance
     // Optimized: Q1 scoped to owner's stores, Q2 starts from products (uses idx_reviews_parse_pending)
+    // Q2 and Q3 use timeout — if DB is overloaded, stores still load with counts = 0
     const [storesResult, statusParsesResult, pendingChatsResult] = await Promise.all([
       // ── Q1: stores + draftComplaintsCount (scoped subquery) ──
       query<{
@@ -145,7 +157,7 @@ export async function GET(request: NextRequest) {
       ),
 
       // ── Q2: statusParses — start from products (small table), join reviews via partial index ──
-      query<{ store_id: string; count: string }>(
+      queryWithTimeout<{ store_id: string; count: string }>(
         `SELECT r.store_id, COUNT(*)::text as count
          FROM products p
          JOIN product_rules pr ON pr.product_id = p.id
@@ -168,7 +180,7 @@ export async function GET(request: NextRequest) {
       ),
 
       // ── Q3: pendingChats (chatOpens + chatLinks) ──
-      query<{ store_id: string; count: string }>(
+      queryWithTimeout<{ store_id: string; count: string }>(
         `SELECT store_id, SUM(cnt)::text as count FROM (
           SELECT r.store_id, COUNT(DISTINCT r.id) as cnt
           FROM reviews r
