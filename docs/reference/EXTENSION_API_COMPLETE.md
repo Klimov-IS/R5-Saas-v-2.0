@@ -198,7 +198,9 @@ Authorization: Bearer wbrm_<token>
     "id": "7kKX9WgLvOPiXYIHk6hi",
     "name": "ИП Артюшина",
     "isActive": true,
-    "draftComplaintsCount": 45
+    "draftComplaintsCount": 45,
+    "pendingChatsCount": 12,
+    "pendingStatusParsesCount": 150
   }
 ]
 ```
@@ -211,8 +213,10 @@ Authorization: Bearer wbrm_<token>
 | name | string | Название магазина |
 | isActive | boolean | Активен ли магазин (status = 'active') |
 | draftComplaintsCount | number | Количество жалоб в статусе `draft` **только для активных товаров** (`work_status = 'active'`) |
+| pendingChatsCount | number | Количество чатов к открытию/привязке. Сумма chatOpens (rejected complaint + available chat) и chatLinks (opened chat без связки в review_chat_links). Аналог `totalCounts.chatOpens` из `/tasks` |
+| pendingStatusParsesCount | number | Количество отзывов, требующих парсинга статусов расширением (`chat_status_by_review IS NULL` или `unknown`). Аналог `totalCounts.statusParses` из `/tasks` |
 
-> **Важно:** `draftComplaintsCount` учитывает только жалобы по товарам с `work_status = 'active'`. Если товар поставлен на стоп — его черновики не считаются.
+> **Важно:** Все счётчики учитывают только активные товары (`work_status = 'active'`) и применяют фильтры `product_rules` (рейтинги, флаги `submit_complaints`/`work_in_chats`). Если товар поставлен на стоп — его данные не считаются.
 
 ---
 

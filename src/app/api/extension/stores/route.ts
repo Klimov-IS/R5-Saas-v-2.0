@@ -111,42 +111,150 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Direct DB query (fast with partial index idx_complaints_draft_store_product)
-    const result = await query<{
-      id: string;
-      name: string;
-      status: string;
-      draft_complaints_count: string;
-    }>(
-      `
-      SELECT
-        s.id,
-        s.name,
-        s.status,
-        COALESCE(cnt.draft_count, 0)::text as draft_complaints_count
-      FROM stores s
-      LEFT JOIN (
-        SELECT rc.store_id, COUNT(*) as draft_count
-        FROM review_complaints rc
-        JOIN reviews r ON r.id = rc.review_id
-        JOIN products p ON rc.product_id = p.id
-        WHERE rc.status = 'draft'
-          AND p.work_status = 'active'
-          AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-          AND r.review_status_wb != 'deleted'
-        GROUP BY rc.store_id
-      ) cnt ON cnt.store_id = s.id
-      WHERE s.owner_id = $1
-      ORDER BY s.name ASC
-      `,
-      [user.id]
-    );
+    // 4. Run all count queries in parallel for performance
+    const [storesResult, statusParsesResult, pendingChatsResult] = await Promise.all([
+      // ── Existing: stores + draftComplaintsCount ──
+      query<{
+        id: string;
+        name: string;
+        status: string;
+        draft_complaints_count: string;
+      }>(
+        `SELECT
+          s.id,
+          s.name,
+          s.status,
+          COALESCE(cnt.draft_count, 0)::text as draft_complaints_count
+        FROM stores s
+        LEFT JOIN (
+          SELECT rc.store_id, COUNT(*) as draft_count
+          FROM review_complaints rc
+          JOIN reviews r ON r.id = rc.review_id
+          JOIN products p ON rc.product_id = p.id
+          WHERE rc.status = 'draft'
+            AND p.work_status = 'active'
+            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+            AND r.review_status_wb != 'deleted'
+          GROUP BY rc.store_id
+        ) cnt ON cnt.store_id = s.id
+        WHERE s.owner_id = $1
+        ORDER BY s.name ASC`,
+        [user.id]
+      ),
 
-    const stores = result.rows.map(row => ({
+      // ── statusParses count by store (same logic as /tasks Query A) ──
+      query<{ store_id: string; count: string }>(
+        `SELECT r.store_id, COUNT(*)::text as count
+         FROM reviews r
+         JOIN products p ON r.product_id = p.id
+         JOIN product_rules pr ON pr.product_id = p.id
+         JOIN stores s ON s.id = r.store_id AND s.owner_id = $1
+         WHERE r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
+           AND r.rating_excluded = FALSE
+           AND r.marketplace = 'wb'
+           AND p.work_status = 'active'
+           AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+           AND (
+             (pr.submit_complaints = TRUE AND (
+               (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
+               (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
+               (r.rating = 3 AND pr.complaint_rating_3 = TRUE) OR
+               (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
+             ))
+             OR
+             (pr.work_in_chats = TRUE AND (
+               (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+               (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+               (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+               (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+             ))
+           )
+         GROUP BY r.store_id`,
+        [user.id]
+      ),
+
+      // ── pendingChats count by store (chatOpens + chatLinks, same logic as /tasks Query B+C) ──
+      query<{ store_id: string; count: string }>(
+        `SELECT store_id, SUM(cnt)::text as count FROM (
+          SELECT r.store_id, COUNT(DISTINCT r.id) as cnt
+          FROM reviews r
+          JOIN review_complaints rc ON rc.review_id = r.id
+          JOIN products p ON r.product_id = p.id
+          JOIN product_rules pr ON pr.product_id = p.id
+          JOIN stores s ON s.id = r.store_id AND s.owner_id = $1
+          WHERE rc.status = 'rejected'
+            AND pr.work_in_chats = TRUE
+            AND r.chat_status_by_review = 'available'
+            AND r.review_status_wb IN ('visible', 'unknown')
+            AND r.rating_excluded = FALSE
+            AND r.marketplace = 'wb'
+            AND p.work_status = 'active'
+            AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
+            AND (
+              (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+              (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+              (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+              (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM review_chat_links rcl
+              WHERE rcl.store_id = r.store_id
+                AND rcl.review_nm_id = p.wb_product_id
+                AND rcl.review_rating = r.rating
+                AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                         AND r.date + interval '2 minutes'
+            )
+          GROUP BY r.store_id
+          UNION ALL
+          SELECT r.store_id, COUNT(*) as cnt
+          FROM reviews r
+          JOIN products p ON r.product_id = p.id
+          JOIN product_rules pr ON pr.product_id = p.id
+          JOIN stores s ON s.id = r.store_id AND s.owner_id = $1
+          WHERE r.chat_status_by_review = 'opened'
+            AND pr.work_in_chats = TRUE
+            AND r.review_status_wb != 'deleted'
+            AND r.rating_excluded = FALSE
+            AND r.marketplace = 'wb'
+            AND p.work_status = 'active'
+            AND (
+              (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+              (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+              (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+              (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM review_chat_links rcl
+              WHERE rcl.store_id = r.store_id
+                AND rcl.review_nm_id = p.wb_product_id
+                AND rcl.review_rating = r.rating
+                AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                         AND r.date + interval '2 minutes'
+            )
+          GROUP BY r.store_id
+        ) combined
+        GROUP BY store_id`,
+        [user.id]
+      ),
+    ]);
+
+    // Build lookup maps for counts
+    const statusParsesMap = new Map<string, number>();
+    for (const row of statusParsesResult.rows) {
+      statusParsesMap.set(row.store_id, parseInt(row.count) || 0);
+    }
+    const pendingChatsMap = new Map<string, number>();
+    for (const row of pendingChatsResult.rows) {
+      pendingChatsMap.set(row.store_id, parseInt(row.count) || 0);
+    }
+
+    const stores = storesResult.rows.map(row => ({
       id: row.id,
       name: row.name,
       isActive: row.status === 'active',
       draftComplaintsCount: parseInt(row.draft_complaints_count) || 0,
+      pendingChatsCount: pendingChatsMap.get(row.id) || 0,
+      pendingStatusParsesCount: statusParsesMap.get(row.id) || 0,
     }));
 
     return NextResponse.json(stores, {

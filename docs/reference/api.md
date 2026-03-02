@@ -739,10 +739,18 @@ API для Chrome Extension.
     "id": "7kKX9WgLvOPiXYIHk6hi",
     "name": "ИП Артюшина",
     "isActive": true,
-    "draftComplaintsCount": 45
+    "draftComplaintsCount": 45,
+    "pendingChatsCount": 12,
+    "pendingStatusParsesCount": 150
   }
 ]
 ```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| draftComplaintsCount | number | Жалобы-черновики (активные товары) |
+| pendingChatsCount | number | Чаты к открытию/привязке (аналог totalCounts.chatOpens из /tasks) |
+| pendingStatusParsesCount | number | Отзывы для парсинга статусов (аналог totalCounts.statusParses из /tasks) |
 
 ---
 
