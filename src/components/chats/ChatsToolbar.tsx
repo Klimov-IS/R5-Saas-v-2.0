@@ -116,13 +116,16 @@ export function ChatsToolbar({
   };
 
   const COMPLETION_REASON_CONFIG: Record<CompletionReason, { label: string; icon: string }> = {
+    not_our_issue: { label: 'Не наш вопрос', icon: '❓' },
+    no_reply: { label: 'Нет ответа', icon: '🔇' },
+    negative: { label: 'Негатив', icon: '😠' },
+    refusal: { label: 'Отказ', icon: '✋' },
     review_deleted: { label: 'Отзыв удален', icon: '🗑️' },
     review_upgraded: { label: 'Отзыв дополнен', icon: '⭐' },
-    no_reply: { label: 'Нет ответа', icon: '🔇' },
-    old_dialog: { label: 'Старый диалог', icon: '⏰' },
-    not_our_issue: { label: 'Не наш вопрос', icon: '❓' },
+    review_resolved: { label: 'Не влияет на рейтинг', icon: '✅' },
+    temporarily_hidden: { label: 'Временно скрыт', icon: '👻' },
     spam: { label: 'Спам', icon: '🚫' },
-    negative: { label: 'Негатив', icon: '😠' },
+    old_dialog: { label: 'Старый диалог', icon: '⏰' },
     other: { label: 'Другое', icon: '📋' },
   };
 

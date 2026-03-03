@@ -15,6 +15,7 @@ import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/g
 import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MESSAGE, DEFAULT_OZON_STOP_MESSAGE_4STAR, getNextSlotTime, getDaysUntilNextMessage } from '@/lib/auto-sequence-templates';
 import type { SequenceMessage } from '@/lib/auto-sequence-templates';
 import { isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
+import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -748,45 +749,24 @@ export function startAutoSequenceProcessor() {
             continue;
           }
 
-          // Send message via marketplace-aware dispatch
-          if (seqStore?.marketplace === 'ozon' && seqStore.ozon_client_id && seqStore.ozon_api_key) {
-            const { createOzonClient } = await import('@/lib/ozon-api');
-            const ozonClient = createOzonClient(seqStore.ozon_client_id, seqStore.ozon_api_key);
-            await ozonClient.sendChatMessage(seq.chat_id, template.text);
-          } else {
-            const { sendChatMessage } = await import('@/lib/wb-chat-api');
-            await sendChatMessage(seq.store_id, seq.chat_id, template.text);
+          // Send message via shared sender utility
+          const sendResult = await sendSequenceMessage({
+            sequenceId: seq.id,
+            chatId: seq.chat_id,
+            storeId: seq.store_id,
+            ownerId: seq.owner_id,
+            currentStep: seq.current_step,
+            templates: msgTemplates,
+          });
+
+          if (!sendResult.sent) {
+            console.error(`[CRON] ❌ Sequence ${seq.id}: send failed - ${sendResult.error}`);
+            errors++;
+            continue;
           }
 
-          // Record sent message in chat_messages
-          const msgId = `auto_${seq.id}_${seq.current_step}`;
-          await dbHelpers.createChatMessage({
-            id: msgId,
-            chat_id: seq.chat_id,
-            store_id: seq.store_id,
-            owner_id: seq.owner_id,
-            sender: 'seller',
-            text: template.text,
-            timestamp: new Date().toISOString(),
-            is_auto_reply: true,
-          });
-
-          // Update chat's last message info
-          await dbHelpers.updateChat(seq.chat_id, {
-            last_message_text: template.text,
-            last_message_sender: 'seller',
-            last_message_date: new Date().toISOString(),
-          });
-
-          // Advance sequence — compute days until next message based on template schedule
-          const daysAhead = getDaysUntilNextMessage(
-            msgTemplates as SequenceMessage[],
-            seq.current_step + 1 // after increment
-          );
-          await dbHelpers.advanceSequence(seq.id, daysAhead || 1);
-
           sent++;
-          console.log(`[CRON] ✉️  Sequence ${seq.id}: sent step ${seq.current_step + 1}/${seq.max_steps} (next in ${daysAhead || 1}d)`);
+          console.log(`[CRON] ✉️  Sequence ${seq.id}: sent step ${seq.current_step + 1}/${seq.max_steps}`);
 
           // Rate limit: 3 seconds between sends
           await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1255,6 +1235,99 @@ export function startOzonHourlyFullSync() {
 
   job.start();
   console.log('[CRON] ✅ OZON hourly full scan started (9:00-20:00 MSK, all days)');
+
+  return job;
+}
+
+/**
+ * Auto-close chats linked to resolved reviews.
+ *
+ * Resolved = complaint approved, review excluded/unpublished/hidden/deleted, rating_excluded.
+ * These reviews no longer affect store rating, so chatting is pointless.
+ *
+ * Runs every 30 minutes. Closes up to 200 chats per run (safe batch on first deploy).
+ * Sets completion_reason = 'review_resolved' and stops active sequences.
+ */
+export function startResolvedReviewCloser() {
+  const cronSchedule = '15,45 * * * *'; // offset from auto-sequence processor
+
+  console.log(`[CRON] Scheduling resolved-review closer: ${cronSchedule}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'resolved-review-closer';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️  ${jobName} already running, skipping`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+    const startTime = Date.now();
+
+    try {
+      // Find non-closed chats with resolved or temporarily_hidden reviews
+      const { query: dbQuery } = await import('@/db/client');
+      const result = await dbQuery<{ id: string; store_id: string; close_reason: string }>(
+        `SELECT c.id, c.store_id,
+           CASE
+             WHEN r.review_status_wb = 'temporarily_hidden' THEN 'temporarily_hidden'
+             ELSE 'review_resolved'
+           END as close_reason
+         FROM chats c
+         INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
+         WHERE c.status != 'closed'
+           AND (
+             r.complaint_status = 'approved'
+             OR r.review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')
+             OR r.rating_excluded = TRUE
+           )
+         LIMIT 200`
+      );
+
+      const chats = result.rows;
+      if (chats.length === 0) return;
+
+      let closed = 0;
+      let seqStopped = 0;
+
+      for (const chat of chats) {
+        try {
+          // Close the chat with appropriate reason
+          const completionReason = chat.close_reason as dbHelpers.CompletionReason;
+          await dbHelpers.updateChat(chat.id, {
+            status: 'closed' as dbHelpers.ChatStatus,
+            completion_reason: completionReason,
+            status_updated_at: new Date().toISOString(),
+          });
+          closed++;
+
+          // Stop active sequence if any
+          const activeSeq = await dbHelpers.getActiveSequenceForChat(chat.id);
+          if (activeSeq) {
+            await dbHelpers.stopSequence(activeSeq.id, 'review_resolved');
+            seqStopped++;
+          }
+        } catch (err: any) {
+          console.error(`[CRON] ❌ Failed to close chat ${chat.id}: ${err.message}`);
+        }
+      }
+
+      const duration = Math.round((Date.now() - startTime) / 1000);
+      console.log(
+        `[CRON] ✅ Resolved-review closer: ${closed} chats closed, ${seqStopped} sequences stopped (${duration}s)`
+      );
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in resolved-review closer:', error.message);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Resolved-review closer started (every 30 min, :15 and :45)');
 
   return job;
 }

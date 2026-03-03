@@ -39,6 +39,9 @@ const STATUS_COLORS: Record<ChatStatus, string> = {
 const COMPLETION_REASON_CONFIG: Record<CompletionReason, { label: string; icon: string; color: string }> = {
   review_deleted: { label: 'Отзыв удален', icon: '🗑️', color: 'bg-green-100 text-green-700 border-green-300' },
   review_upgraded: { label: 'Отзыв дополнен', icon: '⭐', color: 'bg-green-100 text-green-700 border-green-300' },
+  review_resolved: { label: 'Не влияет на рейтинг', icon: '✅', color: 'bg-green-100 text-green-700 border-green-300' },
+  temporarily_hidden: { label: 'Временно скрыт', icon: '👻', color: 'bg-purple-100 text-purple-700 border-purple-300' },
+  refusal: { label: 'Отказ', icon: '✋', color: 'bg-orange-100 text-orange-700 border-orange-300' },
   no_reply: { label: 'Нет ответа', icon: '🔇', color: 'bg-gray-100 text-gray-600 border-gray-300' },
   old_dialog: { label: 'Старый диалог', icon: '⏰', color: 'bg-gray-100 text-gray-600 border-gray-300' },
   not_our_issue: { label: 'Не наш вопрос', icon: '❓', color: 'bg-yellow-100 text-yellow-700 border-yellow-300' },

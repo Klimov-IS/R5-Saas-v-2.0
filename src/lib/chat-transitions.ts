@@ -58,7 +58,10 @@ export function validateTransition(
 /**
  * Tags that represent active deletion workflow stages.
  * These should NOT be overwritten by automated AI classification
- * because a manager has already advanced the chat through the workflow.
+ * with non-workflow tags (e.g., 'active', 'no_reply').
+ *
+ * AI CAN progress these forward (candidate → offered → agreed → confirmed)
+ * but CANNOT move them backward (agreed → candidate).
  */
 const DELETION_WORKFLOW_TAGS: ChatTag[] = [
   'deletion_candidate',
@@ -67,6 +70,22 @@ const DELETION_WORKFLOW_TAGS: ChatTag[] = [
   'deletion_confirmed',
   'refund_requested',
 ];
+
+/**
+ * Directional order for deletion workflow tags.
+ * AI auto-classification can only move tags FORWARD (higher number),
+ * never backward. This prevents AI from accidentally downgrading
+ * a tag that a manager or previous classification already advanced.
+ *
+ * refund_requested is a lateral branch at level 1 (same as offered).
+ */
+const DELETION_TAG_ORDER: Record<string, number> = {
+  deletion_candidate: 0,
+  deletion_offered: 1,
+  refund_requested: 1,  // lateral branch from candidate
+  deletion_agreed: 2,
+  deletion_confirmed: 3,
+};
 
 /**
  * Tags that can always be set regardless of current tag.
@@ -96,9 +115,12 @@ export function canAutoOverwriteTag(
 
   // Protect deletion workflow tags from being overwritten by non-workflow tags
   if (DELETION_WORKFLOW_TAGS.includes(currentTag)) {
-    // Allow progression within deletion workflow
+    // Allow FORWARD progression within deletion workflow only
     if (DELETION_WORKFLOW_TAGS.includes(newTag)) {
-      return true;
+      const currentOrder = DELETION_TAG_ORDER[currentTag] ?? 0;
+      const newOrder = DELETION_TAG_ORDER[newTag] ?? 0;
+      // Only allow forward or same-level transitions
+      return newOrder >= currentOrder;
     }
     // Block AI from overwriting deletion workflow with basic tags
     return false;

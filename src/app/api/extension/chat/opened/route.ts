@@ -100,8 +100,58 @@ export async function POST(request: NextRequest) {
       console.warn('[Extension Chat API] Review match failed:', err);
     }
 
+    // 4b. Check if review is already resolved (complaint approved, excluded, etc.)
+    let reviewResolved = false;
+    let resolvedReason: string | null = null;
+    if (reviewId) {
+      try {
+        const reviewResult = await query<{
+          complaint_status: string | null;
+          review_status_wb: string | null;
+          rating_excluded: boolean | null;
+        }>(
+          `SELECT complaint_status, review_status_wb, rating_excluded
+           FROM reviews WHERE id = $1`,
+          [reviewId]
+        );
+        const rev = reviewResult.rows[0];
+        if (rev) {
+          if (rev.complaint_status === 'approved') {
+            reviewResolved = true;
+            resolvedReason = 'complaint_approved';
+          } else if (['excluded', 'unpublished', 'temporarily_hidden', 'deleted'].includes(rev.review_status_wb || '')) {
+            reviewResolved = true;
+            resolvedReason = `review_${rev.review_status_wb}`;
+          } else if (rev.rating_excluded) {
+            reviewResolved = true;
+            resolvedReason = 'rating_excluded';
+          }
+        }
+      } catch (err) {
+        // Non-fatal: resolved check failure shouldn't block link creation
+        console.warn('[Extension Chat API] Resolved check failed:', err);
+      }
+    }
+
     // 5. Extract chat_id from URL (FK dropped — stored directly as text reference)
     const chatId = extractChatIdFromUrl(chatUrl);
+
+    // 5b. If review is resolved, immediately close the chat (if it exists in chats table)
+    if (reviewResolved && chatId) {
+      try {
+        const completionReason = resolvedReason === 'review_temporarily_hidden'
+          ? 'temporarily_hidden' : 'review_resolved';
+        await query(
+          `UPDATE chats SET status = 'closed', completion_reason = $2,
+           status_updated_at = NOW() WHERE id = $1 AND status != 'closed'`,
+          [chatId, completionReason]
+        );
+        console.log(`[Extension Chat API] Auto-closed chat: ${chatId} (${completionReason})`);
+      } catch (err) {
+        // Non-fatal
+        console.warn('[Extension Chat API] Auto-close failed:', err);
+      }
+    }
 
     // 6. Create or return existing link (idempotent)
     const { link, created } = await createReviewChatLink({
@@ -118,7 +168,8 @@ export async function POST(request: NextRequest) {
 
     console.log(
       `[Extension Chat API] Chat ${created ? 'created' : 'exists'}: ` +
-      `store=${storeId} reviewKey=${reviewKey} reviewId=${reviewId || 'pending'} chatId=${chatId || 'none'}`
+      `store=${storeId} reviewKey=${reviewKey} reviewId=${reviewId || 'pending'} chatId=${chatId || 'none'}` +
+      (reviewResolved ? ` [RESOLVED: ${resolvedReason}]` : '')
     );
 
     return NextResponse.json(
@@ -127,6 +178,8 @@ export async function POST(request: NextRequest) {
         chatRecordId: link.id,
         message: created ? 'Chat record created' : 'Chat record already exists',
         reviewMatched: !!reviewId,
+        reviewResolved,
+        resolvedReason,
       },
       { status: created ? 201 : 200, headers: corsHeaders }
     );

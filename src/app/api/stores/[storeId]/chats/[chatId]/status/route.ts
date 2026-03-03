@@ -34,8 +34,8 @@ export async function PATCH(
     // Validate completion_reason if provided
     if (completion_reason) {
       const validReasons: CompletionReason[] = [
-        'review_deleted', 'review_upgraded', 'no_reply', 'old_dialog',
-        'not_our_issue', 'spam', 'negative', 'other'
+        'review_deleted', 'review_upgraded', 'review_resolved', 'temporarily_hidden',
+        'refusal', 'no_reply', 'old_dialog', 'not_our_issue', 'spam', 'negative', 'other'
       ];
       if (!validReasons.includes(completion_reason as CompletionReason)) {
         return NextResponse.json(

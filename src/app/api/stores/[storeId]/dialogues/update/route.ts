@@ -10,7 +10,7 @@ import { buildStoreInstructions } from '@/lib/ai-context';
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
-import { reconcileChatWithLink } from '@/db/review-chat-link-helpers';
+import { reconcileChatWithLink, isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 import { canAutoOverwriteTag } from '@/lib/chat-transitions';
 // Auto-launch removed: sequences are started manually from TG mini app
 
@@ -119,6 +119,41 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
         }
         if (reconciledCount > 0) {
             console.log(`[DIALOGUES] Reconciled ${reconciledCount} extension-opened chat links.`);
+        }
+
+        // --- Step 3.5b: Immediately close chats with resolved reviews ---
+        // Checks ALL synced chats (not only reconciled) because review status
+        // may have changed since last sync (e.g. complaint got approved between syncs)
+        let resolvedClosedCount = 0;
+        for (const activeChat of activeChats) {
+            if (!activeChat.chatID) continue;
+            try {
+                const chatRecord = existingChatMap.get(activeChat.chatID);
+                if (chatRecord && chatRecord.status === 'closed') continue; // already closed
+
+                const { resolved, reason } = await isReviewResolvedForChat(activeChat.chatID);
+                if (resolved) {
+                    // Use specific reason for temporarily_hidden, generic for others
+                    const completionReason = (reason === 'review_temporarily_hidden'
+                        ? 'temporarily_hidden' : 'review_resolved') as dbHelpers.CompletionReason;
+                    await dbHelpers.updateChat(activeChat.chatID, {
+                        status: 'closed' as dbHelpers.ChatStatus,
+                        completion_reason: completionReason,
+                        status_updated_at: new Date().toISOString(),
+                    });
+                    // Stop active sequence if any
+                    const activeSeq = await dbHelpers.getActiveSequenceForChat(activeChat.chatID);
+                    if (activeSeq) {
+                        await dbHelpers.stopSequence(activeSeq.id, reason || 'review_resolved');
+                    }
+                    resolvedClosedCount++;
+                }
+            } catch (err) {
+                // Non-fatal: resolved check failure shouldn't break sync
+            }
+        }
+        if (resolvedClosedCount > 0) {
+            console.log(`[DIALOGUES] Auto-closed ${resolvedClosedCount} chats with resolved reviews.`);
         }
 
         // Build set of all known chat IDs (existing in DB + just upserted from WB active list)

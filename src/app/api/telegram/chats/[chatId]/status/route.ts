@@ -9,8 +9,9 @@ import { validateTransition } from '@/lib/chat-transitions';
 
 const validStatuses: ChatStatus[] = ['inbox', 'in_progress', 'awaiting_reply', 'closed'];
 const validReasons: CompletionReason[] = [
-  'review_deleted', 'review_upgraded', 'no_reply', 'old_dialog',
-  'not_our_issue', 'spam', 'negative', 'other',
+  'review_deleted', 'review_upgraded', 'review_resolved', 'refusal',
+  'no_reply', 'old_dialog', 'not_our_issue', 'spam', 'negative', 'other',
+  'temporarily_hidden',
 ];
 
 /** Tags that managers can set manually from TG Mini App (deletion workflow progression) */

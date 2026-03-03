@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     // Hash password and register
     const passwordHash = await hashPassword(password);
-    const { userId, memberId } = await authDb.registerFromInvite({
+    const { userId, memberId, apiKey } = await authDb.registerFromInvite({
       invite,
       displayName: displayName.trim(),
       passwordHash,
@@ -80,6 +80,10 @@ export async function POST(request: NextRequest) {
 
     setAuthCookie(jwtToken);
 
+    // Build Telegram bot deep link for auto-linking
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'R5_chat_bot';
+    const telegramBotLink = `https://t.me/${botUsername}?start=${apiKey}`;
+
     return NextResponse.json({
       user: {
         id: userId,
@@ -91,6 +95,7 @@ export async function POST(request: NextRequest) {
         name: org?.name || '',
       },
       role: invite.role,
+      telegramBotLink,
     });
   } catch (error: any) {
     console.error('[AUTH-REGISTER] Error:', error.message);

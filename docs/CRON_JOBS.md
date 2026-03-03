@@ -1,6 +1,6 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-03
 
 ---
 
@@ -802,7 +802,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-03
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -816,6 +816,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
 | Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
 | **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
+| **Resolved-Review Closer** | Every 30 min (:15/:45) | 15,45 * * * * | Auto-close chats with resolved reviews (200/batch) |
 | ~~Chat Status Transition~~ | ~~Every 30 min~~ | ~~*/30 * * * *~~ | **DISABLED (2026-02-28):** Was auto-moving `in_progress → awaiting_reply` after 2 days. Disabled — sequences are now manual only |
 
 **Non-CRON Background Process:**
@@ -927,6 +928,38 @@ Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decision
 - [scripts/backfill-auto-sequences-30d.mjs](../scripts/backfill-auto-sequences-30d.mjs) — Batch backfill 30d sequences
 - [scripts/migrate-chat-statuses.mjs](../scripts/migrate-chat-statuses.mjs) — One-time status migration (2026-02-28)
 - [scripts/_check_sequences.mjs](../scripts/_check_sequences.mjs) — Diagnostic script
+- [src/lib/auto-sequence-sender.ts](../src/lib/auto-sequence-sender.ts) — Shared sender utility (used by both API immediate send + cron processor)
+
+---
+
+## 8a. Resolved-Review Closer (Авто-закрытие resolved отзывов)
+
+**Job Name:** `resolved-review-closer`
+**Schedule:** `15,45 * * * *` (every 30 min, offset at :15/:45 to avoid collision with auto-sequence processor)
+**Added:** 2026-03-02
+
+**What It Does:**
+Auto-closes chats linked to reviews that no longer affect store rating:
+1. Queries non-closed chats where linked review is "resolved"
+2. Sets `status = 'closed'`, `completion_reason` = `'review_resolved'` or `'temporarily_hidden'` (CASE-based)
+3. Stops active auto-sequences with appropriate reason
+
+**Resolved conditions:**
+- `complaint_status = 'approved'` — complaint accepted by WB
+- `review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')` — review hidden/removed
+- `rating_excluded = TRUE` — "transparent stars" (don't affect rating)
+
+**Differentiated completion_reason (added 2026-03-03):**
+- `review_status_wb = 'temporarily_hidden'` → `completion_reason = 'temporarily_hidden'` (separate for statistics)
+- All other resolved conditions → `completion_reason = 'review_resolved'`
+
+> **Note:** This cron is a **safety net** (layer 3). Layers 1-2 (Extension chat/opened + Dialogue sync Step 3.5b) close resolved chats instantly. See `docs/domains/chats-ai.md` for full 3-layer architecture.
+
+**Batch limit:** 200 chats per run (safety for first deploy with backlog)
+
+**Source Files:**
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startResolvedReviewCloser()`
+- [src/lib/init-server.ts](../src/lib/init-server.ts) — Registration
 
 ---
 
@@ -1115,6 +1148,7 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 | 2 | Save messages | Upsert `chat_messages`, update `chats.last_message_*` |
 | 3 | AI classification | `classifyChatDeletion()` for chats with new client messages |
 | **3.5** | **Reconciliation** | `reconcileChatWithLink()` — fills `review_chat_links.chat_id` by matching chat URL patterns. Extracts UUID from WB URL, maps to `rcl.chat_url` |
+| **3.5b** | **Instant resolved-close** | Checks ALL synced chats via `isReviewResolvedForChat()`. Closes resolved chats immediately (`review_resolved` or `temporarily_hidden`), stops active sequences. Added 2026-03-03 |
 | 4 | Status updates | Tag changes, counter updates |
 | **5a-tg** | **TG notifications** | Sends push to linked TG users. **Filtered:** WB only for chats with `review_chat_links` record; OZON only for `product_nm_id IS NOT NULL` |
 | ~~5b~~ | ~~Auto-sequence trigger~~ | **REMOVED (2026-02-28).** Was: detects trigger phrases → creates sequences. Now: sequences started manually from TG mini app only |

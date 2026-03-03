@@ -267,6 +267,15 @@ export async function getUnifiedChatQueue(
        WHERE c.store_id = ANY($1::text[])
          AND c.marketplace = 'wb'
          AND s.status = 'active'
+         AND (
+           r.id IS NULL
+           OR NOT (
+             r.complaint_status = 'approved'
+             OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+             OR r.rating_excluded = TRUE
+           )
+           OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+         )
          ${statusCondition}
      )
      UNION ALL
@@ -294,6 +303,15 @@ export async function getUnifiedChatQueue(
          AND c.marketplace = 'ozon'
          AND c.product_nm_id IS NOT NULL
          AND s.status = 'active'
+         AND (
+           r.id IS NULL
+           OR NOT (
+             r.complaint_status = 'approved'
+             OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+             OR r.rating_excluded = TRUE
+           )
+           OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+         )
          ${statusCondition}
      )
      ORDER BY last_message_date DESC NULLS LAST
@@ -330,12 +348,22 @@ export async function getUnifiedChatQueueCount(
          SELECT c.id
          FROM chats c
          INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
          JOIN stores s ON c.store_id = s.id
          JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
          JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'wb'
            AND s.status = 'active'
+           AND (
+             r.id IS NULL
+             OR NOT (
+               r.complaint_status = 'approved'
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.rating_excluded = TRUE
+             )
+             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+           )
            ${statusCondition}
        )
        UNION ALL
@@ -343,11 +371,21 @@ export async function getUnifiedChatQueueCount(
          SELECT c.id
          FROM chats c
          INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
          JOIN stores s ON c.store_id = s.id
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'ozon'
            AND c.product_nm_id IS NOT NULL
            AND s.status = 'active'
+           AND (
+             r.id IS NULL
+             OR NOT (
+               r.complaint_status = 'approved'
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.rating_excluded = TRUE
+             )
+             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+           )
            ${statusCondition}
        )
      ) t`,
@@ -377,23 +415,43 @@ export async function getUnifiedChatQueueCountsByStatus(
          SELECT c.status
          FROM chats c
          INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
          JOIN stores s ON c.store_id = s.id
          JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
          JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'wb'
            AND s.status = 'active'
+           AND (
+             r.id IS NULL
+             OR NOT (
+               r.complaint_status = 'approved'
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.rating_excluded = TRUE
+             )
+             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+           )
        )
        UNION ALL
        (
          SELECT c.status
          FROM chats c
          INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
          JOIN stores s ON c.store_id = s.id
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'ozon'
            AND c.product_nm_id IS NOT NULL
            AND s.status = 'active'
+           AND (
+             r.id IS NULL
+             OR NOT (
+               r.complaint_status = 'approved'
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.rating_excluded = TRUE
+             )
+             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+           )
        )
      ) t
      GROUP BY status`,

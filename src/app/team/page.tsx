@@ -10,6 +10,9 @@ interface Member {
   email: string;
   display_name: string | null;
   created_at: string;
+  telegram_linked: boolean;
+  telegram_username: string | null;
+  telegram_bot_link: string | null;
 }
 
 interface Invite {
@@ -108,7 +111,7 @@ export default function TeamPage() {
         return;
       }
 
-      setFeedback(`Приглашение создано! Ссылка: ${window.location.origin}${data.registrationUrl}`);
+      setFeedback(`Приглашение создано!\n\nTelegram-ссылка (основная): ${data.telegramBotLink}\n\nВеб-регистрация (запасная): ${window.location.origin}${data.registrationUrl}`);
       setInviteEmail('');
       setShowInviteForm(false);
       fetchData();
@@ -202,7 +205,7 @@ export default function TeamPage() {
 
       {/* Feedback */}
       {feedback && (
-        <div className="mb-4 p-3 bg-muted rounded-lg text-sm break-all">
+        <div className="mb-4 p-3 bg-muted rounded-lg text-sm break-all whitespace-pre-line">
           {feedback}
         </div>
       )}
@@ -265,6 +268,7 @@ export default function TeamPage() {
             <tr>
               <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Сотрудник</th>
               <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Роль</th>
+              <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Telegram</th>
               <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Добавлен</th>
               <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Действия</th>
             </tr>
@@ -290,6 +294,29 @@ export default function TeamPage() {
                       <option value="admin">Администратор</option>
                       <option value="manager">Менеджер</option>
                     </select>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {member.telegram_linked ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-green-600 text-sm">✓</span>
+                      <span className="text-xs text-muted-foreground">
+                        {member.telegram_username ? `@${member.telegram_username}` : 'Подключен'}
+                      </span>
+                    </div>
+                  ) : member.telegram_bot_link ? (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(member.telegram_bot_link!);
+                        setFeedback(`TG-ссылка скопирована для ${member.display_name || member.email}`);
+                        setTimeout(() => setFeedback(''), 3000);
+                      }}
+                      className="text-xs px-2 py-0.5 text-primary border border-primary/30 rounded hover:bg-primary/10 transition-colors"
+                    >
+                      Копировать TG-ссылку
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground">

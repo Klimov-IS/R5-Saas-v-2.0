@@ -57,9 +57,13 @@ export async function POST(request: NextRequest) {
       invitedBy: session.userId,
     });
 
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'R5_chat_bot';
+    const telegramBotLink = `https://t.me/${botUsername}?start=inv_${token}`;
+
     return NextResponse.json({
       invite,
       registrationUrl: `/register?token=${token}`,
+      telegramBotLink,
     });
   } catch (error: any) {
     console.error('[ORG-INVITES] POST Error:', error.message);

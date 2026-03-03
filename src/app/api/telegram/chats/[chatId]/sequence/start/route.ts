@@ -5,24 +5,27 @@ import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import type { ChatTag, ChatStatus } from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
-import { findLinkByChatId } from '@/db/review-chat-link-helpers';
+import { findLinkByChatId, isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 import {
   DEFAULT_FOLLOWUP_TEMPLATES_30D,
   DEFAULT_FOLLOWUP_TEMPLATES_4STAR_30D,
   TAG_SEQUENCE_CONFIG,
   getNextSlotTime,
 } from '@/lib/auto-sequence-templates';
+import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
 
 /**
  * POST /api/telegram/chats/[chatId]/sequence/start
  *
  * Manually start an auto-sequence for a chat.
+ * Sends the first message immediately, then schedules the rest via cron.
+ *
  * Supports two modes:
  *   1. Default (no body.sequenceType) — 30-day base sequence (by rating: 4★ vs 1-3★)
  *   2. Tag-based (body.sequenceType) — short funnel follow-up (offer_reminder, agreement_followup, refund_followup)
  *
  * Skips buyer_messages_count check (manual = manager decision).
- * Still checks: no active sequence, no completed family sequence.
+ * Still checks: no active sequence, no completed family sequence, review not resolved.
  */
 export async function POST(
   request: NextRequest,
@@ -57,6 +60,15 @@ export async function POST(
       return NextResponse.json(
         { error: 'Active sequence already exists', sequenceId: existing.id },
         { status: 409 }
+      );
+    }
+
+    // Check if review is resolved — no point starting a sequence
+    const { resolved, reason: resolvedReason } = await isReviewResolvedForChat(chatId);
+    if (resolved) {
+      return NextResponse.json(
+        { error: `Review is resolved (${resolvedReason}), cannot start sequence` },
+        { status: 400 }
       );
     }
 
@@ -106,9 +118,8 @@ export async function POST(
       );
     }
 
-    // Create sequence — Day 0 for base, Day 3 for funnel (first message starts at day 3)
-    const firstDay = templates[0]?.day ?? 0;
-    const nextSendAt = getNextSlotTime(firstDay === 0 ? 0 : firstDay);
+    // Create sequence with fallback next_send_at (cron picks up if immediate send fails)
+    const nextSendAt = getNextSlotTime(0);
     const seq = await query(
       `INSERT INTO chat_auto_sequences
         (chat_id, store_id, owner_id, sequence_type, messages, max_steps, next_send_at)
@@ -121,24 +132,55 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to create sequence' }, { status: 500 });
     }
 
-    // Update chat status to awaiting_reply (sequence is sending messages)
-    await dbHelpers.updateChat(chatId, {
-      status: 'awaiting_reply' as ChatStatus,
-      status_updated_at: new Date().toISOString(),
-    });
+    const sequenceId = seq.rows[0].id;
+
+    // Attempt to send the first message immediately
+    let immediateSent = false;
+    try {
+      const result = await sendSequenceMessage({
+        sequenceId,
+        chatId,
+        storeId: chat.store_id,
+        ownerId: chat.owner_id,
+        currentStep: 0,
+        templates,
+      });
+      immediateSent = result.sent;
+    } catch (sendErr: any) {
+      console.warn(
+        `[TG-SEQUENCE] Immediate send failed for chat ${chatId}, cron will pick up: ${sendErr.message}`
+      );
+    }
+
+    // Set chat status based on send result
+    if (immediateSent) {
+      // Seller sent a message → in_progress
+      await dbHelpers.updateChat(chatId, {
+        status: 'in_progress' as ChatStatus,
+        status_updated_at: new Date().toISOString(),
+      });
+    } else {
+      // Cron will send later → awaiting_reply
+      await dbHelpers.updateChat(chatId, {
+        status: 'awaiting_reply' as ChatStatus,
+        status_updated_at: new Date().toISOString(),
+      });
+    }
 
     console.log(
       `[TG-SEQUENCE] Manual start: chat ${chatId}, type=${sequenceType}, ` +
-      `${templates.length} msgs, tag=${chatTag}`
+      `${templates.length} msgs, tag=${chatTag}, immediateSent=${immediateSent}`
     );
 
     return NextResponse.json({
       success: true,
+      immediateSent,
       sequence: {
-        id: seq.rows[0].id,
+        id: sequenceId,
         sequenceType,
+        currentStep: immediateSent ? 1 : 0,
         maxSteps: templates.length,
-        nextSendAt,
+        nextSendAt: immediateSent ? undefined : nextSendAt,
       },
     });
   } catch (error: any) {

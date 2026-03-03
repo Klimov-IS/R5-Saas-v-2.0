@@ -2,7 +2,7 @@
 
 **Purpose:** Single source of truth for all status values across the system (Database, API, Chrome Extension)
 
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-03-03
 
 ---
 
@@ -73,6 +73,25 @@
 |-------------|---------|--------|---------|
 | `chat_strategy_enum` | Chat handling approach | Product rules | Yes (user setting) |
 | `tag` | Chat classification | AI classification | Yes (re-classify) |
+| `completion_reason` | Why chat was closed | Manager / Cron | Yes (set on close) |
+
+### Chat Completion Reasons
+
+**TypeScript type:** `CompletionReason` in `src/db/helpers.ts`
+
+| Value | Label | Source | Description |
+|-------|-------|--------|-------------|
+| `review_deleted` | Отзыв удален | Manual | Отзыв удалён покупателем |
+| `review_upgraded` | Отзыв дополнен | Manual | Покупатель поднял оценку до 5★ |
+| `review_resolved` | Не влияет на рейтинг | Auto / Manual | Жалоба одобрена / отзыв исключён / удалён WB |
+| `temporarily_hidden` | Временно скрыт | Auto / Manual | Отзыв временно скрыт WB (может "проснуться" при ответе покупателя) |
+| `refusal` | Отказ | Manual | Покупатель отказался от сотрудничества |
+| `no_reply` | Нет ответа | Auto / Manual | Покупатель не ответил (авто при завершении рассылки) |
+| `old_dialog` | Старый диалог | Manual | Неактуальный диалог |
+| `not_our_issue` | Не наш вопрос | Manual | Тема чата не связана с товаром |
+| `spam` | Спам | Manual | Спам, конкуренты, автоответы |
+| `negative` | Негатив | Manual | Агрессивный покупатель |
+| `other` | Другое | Manual | Прочие причины |
 
 ### 4. System Statuses
 
@@ -279,9 +298,10 @@ not_sent → draft → sent → pending → approved / rejected
 - **Meaning:** WB rejected complaint, review remains visible
 - **Russian:** "Отклонена"
 - **WB UI:** Shows red X + "Жалоба отклонена" + reason
-- **Business Rule:** ❌ Complaint failed, review still counts
+- **Business Rule:** ❌ Complaint failed, review still counts. **Повторная подача невозможна — WB позволяет только 1 жалобу на отзыв.**
 - **DB:** `review_complaints.wb_response` contains rejection reason
 - **Analytics:** Track rejection reasons to improve future complaints
+- **Next Step:** Единственный путь — чат с покупателем (если `chat_status_by_review = 'available'`)
 
 ---
 
@@ -500,11 +520,19 @@ function parseComplaintStatus(reviewElement) {
 
 ## Business Rules
 
-### When to File Complaints
+### Platform Constraints
+
+| Platform | Complaints | Constraint |
+|----------|-----------|------------|
+| **WB** | ✅ Supported | **1 complaint per review — forever.** No second attempt possible. |
+| **OZON** | ❌ Not supported | No complaint mechanism exists. Work via chats only. |
+
+### When to File Complaints (WB only)
 
 ✅ **File complaint if:**
 ```
-review_status_wb = 'visible'
+marketplace = 'wb'
+AND review_status_wb = 'visible'
 AND complaint_status IN ('not_sent', 'draft')
 AND product.work_status = 'active'
 AND product_rules.submit_complaints = TRUE
@@ -513,8 +541,9 @@ AND rating <= 3 (or configured per product)
 
 ❌ **DO NOT file complaint if:**
 ```
-review_status_wb IN ('unpublished', 'excluded')  -- Already handled by WB
-OR complaint_status IN ('sent', 'pending', 'approved', 'rejected')  -- Already filed
+marketplace = 'ozon'  -- OZON has no complaint mechanism
+OR review_status_wb IN ('unpublished', 'excluded')  -- Already handled by WB
+OR complaint_status IN ('sent', 'pending', 'approved', 'rejected')  -- Already filed (1 attempt only!)
 OR product.work_status != 'active'  -- Product not in workflow
 ```
 
@@ -628,6 +657,7 @@ interface ExtensionReviewSyncPayload {
 |---------|------|---------|
 | 1.0 | 2026-01-09 | Initial migration: Added ENUM types to database |
 | 1.1 | 2026-01-10 | Documentation created, extension integration planned |
+| 1.2 | 2026-03-03 | Added platform constraints: WB 1-complaint rule, OZON no complaints |
 
 ---
 
@@ -645,4 +675,4 @@ interface ExtensionReviewSyncPayload {
 - [API Reference](../extension/api-reference.md) - Status field validation
 
 **Maintained By:** R5 Team
-**Last Updated:** 2026-01-10
+**Last Updated:** 2026-03-03

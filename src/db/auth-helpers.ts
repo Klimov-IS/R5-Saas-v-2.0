@@ -6,6 +6,7 @@
  */
 
 import { query, transaction } from './client';
+import { randomBytes } from 'crypto';
 
 // ============================================================================
 // Types
@@ -29,6 +30,12 @@ export interface OrgMember {
 export interface OrgMemberWithUser extends OrgMember {
   email: string;
   display_name: string | null;
+}
+
+export interface OrgMemberWithTgStatus extends OrgMemberWithUser {
+  telegram_linked: boolean;
+  telegram_username: string | null;
+  telegram_bot_link: string | null;
 }
 
 export interface Invite {
@@ -286,7 +293,7 @@ export async function registerFromInvite(data: {
   invite: Invite;
   displayName: string;
   passwordHash: string;
-}): Promise<{ userId: string; memberId: string }> {
+}): Promise<{ userId: string; memberId: string; apiKey: string }> {
   return transaction(async (client) => {
     // 1. Create user
     const userResult = await client.query(
@@ -297,11 +304,12 @@ export async function registerFromInvite(data: {
     );
     const userId = userResult.rows[0].id;
 
-    // 2. Create user_settings (required for the system to work)
+    // 2. Create user_settings with auto-generated API key
+    const apiKey = `wbrm_${randomBytes(16).toString('hex')}`;
     await client.query(
-      `INSERT INTO user_settings (id, deepseek_api_key)
-       VALUES ($1, '')`,
-      [userId]
+      `INSERT INTO user_settings (id, deepseek_api_key, api_key)
+       VALUES ($1, '', $2)`,
+      [userId, apiKey]
     );
 
     // 3. Add to org_members
@@ -319,6 +327,59 @@ export async function registerFromInvite(data: {
       [data.invite.id]
     );
 
-    return { userId, memberId };
+    // 5. Auto-assign all active org stores to manager
+    if (data.invite.role === 'manager') {
+      const storesResult = await client.query(
+        `SELECT id FROM stores WHERE org_id = $1 AND status = 'active'`,
+        [data.invite.org_id]
+      );
+      for (const store of storesResult.rows) {
+        await client.query(
+          `INSERT INTO member_store_access (id, member_id, store_id)
+           VALUES (gen_random_uuid()::text, $1, $2)`,
+          [memberId, store.id]
+        );
+      }
+    }
+
+    return { userId, memberId, apiKey };
   });
+}
+
+/**
+ * Get org members with Telegram link status.
+ * Used by /team page to show TG connection status + deep link for unlinked members.
+ */
+export async function getOrgMembersWithTgStatus(orgId: string): Promise<OrgMemberWithTgStatus[]> {
+  const result = await query<OrgMemberWithUser & {
+    telegram_linked: boolean;
+    telegram_username: string | null;
+    api_key: string | null;
+  }>(
+    `SELECT
+       om.*,
+       u.email,
+       u.display_name,
+       (tu.id IS NOT NULL) as telegram_linked,
+       tu.telegram_username,
+       us.api_key
+     FROM org_members om
+     JOIN users u ON om.user_id = u.id
+     LEFT JOIN telegram_users tu ON tu.user_id = om.user_id
+     LEFT JOIN user_settings us ON us.id = om.user_id
+     WHERE om.org_id = $1
+     ORDER BY
+       CASE om.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'manager' THEN 2 END,
+       om.created_at`,
+    [orgId]
+  );
+
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'R5_chat_bot';
+  return result.rows.map(row => ({
+    ...row,
+    telegram_bot_link: !row.telegram_linked && row.api_key
+      ? `https://t.me/${botUsername}?start=${row.api_key}`
+      : null,
+    api_key: undefined as any, // don't leak api_key to frontend
+  }));
 }

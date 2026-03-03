@@ -95,6 +95,26 @@ async function sendMessage(chatId, text, extra = {}) {
 async function handleStart(msg) {
   const chatId = msg.chat.id;
   const name = msg.from.first_name || 'друг';
+  const text = msg.text.trim();
+
+  // Deep link: /start <payload>
+  const parts = text.split(/\s+/);
+  const payload = parts.length > 1 ? parts[1] : null;
+
+  // /start wbrm_xxx → auto-link existing user
+  if (payload && payload.startsWith('wbrm_')) {
+    console.log(`[TG-BOT] Deep link auto-link: TG ${msg.from.id} with key ${payload.substring(0, 10)}...`);
+    await handleLink(msg, payload);
+    return;
+  }
+
+  // /start inv_xxx → auto-register from invite + link
+  if (payload && payload.startsWith('inv_')) {
+    const inviteToken = payload.substring(4); // remove "inv_" prefix
+    console.log(`[TG-BOT] Deep link invite: TG ${msg.from.id} with token ${inviteToken.substring(0, 8)}...`);
+    await handleInviteLink(msg, inviteToken);
+    return;
+  }
 
   await sendMessage(chatId,
     `👋 Привет, ${name}!\n\n` +
@@ -180,15 +200,22 @@ async function handleLink(msg, apiKey) {
       [userId, telegramId, telegramUsername, chatId]
     );
 
-    // Get stores count with marketplace breakdown
-    const storesResult = await dbQuery(
-      "SELECT marketplace, COUNT(*) as count FROM stores WHERE owner_id = $1 AND status = 'active' GROUP BY marketplace",
+    // Get stores count via org membership (works for managers too, not just owners)
+    const orgResult = await dbQuery(
+      'SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1',
       [userId]
     );
-    const wbCount = parseInt((storesResult.rows.find(r => r.marketplace === 'wb') || { count: 0 }).count, 10);
-    const ozonCount = parseInt((storesResult.rows.find(r => r.marketplace === 'ozon') || { count: 0 }).count, 10);
-    const storeCount = wbCount + ozonCount;
-    const storeBreakdown = ozonCount > 0 ? ` (WB: ${wbCount}, OZON: ${ozonCount})` : '';
+    let wbCount = 0, ozonCount = 0, storeCount = 0, storeBreakdown = '';
+    if (orgResult.rows[0]) {
+      const storesResult = await dbQuery(
+        "SELECT marketplace, COUNT(*) as count FROM stores WHERE org_id = $1 AND status = 'active' GROUP BY marketplace",
+        [orgResult.rows[0].org_id]
+      );
+      wbCount = parseInt((storesResult.rows.find(r => r.marketplace === 'wb') || { count: 0 }).count, 10);
+      ozonCount = parseInt((storesResult.rows.find(r => r.marketplace === 'ozon') || { count: 0 }).count, 10);
+      storeCount = wbCount + ozonCount;
+      storeBreakdown = ozonCount > 0 ? ` (WB: ${wbCount}, OZON: ${ozonCount})` : '';
+    }
 
     await sendMessage(chatId,
       `✅ Аккаунт привязан!\n\n` +
@@ -210,6 +237,171 @@ async function handleLink(msg, apiKey) {
   } catch (error) {
     console.error('[TG-BOT] Error in /link:', error.message);
     await sendMessage(chatId, '❌ Произошла ошибка. Попробуйте позже.');
+  }
+}
+
+/**
+ * Handle invite deep link: /start inv_<invite-token>
+ * Auto-registers user from invite + links TG account in one step.
+ * Manager doesn't need to register on the web at all.
+ */
+async function handleInviteLink(msg, inviteToken) {
+  const chatId = msg.chat.id;
+  const telegramId = msg.from.id;
+  const telegramUsername = msg.from.username || null;
+  const displayName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || 'Manager';
+
+  try {
+    // 1. Check if this TG account is already linked
+    const existingTg = await dbQuery(
+      'SELECT id, user_id FROM telegram_users WHERE telegram_id = $1',
+      [telegramId]
+    );
+    if (existingTg.rows[0]) {
+      await sendMessage(chatId,
+        '✅ Ваш Telegram уже привязан к аккаунту R5!\n\n' +
+        'Откройте Mini App для работы с чатами.',
+        {
+          reply_markup: {
+            inline_keyboard: [[{
+              text: '📱 Открыть Mini App',
+              web_app: { url: MINI_APP_URL },
+            }]],
+          },
+        }
+      );
+      return;
+    }
+
+    // 2. Look up invite
+    const inviteResult = await dbQuery(
+      'SELECT * FROM invites WHERE token = $1',
+      [inviteToken]
+    );
+    const invite = inviteResult.rows[0];
+
+    if (!invite) {
+      await sendMessage(chatId, '❌ Приглашение не найдено. Запросите новую ссылку у администратора.');
+      return;
+    }
+
+    if (invite.used_at) {
+      await sendMessage(chatId, '⚠️ Это приглашение уже использовано. Запросите новое у администратора.');
+      return;
+    }
+
+    if (new Date(invite.expires_at) < new Date()) {
+      await sendMessage(chatId, '⚠️ Приглашение истекло. Запросите новое у администратора.');
+      return;
+    }
+
+    // 3. Check if email already registered
+    const existingUser = await dbQuery(
+      'SELECT id FROM users WHERE email = $1',
+      [invite.email]
+    );
+    if (existingUser.rows[0]) {
+      await sendMessage(chatId,
+        '⚠️ Пользователь с этим email уже зарегистрирован.\n\n' +
+        'Если это ваш аккаунт, используйте команду /link для привязки.'
+      );
+      return;
+    }
+
+    // 4. Auto-register: create user + settings + org member + stores + TG link
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 4a. Create user (no password — TG-only auth)
+      const crypto = require('crypto');
+      const apiKey = `wbrm_${crypto.randomBytes(16).toString('hex')}`;
+      const userResult = await client.query(
+        `INSERT INTO users (id, email, password_hash, display_name, is_approved)
+         VALUES (gen_random_uuid()::text, $1, NULL, $2, TRUE)
+         RETURNING id`,
+        [invite.email, displayName]
+      );
+      const userId = userResult.rows[0].id;
+
+      // 4b. Create user_settings with API key
+      await client.query(
+        `INSERT INTO user_settings (id, deepseek_api_key, api_key)
+         VALUES ($1, '', $2)`,
+        [userId, apiKey]
+      );
+
+      // 4c. Add to org_members
+      const memberResult = await client.query(
+        `INSERT INTO org_members (id, org_id, user_id, role)
+         VALUES (gen_random_uuid()::text, $1, $2, $3)
+         RETURNING id`,
+        [invite.org_id, userId, invite.role]
+      );
+      const memberId = memberResult.rows[0].id;
+
+      // 4d. Auto-assign all active org stores (for any role)
+      const storesResult = await client.query(
+        `SELECT id FROM stores WHERE org_id = $1 AND status = 'active'`,
+        [invite.org_id]
+      );
+      for (const store of storesResult.rows) {
+        await client.query(
+          `INSERT INTO member_store_access (id, member_id, store_id)
+           VALUES (gen_random_uuid()::text, $1, $2)`,
+          [memberId, store.id]
+        );
+      }
+
+      // 4e. Mark invite as used
+      await client.query(
+        'UPDATE invites SET used_at = NOW() WHERE id = $1',
+        [invite.id]
+      );
+
+      // 4f. Link Telegram account
+      await client.query(
+        `INSERT INTO telegram_users (id, user_id, telegram_id, telegram_username, chat_id)
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4)`,
+        [userId, telegramId, telegramUsername, chatId]
+      );
+
+      await client.query('COMMIT');
+
+      // 5. Get store count for success message
+      const storeCount = storesResult.rows.length;
+      const roleLabel = invite.role === 'admin' ? 'Администратор' : 'Менеджер';
+
+      await sendMessage(chatId,
+        `✅ Регистрация завершена!\n\n` +
+        `📧 ${invite.email}\n` +
+        `👤 ${displayName}\n` +
+        `🏷 Роль: ${roleLabel}\n` +
+        `🏪 Магазинов: ${storeCount}\n\n` +
+        `Теперь вы будете получать уведомления о новых ответах клиентов.\n` +
+        `Откройте Mini App для работы с чатами.`,
+        {
+          reply_markup: {
+            inline_keyboard: [[{
+              text: '📱 Открыть Mini App',
+              web_app: { url: MINI_APP_URL },
+            }]],
+          },
+        }
+      );
+
+      console.log(`[TG-BOT] ✅ Auto-registered + linked: TG ${telegramId} (@${telegramUsername}) → user ${userId} (${invite.email}), role=${invite.role}, stores=${storeCount}`);
+
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error('[TG-BOT] Error in invite link:', error.message);
+    await sendMessage(chatId, '❌ Произошла ошибка при регистрации. Попробуйте позже.');
   }
 }
 
@@ -372,7 +564,7 @@ async function pollUpdates() {
 
       const text = msg.text.trim();
 
-      if (text === '/start') {
+      if (text.startsWith('/start')) {
         await handleStart(msg);
       } else if (text.startsWith('/link')) {
         const apiKey = text.split(/\s+/)[1];

@@ -1,7 +1,7 @@
 # Домен: AI в чатах
 
-**Дата:** 2026-03-01
-**Версия:** 3.1
+**Дата:** 2026-03-03
+**Версия:** 3.3
 **AI Model:** Deepseek Chat (`deepseek-chat`)
 **API Endpoint:** `https://api.deepseek.com/chat/completions`
 
@@ -77,6 +77,84 @@ AI-ассистент в чатах помогает менеджерам быс
 **Защита статуса:** Dialogue sync НЕ переводит `awaiting_reply` → `in_progress` при отправке сообщения продавцом, если есть активная авто-рассылка (`getActiveSequenceForChat()`). Это предотвращает сброс статуса при автоматической отправке follow-up.
 
 **Важно:** ChatTag = AI-классификация содержимого. ChatStatus = позиция на Kanban-доске (управляется автоматически + вручную).
+
+### Причины закрытия (CompletionReason)
+
+> Source of truth: `src/db/helpers.ts` — тип `CompletionReason`
+
+| Причина | Label в TG | Описание |
+|---------|-----------|----------|
+| `review_deleted` | Отзыв удален | Отзыв удалён покупателем |
+| `review_upgraded` | Отзыв дополнен | Покупатель поднял оценку до 5★ |
+| `review_resolved` | Не влияет на рейтинг | Жалоба одобрена / отзыв исключён / скрыт / удалён WB |
+| `temporarily_hidden` | Временно скрыт | Отзыв временно скрыт WB (может "проснуться" при ответе покупателя) |
+| `refusal` | Отказ | Покупатель отказался от сотрудничества |
+| `no_reply` | Нет ответа | Покупатель не ответил (ставится авто-рассылкой при завершении) |
+| `old_dialog` | Старый диалог | Неактуальный диалог |
+| `not_our_issue` | Не наш вопрос | Тема чата не связана с товаром/отзывом |
+| `spam` | Спам | Спам, автоответы, конкуренты |
+| `negative` | Негатив | Агрессивный покупатель, без перспектив |
+| `other` | Другое | Прочие причины |
+
+### Авто-закрытие resolved отзывов (обновлено 2026-03-03)
+
+**3-уровневая система мгновенного авто-закрытия:**
+
+| # | Уровень | Когда срабатывает | Файл |
+|---|---------|-------------------|------|
+| 1 | **Extension chat/opened** | Расширение открывает чат → API проверяет resolved | `src/app/api/extension/chat/opened/route.ts` |
+| 2 | **Dialogue sync Step 3.5b** | Каждый sync проверяет ВСЕ синхронизируемые чаты | `src/app/api/stores/[storeId]/dialogues/update/route.ts` |
+| 3 | **Крон (safety net)** | Каждые 30 мин, :15/:45 | `src/lib/cron-jobs.ts` → `startResolvedReviewCloser()` |
+
+**Resolved conditions (единые для всех уровней):**
+- `complaint_status = 'approved'` — жалоба одобрена WB
+- `review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')` — отзыв скрыт/удалён
+- `rating_excluded = TRUE` — "прозрачные звёзды" (не влияют на рейтинг)
+
+**Разделение completion_reason:**
+- `temporarily_hidden` → `completion_reason = 'temporarily_hidden'` (для статистики)
+- Все остальные → `completion_reason = 'review_resolved'`
+
+**Уровень 1 — Extension chat/opened (мгновенно):**
+При создании `review_chat_link` проверяет статус отзыва. Если resolved + chatId найден → сразу закрывает чат. Возвращает `reviewResolved: true` и `resolvedReason` в ответе для расширения.
+
+**Уровень 2 — Dialogue sync Step 3.5b (мгновенно):**
+После reconciliation (Step 3.5), проверяет ВСЕ синхронизируемые чаты через `isReviewResolvedForChat()`. Закрывает resolved чаты + останавливает активные рассылки.
+
+**Уровень 3 — Крон (safety net, каждые 30 мин):**
+`startResolvedReviewCloser()` — fallback для чатов, пропущенных уровнями 1-2. Batch: 200 чатов за раз.
+
+**SQL-фильтр:** TG очередь (`getUnifiedChatQueue`, `getUnifiedChatQueueCount`, `getUnifiedChatQueueCountsByStatus`) также фильтрует resolved отзывы — они не отображаются в активных табах.
+
+### Особая обработка `temporarily_hidden` (обновлено 2026-03-03)
+
+Отзывы со статусом `temporarily_hidden` (временно скрыт WB) требуют **особого подхода**:
+
+| Аспект | Поведение |
+|--------|-----------|
+| **Влияние на рейтинг** | Нет — пока покупатель не ответил в чате |
+| **Показ в TG очереди** | Только если `last_message_sender = 'client'` (покупатель ответил сам) |
+| **Авто-закрытие** | **Да** — закрывается с `completion_reason = 'temporarily_hidden'` (отдельная причина для статистики) |
+| **Рассылки** | Заблокированы (`isReviewResolvedForChat` включает `temporarily_hidden`) |
+
+**Бизнес-логика:** Если мы начнём рассылку, покупатель ответит → отзыв "просыпается" и начинает влиять на рейтинг. Поэтому:
+1. Рассылки заблокированы — не "будим" покупателя
+2. Чат скрыт из очереди — менеджер не увидит и не начнёт диалог
+3. Чат автоматически закрывается с `temporarily_hidden` (для отдельной статистики)
+4. Но если покупатель **сам** ответил — чат появляется в очереди, нужно работать
+
+**SQL-фильтр (3 функции × 2 ветки WB/OZON):**
+```sql
+AND (
+  r.id IS NULL
+  OR NOT (
+    r.complaint_status = 'approved'
+    OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+    OR r.rating_excluded = TRUE
+  )
+  OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
+)
+```
 
 ---
 
@@ -196,8 +274,20 @@ interface ClassifyChatDeletionOutput {
   ├── Промпт: prompt_chat_deletion_tag (fallback: prompt_chat_tag)
   ├── Контекст: история + товар + product_rules + regex-подсказки
   ├── JSON response → валидация через Zod
+  ├── AI определяет ВСЕ 6 deletion-тегов (candidate → offered → agreed → confirmed)
   └── Fallback: если AI упал → используем regex-результат
 ```
+
+**AI auto-progression тегов (добавлено 2026-03-01):**
+
+AI классификация при dialogue sync автоматически продвигает теги воронки:
+- `deletion_candidate` → `deletion_offered` — если продавец отправил конкретное предложение компенсации
+- `deletion_offered` → `deletion_agreed` — если покупатель явно согласился удалить/изменить отзыв
+- `deletion_agreed` → `deletion_confirmed` — если покупатель подтвердил что удалил/изменил
+
+**Направленная защита:** Guard `canAutoOverwriteTag` разрешает только FORWARD progression — AI не может откатить `deletion_agreed` → `deletion_candidate`. Порядок: candidate(0) → offered(1) → agreed(2) → confirmed(3). `refund_requested` = уровень 1 (боковая ветка).
+
+**Файл:** `src/lib/chat-transitions.ts` — `DELETION_TAG_ORDER` + `canAutoOverwriteTag()`
 
 **Триггерные фразы (regex):**
 
@@ -212,7 +302,7 @@ interface ClassifyChatDeletionOutput {
 
 **Порог для deletion_candidate:** confidence >= 0.80
 
-**Промпт:** Hardcoded в `src/ai/prompts/chat-deletion-classification-prompt.ts` (~3800 символов, русский язык)
+**Промпт:** Хранится в `user_settings.prompt_chat_deletion_tag` (~4500 символов, русский язык). Обновлён 2026-03-01: добавлены описания `deletion_offered`, `deletion_agreed`, `deletion_confirmed` для AI auto-progression.
 
 ---
 
@@ -706,9 +796,12 @@ INSERT INTO ai_logs (
 - Нажимает кнопку рассылки (текст зависит от текущего тега чата)
 - API: `POST /api/telegram/chats/[chatId]/sequence/start`
 - Body (опционально): `{ "sequenceType": "deletion_offered" }` — для tag-based рассылок
-- Создаёт sequence + ставит `status='awaiting_reply'`
+- **Первое сообщение отправляется сразу** (immediate send), остальные — по расписанию через крон
+- Если immediate send успешен → чат переходит в `in_progress`, UI показывает "1/N"
+- Если immediate send не удался → fallback к `awaiting_reply`, крон отправит при следующем тике
 
 **Файл:** `src/app/api/telegram/chats/[chatId]/sequence/start/route.ts`
+**Shared sender:** `src/lib/auto-sequence-sender.ts`
 
 **Два режима запуска:**
 
@@ -721,8 +814,9 @@ INSERT INTO ai_logs (
    - Family dedup по `offer_reminder` / `agreement_followup` / `refund_followup`
 
 **Проверки при ручном запуске:**
-1. Нет активной рассылки для этого чата
-2. Нет completed рассылки в той же «семье» (dedup)
+1. Отзыв не resolved (`isReviewResolvedForChat`) — если resolved, возвращает 400
+2. Нет активной рассылки для этого чата
+3. Нет completed рассылки в той же «семье» (dedup)
 
 ### Смена тега из TG Mini App (добавлено 2026-03-01)
 
@@ -974,4 +1068,4 @@ pr.chat_strategy::text as chat_strategy
 
 ---
 
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-03

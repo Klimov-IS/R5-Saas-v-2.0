@@ -4,6 +4,8 @@
 const COMPLETION_REASONS: Record<string, string> = {
   review_deleted: 'Отзыв удален',
   review_upgraded: 'Отзыв дополнен',
+  review_resolved: 'Не влияет на рейтинг',
+  refusal: 'Отказ',
   no_reply: 'Нет ответа',
   old_dialog: 'Старый диалог',
   not_our_issue: 'Не наш вопрос',

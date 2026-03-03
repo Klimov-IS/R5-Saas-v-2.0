@@ -10,6 +10,13 @@ interface InviteInfo {
   orgName: string;
 }
 
+interface SuccessData {
+  displayName: string;
+  email: string;
+  role: string;
+  telegramBotLink: string;
+}
+
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -22,6 +29,7 @@ function RegisterForm() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(true);
+  const [successData, setSuccessData] = useState<SuccessData | null>(null);
 
   // Validate invite token on mount
   useEffect(() => {
@@ -74,8 +82,13 @@ function RegisterForm() {
         return;
       }
 
-      router.push('/');
-      router.refresh();
+      // Show success screen with TG link instead of redirect
+      setSuccessData({
+        displayName: displayName.trim(),
+        email: inviteInfo!.email,
+        role: inviteInfo!.role,
+        telegramBotLink: data.telegramBotLink,
+      });
     } catch {
       setError('Ошибка сети');
     } finally {
@@ -88,6 +101,63 @@ function RegisterForm() {
       <div className="w-full max-w-sm">
         <div className="bg-background rounded-xl border shadow-sm p-8 text-center">
           <p className="text-muted-foreground">Проверка приглашения...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Success screen after registration
+  if (successData) {
+    const roleLabel = successData.role === 'admin' ? 'Администратор' : 'Менеджер';
+    return (
+      <div className="w-full max-w-sm">
+        <div className="bg-background rounded-xl border shadow-sm p-8">
+          <div className="text-center mb-6">
+            <div className="w-14 h-14 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
+              ✓
+            </div>
+            <h1 className="text-xl font-bold mb-1">Регистрация завершена!</h1>
+            <p className="text-muted-foreground text-sm">
+              Добро пожаловать, <strong>{successData.displayName}</strong>
+            </p>
+          </div>
+
+          <div className="bg-muted/50 rounded-lg p-3 mb-5 space-y-1.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Email:</span>
+              <span className="font-medium">{successData.email}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Роль:</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                successData.role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+              }`}>
+                {roleLabel}
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-sky-50 border border-sky-200 rounded-lg p-4 mb-5">
+            <h3 className="font-semibold text-sm mb-1.5">Подключите Telegram</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Получайте уведомления о новых ответах клиентов прямо в Telegram.
+            </p>
+            <a
+              href={successData.telegramBotLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full block text-center py-2.5 bg-[#0088cc] text-white rounded-lg text-sm font-semibold hover:bg-[#0077b5] transition-colors"
+            >
+              Открыть @R5_chat_bot
+            </a>
+          </div>
+
+          <button
+            onClick={() => { router.push('/'); router.refresh(); }}
+            className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Перейти в кабинет
+          </button>
         </div>
       </div>
     );

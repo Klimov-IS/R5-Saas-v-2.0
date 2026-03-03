@@ -50,13 +50,19 @@ interface SequenceInfo {
 }
 
 const COMPLETION_REASONS = [
+  // Frequent (manual) — sorted by real usage frequency
+  { value: 'not_our_issue', label: 'Не наш вопрос', icon: '❓' },
+  { value: 'no_reply', label: 'Нет ответа', icon: '🔇' },
+  { value: 'negative', label: 'Негатив', icon: '😠' },
+  { value: 'refusal', label: 'Отказ', icon: '✋' },
+  // Success outcomes
   { value: 'review_deleted', label: 'Отзыв удален', icon: '🗑️' },
   { value: 'review_upgraded', label: 'Отзыв дополнен', icon: '⭐' },
-  { value: 'no_reply', label: 'Нет ответа', icon: '🔇' },
-  { value: 'old_dialog', label: 'Старый диалог', icon: '⏰' },
-  { value: 'not_our_issue', label: 'Не наш вопрос', icon: '❓' },
+  { value: 'review_resolved', label: 'Не влияет на рейтинг', icon: '✅' },
+  { value: 'temporarily_hidden', label: 'Временно скрыт', icon: '👻' },
+  // Rare
   { value: 'spam', label: 'Спам', icon: '🚫' },
-  { value: 'negative', label: 'Негатив', icon: '😠' },
+  { value: 'old_dialog', label: 'Старый диалог', icon: '⏰' },
   { value: 'other', label: 'Другое', icon: '📋' },
 ];
 
@@ -376,8 +382,15 @@ export default function TgChatPage() {
         haptic('error');
         showFeedback(err.error || 'Ошибка запуска рассылки');
       } else {
+        const data = await res.json();
         haptic('success');
-        showFeedback('Рассылка запущена');
+        if (data.immediateSent) {
+          showFeedback('Рассылка запущена, 1-е сообщение отправлено');
+          // Re-fetch chat + messages to show the sent message
+          fetchChat();
+        } else {
+          showFeedback('Рассылка запущена');
+        }
         fetchSequence();
       }
     } catch {
