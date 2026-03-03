@@ -152,20 +152,11 @@ export async function POST(
       );
     }
 
-    // Set chat status based on send result
-    if (immediateSent) {
-      // Seller sent a message → in_progress
-      await dbHelpers.updateChat(chatId, {
-        status: 'in_progress' as ChatStatus,
-        status_updated_at: new Date().toISOString(),
-      });
-    } else {
-      // Cron will send later → awaiting_reply
-      await dbHelpers.updateChat(chatId, {
-        status: 'awaiting_reply' as ChatStatus,
-        status_updated_at: new Date().toISOString(),
-      });
-    }
+    // Active sequence = always awaiting_reply (waiting for buyer response)
+    await dbHelpers.updateChat(chatId, {
+      status: 'awaiting_reply' as ChatStatus,
+      status_updated_at: new Date().toISOString(),
+    });
 
     console.log(
       `[TG-SEQUENCE] Manual start: chat ${chatId}, type=${sequenceType}, ` +

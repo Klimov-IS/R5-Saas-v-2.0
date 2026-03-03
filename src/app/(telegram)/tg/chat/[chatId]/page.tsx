@@ -1023,7 +1023,7 @@ export default function TgChatPage() {
                 <div style={{ fontSize: '13px', color: '#6B7280', padding: '6px 0', display: 'flex', gap: '8px' }}>
                   <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Отзыв</span>
                   <span style={{ fontWeight: 500, color: '#111827' }}>
-                    {new Date(chat.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                    {new Date(chat.reviewDate).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               )}

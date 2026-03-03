@@ -92,12 +92,16 @@ export async function POST(
       }
     }
 
+    // If active auto-sequence exists, keep awaiting_reply; otherwise in_progress
+    const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+    const newStatus = activeSeq ? 'awaiting_reply' : 'in_progress';
+
     // Clear draft, update status, and mark as seller-replied
     await dbHelpers.updateChat(chatId, {
       draft_reply: null,
       draft_reply_generated_at: null,
       draft_reply_edited: null,
-      status: 'in_progress',
+      status: newStatus,
       last_message_sender: 'seller',
       last_message_text: message.trim(),
       last_message_date: new Date().toISOString(),
