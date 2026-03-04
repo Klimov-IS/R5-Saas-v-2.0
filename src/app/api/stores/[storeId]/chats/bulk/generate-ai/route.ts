@@ -51,8 +51,8 @@ export async function POST(
         const messages = await getChatMessages(chatId);
 
         // Build context with timestamps
-        const chatHistory = messages
-          .filter((msg) => msg.text && msg.text.trim())
+        const filteredMessages = messages.filter((msg) => msg.text && msg.text.trim());
+        const chatHistory = filteredMessages
           .map((msg) => {
             const ts = msg.timestamp ? formatTimestampMSK(msg.timestamp) : '';
             const prefix = ts ? `${ts} | ` : '';
@@ -87,6 +87,13 @@ export async function POST(
               }
             } else if (!rules.offer_compensation) {
               productRulesContext += `\nКомпенсация: не предлагать`;
+            } else if (reviewRating == null && rules.offer_compensation) {
+              // Rating unknown (e.g. OZON chats without review_chat_links) — compensation ONLY for target action
+              if (isOzon) {
+                productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за дополнение отзыва до 5★. Без согласия на дополнение — не предлагать`;
+              } else {
+                productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за удаление или изменение отзыва. Без согласия — не предлагать`;
+              }
             }
             if (rules.chat_strategy) {
               productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
@@ -106,7 +113,10 @@ export async function POST(
         }
 
         // Detect conversation phase for stage-aware AI replies
-        const phase = detectConversationPhase(messages);
+        const phase = detectConversationPhase(filteredMessages);
+        const sellerMessageCount = filteredMessages.filter((m) => m.sender === 'seller').length;
+        const lastSellerMsg = [...filteredMessages].reverse().find((m) => m.sender === 'seller');
+        const lastSellerText = lastSellerMsg ? (lastSellerMsg.text || '').slice(0, 200) : 'нет';
 
         const context = `
 **Магазин:**
@@ -114,7 +124,7 @@ export async function POST(
 
 **Товар:**
 Название: ${chat.product_name || 'Неизвестно'}
-${isOzon ? 'ID товара OZON' : 'Артикул WB'}: ${chat.product_nm_id || 'Неизвестно'}
+${isOzon ? 'ID товара OZON' : 'Артикул WB'}: ${chat.product_nm_id || 'Неизвестно'}${!isOzon ? `\nВендор код: ${chat.product_vendor_code || 'Неизвестно'}` : ''}
 ${productRulesContext}
 ${reviewContext}
 
@@ -125,6 +135,8 @@ ${reviewContext}
 **Статус чата:** ${getStatusLabel(chat.status)}
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
+**Сообщений от продавца:** ${sellerMessageCount}
+**Последнее сообщение продавца:** ${lastSellerText}
 
 **История переписки:**
 ${chatHistory}

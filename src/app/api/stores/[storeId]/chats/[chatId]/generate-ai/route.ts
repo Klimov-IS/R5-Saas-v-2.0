@@ -77,6 +77,13 @@ export async function POST(
           }
         } else if (!rules.offer_compensation) {
           productRulesContext += `\nКомпенсация: не предлагать`;
+        } else if (reviewRating == null && rules.offer_compensation) {
+          // Rating unknown (e.g. OZON chats without review_chat_links) — compensation ONLY for target action
+          if (isOzon) {
+            productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за дополнение отзыва до 5★. Без согласия на дополнение — не предлагать`;
+          } else {
+            productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за удаление или изменение отзыва. Без согласия — не предлагать`;
+          }
         }
         if (rules.chat_strategy) {
           productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
@@ -96,7 +103,11 @@ export async function POST(
     }
 
     // Detect conversation phase for stage-aware AI replies
-    const phase = detectConversationPhase(messages);
+    const filteredMessages = messages.filter((msg) => msg.text && msg.text.trim());
+    const phase = detectConversationPhase(filteredMessages);
+    const sellerMessageCount = filteredMessages.filter((m) => m.sender === 'seller').length;
+    const lastSellerMsg = [...filteredMessages].reverse().find((m) => m.sender === 'seller');
+    const lastSellerText = lastSellerMsg ? (lastSellerMsg.text || '').slice(0, 200) : 'нет';
 
     const context = `
 **Магазин:**
@@ -115,6 +126,8 @@ ${reviewContext}
 **Статус чата:** ${getStatusLabel(chat.status)}
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
+**Сообщений от продавца:** ${sellerMessageCount}
+**Последнее сообщение продавца:** ${lastSellerText}
 
 **История переписки:**
 ${chatHistory}
@@ -129,16 +142,31 @@ ${chatHistory}
       storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
     });
 
+    // For OZON: enforce 1000-char limit by trimming at last sentence boundary
+    let draftText = result.text;
+    if (isOzon && draftText.length > 1000) {
+      const trimmed = draftText.slice(0, 1000);
+      const lastSentenceEnd = Math.max(
+        trimmed.lastIndexOf('. '),
+        trimmed.lastIndexOf('! '),
+        trimmed.lastIndexOf('? '),
+        trimmed.lastIndexOf('.\n'),
+      );
+      draftText = lastSentenceEnd > 800
+        ? trimmed.slice(0, lastSentenceEnd + 1).trim()
+        : trimmed.trim();
+    }
+
     // ✅ Save draft to database
     console.log('💾 [GENERATE-AI] Saving draft to DB:', {
       chatId,
       clientName: chat.client_name,
-      draftLength: result.text.length,
-      preview: result.text.substring(0, 100) + '...',
+      draftLength: draftText.length,
+      preview: draftText.substring(0, 100) + '...',
     });
 
     await updateChat(chatId, {
-      draft_reply: result.text,
+      draft_reply: draftText,
       draft_reply_generated_at: new Date().toISOString(),
       draft_reply_edited: false,
     });
@@ -147,7 +175,7 @@ ${chatHistory}
 
     return NextResponse.json({
       success: true,
-      text: result.text,
+      text: draftText,
       saved: true, // Indicator that draft was saved
     }, { status: 200 });
 

@@ -87,6 +87,13 @@ export async function POST(
           }
         } else if (!rules.offer_compensation) {
           productRulesContext += `\nКомпенсация: не предлагать`;
+        } else if (reviewRating == null && rules.offer_compensation) {
+          // Rating unknown (e.g. OZON chats without review_chat_links) — compensation ONLY for target action
+          if (isOzon) {
+            productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за дополнение отзыва до 5★. Без согласия на дополнение — не предлагать`;
+          } else {
+            productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за удаление или изменение отзыва. Без согласия — не предлагать`;
+          }
         }
         if (rules.chat_strategy) {
           productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
