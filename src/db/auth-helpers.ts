@@ -219,24 +219,18 @@ export async function setMemberStoreAccess(memberId: string, storeIds: string[])
 }
 
 /**
- * Get store IDs accessible by a user, considering their role.
- * Owner/Admin: all org stores. Manager: only assigned stores.
+ * Get store IDs accessible by a user.
+ * All roles (owner/admin/manager) see all active org stores by default.
  */
 export async function getAccessibleStoreIds(userId: string): Promise<string[]> {
   const member = await getOrgMemberByUserId(userId);
   if (!member) return [];
 
-  if (member.role === 'owner' || member.role === 'admin') {
-    // All stores in the organization
-    const result = await query<{ id: string }>(
-      'SELECT id FROM stores WHERE org_id = $1 AND status = \'active\'',
-      [member.org_id]
-    );
-    return result.rows.map(r => r.id);
-  }
-
-  // Manager: only assigned stores
-  return getMemberStoreAccess(member.id);
+  const result = await query<{ id: string }>(
+    'SELECT id FROM stores WHERE org_id = $1 AND status = \'active\'',
+    [member.org_id]
+  );
+  return result.rows.map(r => r.id);
 }
 
 // ============================================================================
