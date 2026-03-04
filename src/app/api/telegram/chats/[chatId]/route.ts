@@ -36,7 +36,9 @@ export async function GET(
        JOIN stores s ON c.store_id = s.id
        LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
        LEFT JOIN reviews r ON rcl.review_id = r.id
-       LEFT JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+       LEFT JOIN products p ON p.store_id = c.store_id
+         AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
+           OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
        LEFT JOIN product_rules pr ON p.id = pr.product_id
        WHERE c.id = $1 AND c.store_id = ANY($2::text[])`,
       [chatId, storeIds]

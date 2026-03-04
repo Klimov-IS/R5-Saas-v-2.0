@@ -205,7 +205,7 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
           last_message_text: latestText || existing?.last_message_text || null,
           last_message_sender: latestSender || existing?.last_message_sender || null,
           reply_sign: '', // OZON doesn't use reply_sign (WB-specific)
-          status: existing?.status || 'inbox',
+          status: existing?.status || 'awaiting_reply',
           tag: existing?.tag,
           draft_reply: existing?.draft_reply || null,
           draft_reply_thread_id: existing?.draft_reply_thread_id || null,
@@ -361,20 +361,16 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
     // Sequences are now started manually from TG mini app.
     const triggersDetected = 0;
 
-    // Step 5a-tg: Send Telegram notifications for OZON client replies (review-linked only)
+    // Step 5a-tg: Send Telegram notifications for OZON client replies
+    // OZON chats don't have review_chat_links — notify for all seller-initiated chats (product_nm_id IS NOT NULL)
     if (clientRepliedChats.length > 0) {
       try {
-        // Filter: only notify for review-linked chats
-        const linkedResult = await query<{ chat_id: string }>(
-            `SELECT chat_id FROM review_chat_links WHERE store_id = $1 AND chat_id IS NOT NULL`,
-            [storeId]
-        );
-        const reviewLinkedChatIds = new Set(linkedResult.rows.map(r => r.chat_id));
-        const linkedClientChats = clientRepliedChats.filter(c => reviewLinkedChatIds.has(c.chatId));
-        if (linkedClientChats.length > 0) {
-          await sendTelegramNotifications(storeId, store.name || storeId, ownerId, linkedClientChats);
+        // For OZON: all chats with product_nm_id are work-relevant (seller-initiated)
+        // No rcl filter needed — OZON has no extension to create review_chat_links
+        if (clientRepliedChats.length > 0) {
+          await sendTelegramNotifications(storeId, store.name || storeId, ownerId, clientRepliedChats);
         }
-        console.log(`[OZON-CHATS] TG notifications: ${linkedClientChats.length}/${clientRepliedChats.length} review-linked`);
+        console.log(`[OZON-CHATS] TG notifications: ${clientRepliedChats.length} chats`);
       } catch (tgErr: any) {
         console.error(`[OZON-CHATS] TG notification error (non-critical): ${tgErr.message}`);
       }

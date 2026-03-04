@@ -260,7 +260,10 @@ export default function TgChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: sentText }),
       });
-      if (!response.ok) throw new Error('Failed to send');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to send');
+      }
       setMessages(prev => [...prev, {
         id: `optimistic-${Date.now()}`,
         text: sentText,
@@ -272,9 +275,11 @@ export default function TgChatPage() {
       setMessageSent(true);
       setDraftText('');
       try { localStorage.removeItem(`tg_draft_${chatId}`); } catch {}
-    } catch {
+    } catch (err: any) {
       haptic('error');
-      showFeedback('Ошибка отправки');
+      showFeedback(err.message?.includes('не принял чат')
+        ? 'Покупатель ещё не принял чат'
+        : 'Ошибка отправки');
     } finally {
       setIsSending(false);
     }
@@ -1106,7 +1111,7 @@ export default function TgChatPage() {
                       fontSize: '12px', fontWeight: 600, color: '#2563EB', textDecoration: 'none',
                     }}
                   >
-                    Открыть в WB →
+                    Открыть в {chat.marketplace === 'ozon' ? 'OZON' : 'WB'} →
                   </a>
                 </div>
               )}

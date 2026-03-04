@@ -288,17 +288,20 @@ export async function getUnifiedChatQueue(
          rcl.review_rating, rcl.review_date,
          r.text as review_text,
          r.complaint_status, r.product_status_by_review as product_status,
-         NULL::boolean as offer_compensation, NULL::text as max_compensation,
-         NULL::text as compensation_type, NULL::text as compensation_by,
-         NULL::text as chat_strategy,
+         pr.offer_compensation, pr.max_compensation,
+         pr.compensation_type, pr.compensation_by,
+         pr.chat_strategy::text as chat_strategy,
          cas.current_step as seq_current_step,
          cas.max_steps as seq_max_steps,
          cas.status as seq_status
        FROM chats c
-       INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+       LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
        LEFT JOIN reviews r ON rcl.review_id = r.id
        LEFT JOIN chat_auto_sequences cas ON cas.chat_id = c.id AND cas.status = 'active'
        JOIN stores s ON c.store_id = s.id
+       LEFT JOIN products p ON p.store_id = c.store_id
+         AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)
+       LEFT JOIN product_rules pr ON p.id = pr.product_id
        WHERE c.store_id = ANY($1::text[])
          AND c.marketplace = 'ozon'
          AND c.product_nm_id IS NOT NULL
@@ -370,7 +373,7 @@ export async function getUnifiedChatQueueCount(
        (
          SELECT c.id
          FROM chats c
-         INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
          LEFT JOIN reviews r ON rcl.review_id = r.id
          JOIN stores s ON c.store_id = s.id
          WHERE c.store_id = ANY($1::text[])
@@ -436,7 +439,7 @@ export async function getUnifiedChatQueueCountsByStatus(
        (
          SELECT c.status
          FROM chats c
-         INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
          LEFT JOIN reviews r ON rcl.review_id = r.id
          JOIN stores s ON c.store_id = s.id
          WHERE c.store_id = ANY($1::text[])
