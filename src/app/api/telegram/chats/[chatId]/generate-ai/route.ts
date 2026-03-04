@@ -5,8 +5,8 @@ import { query } from '@/db/client';
 import * as dbHelpers from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
-import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
-import { findLinkByChatId } from '@/db/review-chat-link-helpers';
+import { buildStoreInstructions, detectConversationPhase, formatTimestampMSK, getTagLabel, getStatusLabel } from '@/lib/ai-context';
+import { findLinkWithReviewByChatId } from '@/db/review-chat-link-helpers';
 
 /**
  * POST /api/telegram/chats/[chatId]/generate-ai
@@ -50,11 +50,22 @@ export async function POST(
       [chatId]
     );
 
-    // Build chat history (filter out null/empty messages)
-    const chatHistory = messagesResult.rows
-      .filter((m: any) => m.text && m.text.trim())
-      .map((m: any) => `[${m.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${m.text}`)
+    // Build chat history with timestamps (filter out null/empty messages)
+    const filteredMessages = messagesResult.rows.filter((m: any) => m.text && m.text.trim());
+    const chatHistory = filteredMessages
+      .map((m: any) => {
+        const ts = m.timestamp ? formatTimestampMSK(m.timestamp) : '';
+        const prefix = ts ? `${ts} | ` : '';
+        return `[${prefix}${m.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${m.text}`;
+      })
       .join('\n');
+
+    // Marketplace-aware context
+    const isOzon = chat.marketplace === 'ozon';
+
+    // Get review link data (for compensation gating + review context)
+    const rcl = await findLinkWithReviewByChatId(chatId);
+    const reviewRating = rcl?.review_rating;
 
     // Load product rules for enriched context
     let productRulesContext = '';
@@ -63,15 +74,17 @@ export async function POST(
       if (rules) {
         productRulesContext = `\n**Правила товара:**\nРабота в чатах: ${rules.work_in_chats ? 'включена' : 'отключена'}`;
 
-        // Check review rating — compensation only for 1-3★ reviews
-        const rcl = await findLinkByChatId(chatId);
-        const reviewRating = rcl?.review_rating;
+        // Compensation gating by review rating
         const isNegativeReview = reviewRating != null && reviewRating <= 3;
 
         if (rules.offer_compensation && isNegativeReview) {
           productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
         } else if (reviewRating != null && reviewRating >= 4) {
-          productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — только повышение до 5★, без кешбека)`;
+          if (isOzon) {
+            productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — попросить дополнить отзыв до 5★)`;
+          } else {
+            productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — только повышение до 5★, без кешбека)`;
+          }
         } else if (!rules.offer_compensation) {
           productRulesContext += `\nКомпенсация: не предлагать`;
         }
@@ -81,15 +94,24 @@ export async function POST(
       }
     }
 
+    // Build review context block
+    let reviewContext = '';
+    if (rcl) {
+      const reviewDate = rcl.review_date ? formatTimestampMSK(rcl.review_date) : 'неизвестна';
+      reviewContext = `\n**Отзыв покупателя:**\nОценка: ${rcl.review_rating}★\nДата отзыва: ${reviewDate}`;
+      if (rcl.review_text) {
+        const trimmedText = rcl.review_text.length > 500 ? rcl.review_text.slice(0, 500) + '...' : rcl.review_text;
+        reviewContext += `\nТекст отзыва: ${trimmedText}`;
+      }
+    }
+
     // Detect conversation phase for stage-aware AI replies
-    const filteredMessages = messagesResult.rows.filter((m: any) => m.text && m.text.trim());
     const phase = detectConversationPhase(filteredMessages);
     const sellerMessageCount = filteredMessages.filter((m: any) => m.sender === 'seller').length;
     const lastSellerMsg = [...filteredMessages].reverse().find((m: any) => m.sender === 'seller');
     const lastSellerText = lastSellerMsg ? lastSellerMsg.text.slice(0, 200) : 'нет';
 
     // Build context string (matching web API format, marketplace-aware labels)
-    const isOzon = chat.marketplace === 'ozon';
     const context = `
 **Магазин:**
 Название: ${chat.store_name}
@@ -98,10 +120,13 @@ export async function POST(
 Название: ${chat.product_name || 'Неизвестно'}
 ${isOzon ? 'ID товара OZON' : 'Артикул WB'}: ${chat.product_nm_id || 'Неизвестно'}${!isOzon ? `\nВендор код: ${chat.product_vendor_code || 'Неизвестно'}` : ''}
 ${productRulesContext}
+${reviewContext}
 
 **Клиент:**
 Имя: ${chat.client_name || 'Клиент'}
 
+**Текущий этап воронки:** ${getTagLabel(chat.tag)}
+**Статус чата:** ${getStatusLabel(chat.status)}
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
 **Сообщений от продавца:** ${sellerMessageCount}

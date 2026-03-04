@@ -196,6 +196,7 @@ CREATE TYPE product_status_by_review AS ENUM (
 CREATE TYPE chat_status_by_review AS ENUM (
   'unavailable',  -- Недоступен
   'available',    -- Доступен (можно открыть)
+  'opened',       -- Чат открыт (необратимо)
   'unknown'       -- Неизвестно
 );
 ```
@@ -216,11 +217,36 @@ CREATE TYPE chat_status_by_review AS ENUM (
 - **Business Rule:** ✅ Can initiate dialogue
 - **Note:** Does NOT mean chat is already open, just that it CAN be opened
 
+#### `opened`
+- **Meaning:** Chat has been opened with this customer
+- **Russian:** "Чат открыт"
+- **WB UI:** Chat button shows "Открыт" or chat exists
+- **Business Rule:** ✅ Chat exists, can send messages (with reply_sign)
+- **CRITICAL:** **Необратимый статус.** Нельзя понизить до `available` или `unavailable`
+- **Added:** Migration 017
+
 #### `unknown`
 - **Meaning:** Not yet parsed
 - **Russian:** N/A
 - **WB UI:** N/A
 - **Default:** All reviews start as `unknown`
+
+### Матрица переходов статусов
+
+| Текущий → Новый | `unavailable` | `available` | `opened` | `unknown` |
+|----------------|:---:|:---:|:---:|:---:|
+| **NULL / unknown** | ✅ | ✅ | ✅ | ✅ |
+| **unavailable** | — | ✅ | ✅ | ✅ |
+| **available** | ✅ | — | ✅ | ✅ |
+| **opened** | ❌ | ❌ | — | ❌ |
+
+> **Правило:** `opened` — **необратимый статус**. Если чат хотя бы раз был открыт, статус остаётся `opened` навсегда. Защита реализована в SQL: `review-statuses/route.ts:367-369`.
+>
+> **Почему:** WB иногда не прогружает кнопку чата. Расширение может ошибочно отправить `unavailable` для уже открытого чата. SQL-защита предотвращает потерю данных.
+
+### Рекомендация расширению
+- Если кнопка чата НЕ найдена в DOM (не прогрузилась) → отправлять `null` (не `chat_not_activated`)
+- `chat_not_activated` → ТОЛЬКО если расширение **точно** видит неактивную кнопку (disabled, серая)
 
 ---
 

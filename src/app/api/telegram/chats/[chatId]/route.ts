@@ -48,13 +48,15 @@ export async function GET(
 
     const chat = chatResult.rows[0];
 
-    // Get last 50 messages
+    // Get last 200 messages (subquery DESC → outer ASC for chronological display)
     const messagesResult = await query(
-      `SELECT id, text, sender, timestamp, is_auto_reply
-       FROM chat_messages
-       WHERE chat_id = $1
-       ORDER BY timestamp ASC
-       LIMIT 50`,
+      `SELECT * FROM (
+         SELECT id, text, sender, timestamp, is_auto_reply
+         FROM chat_messages
+         WHERE chat_id = $1
+         ORDER BY timestamp DESC
+         LIMIT 200
+       ) sub ORDER BY timestamp ASC`,
       [chatId]
     );
 
@@ -66,13 +68,13 @@ export async function GET(
       isAutoReply: m.is_auto_reply,
     }));
 
-    // Synthesize last seller message if not yet synced to chat_messages.
-    // Covers the gap between TG mini-app send and the next sync cycle (up to 60 min for OZON).
-    // Uses chats.last_message_text/sender/date which are updated immediately on send.
+    // Synthesize last message if not yet synced to chat_messages.
+    // Covers: (1) TG mini-app send gap (seller), (2) dialogue sync gap (client).
+    // Uses chats.last_message_text/sender/date which are updated immediately on sync/send.
     if (
-      chat.last_message_sender === 'seller' &&
       chat.last_message_text &&
-      chat.last_message_date
+      chat.last_message_date &&
+      chat.last_message_sender
     ) {
       const lastMsgDate = new Date(chat.last_message_date).getTime();
       const lastDbMsg = messages[messages.length - 1];
@@ -80,9 +82,9 @@ export async function GET(
       // Add synthetic entry only if chat_messages doesn't yet have this message
       if (lastDbDate < lastMsgDate - 1000) {
         messages.push({
-          id: `tg_sent_${chat.id}_${lastMsgDate}`,
+          id: `tg_synth_${chat.id}_${lastMsgDate}`,
           text: chat.last_message_text,
-          sender: 'seller',
+          sender: chat.last_message_sender,
           timestamp: chat.last_message_date,
           isAutoReply: false,
         });
@@ -97,6 +99,7 @@ export async function GET(
         marketplace: chat.marketplace,
         clientName: chat.client_name,
         productName: chat.product_name,
+        productNmId: chat.product_nm_id ?? null,
         status: chat.status,
         tag: chat.tag,
         draftReply: chat.draft_reply,

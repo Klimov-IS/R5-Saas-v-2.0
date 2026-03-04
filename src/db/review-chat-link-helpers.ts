@@ -212,6 +212,23 @@ export async function findLinkByChatId(
 }
 
 /**
+ * Find link by chat_id WITH review text (JOIN to reviews table).
+ * Used by AI context enrichment to provide review text + date to AI.
+ */
+export async function findLinkWithReviewByChatId(
+  chatId: string
+): Promise<(ReviewChatLink & { review_text?: string | null }) | null> {
+  const result = await query<ReviewChatLink & { review_text?: string | null }>(
+    `SELECT rcl.*, r.text as review_text
+     FROM review_chat_links rcl
+     LEFT JOIN reviews r ON rcl.review_id = r.id
+     WHERE rcl.chat_id = $1 LIMIT 1`,
+    [chatId]
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Check if the review linked to a chat is "resolved" — meaning the review
  * no longer affects product rating and follow-up is unnecessary.
  *

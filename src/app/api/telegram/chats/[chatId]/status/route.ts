@@ -99,6 +99,20 @@ export async function PATCH(
 
     await dbHelpers.updateChat(chatId, updateData);
 
+    // Stop active auto-sequence when closing or moving away from awaiting_reply
+    if (status === 'closed' || (currentChat?.status === 'awaiting_reply' && status !== 'awaiting_reply')) {
+      try {
+        const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+        if (activeSeq) {
+          const reason = status === 'closed' ? 'manual_close' : 'manual';
+          await dbHelpers.stopSequence(activeSeq.id, reason);
+          console.log(`[TG-STATUS] Auto-sequence stopped for chat ${chatId} (${reason})`);
+        }
+      } catch (seqError: any) {
+        console.error(`[TG-STATUS] Failed to stop auto-sequence for chat ${chatId}:`, seqError.message);
+      }
+    }
+
     return NextResponse.json({ success: true, tag: tag || undefined });
   } catch (error: any) {
     console.error('[TG-STATUS] Error:', error.message);

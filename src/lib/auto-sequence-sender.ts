@@ -28,7 +28,7 @@ interface SendSequenceMessageParams {
  */
 export async function sendSequenceMessage(
   params: SendSequenceMessageParams
-): Promise<{ sent: boolean; error?: string }> {
+): Promise<{ sent: boolean; error?: string; errorMessage?: string }> {
   const { sequenceId, chatId, storeId, ownerId, currentStep, templates } = params;
 
   const template = templates[currentStep];
@@ -42,13 +42,33 @@ export async function sendSequenceMessage(
   }
 
   // Send message via marketplace-aware dispatch
-  if (store.marketplace === 'ozon' && store.ozon_client_id && store.ozon_api_key) {
-    const { createOzonClient } = await import('@/lib/ozon-api');
-    const ozonClient = createOzonClient(store.ozon_client_id, store.ozon_api_key);
-    await ozonClient.sendChatMessage(chatId, template.text);
-  } else {
-    const { sendChatMessage } = await import('@/lib/wb-chat-api');
-    await sendChatMessage(storeId, chatId, template.text);
+  try {
+    if (store.marketplace === 'ozon' && store.ozon_client_id && store.ozon_api_key) {
+      const { createOzonClient } = await import('@/lib/ozon-api');
+      const ozonClient = createOzonClient(store.ozon_client_id, store.ozon_api_key);
+      await ozonClient.sendChatMessage(chatId, template.text);
+    } else {
+      const { sendChatMessage } = await import('@/lib/wb-chat-api');
+      await sendChatMessage(storeId, chatId, template.text);
+    }
+    console.log(`[AUTO-SEQ-SEND] Sent step ${currentStep} for chat ${chatId} (seq ${sequenceId})`);
+  } catch (sendError: any) {
+    const errorMsg = sendError.message || String(sendError);
+
+    // Classify error as permanent (should stop sequence) or transient (retry later)
+    const permanentPatterns = [
+      'does not have a replySign',
+      'Chat not found',
+      'Store not found',
+      'code 7',                   // OZON: chat not started by buyer
+      'chat_not_started',
+      'CHAT_IS_NOT_STARTED',
+    ];
+    const isPermanent = permanentPatterns.some(p => errorMsg.includes(p));
+
+    console.error(`[AUTO-SEQ-SEND] ${isPermanent ? 'PERMANENT' : 'TRANSIENT'} error step ${currentStep} for chat ${chatId} (seq ${sequenceId}): ${errorMsg}`);
+
+    return { sent: false, error: isPermanent ? 'permanent' : 'transient', errorMessage: errorMsg };
   }
 
   // Record sent message in chat_messages

@@ -314,13 +314,23 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
                 console.log(`[OZON-CHATS] Chat ${chatId}: closed → in_progress (seller replied)`);
                 statusTransitions++;
               } else if (existing.status !== 'in_progress') {
-                // Move to in_progress
-                await dbHelpers.updateChat(chatId, {
-                  status: 'in_progress' as ChatStatus,
-                  status_updated_at: new Date().toISOString(),
-                });
-                console.log(`[OZON-CHATS] Chat ${chatId}: ${existing.status} → in_progress (seller replied)`);
-                statusTransitions++;
+                // Protection: don't move awaiting_reply → in_progress if active auto-sequence
+                // (auto-mailing messages should not move chat out of "Ожидание")
+                let skipTransition = false;
+                if (existing.status === 'awaiting_reply') {
+                  const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+                  if (activeSeq) {
+                    skipTransition = true;
+                  }
+                }
+                if (!skipTransition) {
+                  await dbHelpers.updateChat(chatId, {
+                    status: 'in_progress' as ChatStatus,
+                    status_updated_at: new Date().toISOString(),
+                  });
+                  console.log(`[OZON-CHATS] Chat ${chatId}: ${existing.status} → in_progress (seller replied)`);
+                  statusTransitions++;
+                }
               }
             }
 

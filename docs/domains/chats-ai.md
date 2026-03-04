@@ -1,7 +1,7 @@
 # Домен: AI в чатах
 
-**Дата:** 2026-03-03
-**Версия:** 3.3
+**Дата:** 2026-03-04
+**Версия:** 3.5
 **AI Model:** Deepseek Chat (`deepseek-chat`)
 **API Endpoint:** `https://api.deepseek.com/chat/completions`
 
@@ -353,6 +353,55 @@ interface GenerateDeletionOfferOutput {
 
 ---
 
+## Маркетплейс-специфика AI (WB vs OZON)
+
+### Общий механизм
+
+Маркетплейс-специфичные правила инжектируются через `buildStoreInstructions()` в `src/lib/ai-context.ts`. Когда `marketplace === 'ozon'`, к инструкциям магазина добавляется `OZON_MARKETPLACE_ADDENDUM`.
+
+**Файл:** `src/lib/ai-context.ts`
+
+### WB: Удаление отзыва
+- Цель: покупатель **удаляет** негативный отзыв
+- AI использует тонкие намёки ("надеемся на ваше понимание", "готовы исправить ситуацию")
+- НЕЛЬЗЯ прямо упоминать "удаление отзыва" (нарушение правил WB)
+- 1-3★: компенсация (кешбэк/возврат) + намёк на удаление
+- 4★: только повышение до 5★, без кешбека
+
+### OZON: Дополнение отзыва до 5★
+- Цель: покупатель **дополняет и редактирует** свой отзыв, ставит 5★
+- На OZON отзывы НЕ удаляются — покупатель может только изменить
+- НЕЛЬЗЯ упоминать "удаление", "убрать отзыв" — на OZON это невозможно
+- МОЖНО: "дополнить отзыв", "обновить оценку", "пересмотреть оценку"
+- 1-3★: компенсация + инструкция по редактированию отзыва
+- 4★: просьба дополнить до 5★ без компенсации
+
+**Инструкция для покупателя OZON (отправляется в фазе "решение"):**
+
+> 1. Откройте приложение Ozon
+> 2. Нажмите иконку профиля внизу справа
+> 3. Перейдите в раздел «Отзывы» → «Мои отзывы»
+> 4. Найдите нужный товар и откройте свой отзыв
+> 5. Нажмите «Редактировать»
+> 6. Поставьте оценку 5★
+> 7. Нажмите «Отправить отзыв»
+
+### Где различия в коде
+
+| Файл | WB | OZON |
+|------|-----|------|
+| `ai-context.ts` | DEFAULT_AI_INSTRUCTIONS | + OZON_MARKETPLACE_ADDENDUM |
+| `generate-ai/route.ts` (web) | "Артикул WB", "повышение до 5★, без кешбека" | "ID товара OZON", "попросить дополнить до 5★" |
+| `generate-ai/route.ts` (TG) | То же | То же + 1000-char trimming |
+| `deletion-offer-prompt.ts` | Намёки на удаление | **НЕ поддерживается для OZON** |
+
+### Ограничения OZON API
+- Сообщение в чат: **СТРОГО до 1000 символов**
+- 1 сообщение до ответа покупателя (error code 7 при повторной попытке)
+- Подробности: `docs/domains/ozon-work-policy.md`
+
+---
+
 ## AI Backend
 
 ### runChatCompletion()
@@ -449,6 +498,58 @@ async function runChatCompletion({
        ↓
 [Тег обновляется автоматически]
 ```
+
+---
+
+## Обогащённый контекст AI (v3.5, 2026-03-04)
+
+AI при генерации ответа получает полный контекст чата. Ниже — полный перечень данных, передаваемых в `context` для `generateChatReply()`.
+
+### Что передаётся AI
+
+| Блок | Поле | Источник | Пример |
+|------|------|----------|--------|
+| Магазин | Название | `stores.name` | "StyleBrand" |
+| Товар | Название | `products.name` | "Кроссовки мужские" |
+| Товар | Артикул/ID | `chats.product_nm_id` | WB: "123456", OZON: "sku-789" |
+| Товар | Вендор код | `products.vendor_code` | Только WB |
+| Товар | Правила (компенсация, стратегия) | `product_rules.*` | "до 500₽ (кешбек)" |
+| **Отзыв** | **Оценка** | `review_chat_links.review_rating` | "3★" |
+| **Отзыв** | **Дата** | `review_chat_links.review_date` | "15.02 14:30" (МСК) |
+| **Отзыв** | **Текст отзыва** | `reviews.text` (через JOIN) | "Качество ужасное..." (до 500 символов) |
+| Клиент | Имя | `chats.client_name` | "Алексей" |
+| **Воронка** | **Текущий тег** | `chats.tag` | "Предложена компенсация" |
+| **Воронка** | **Статус чата** | `chats.status` | "Входящие (покупатель ответил)" |
+| Фаза | Фаза диалога | `detectConversationPhase()` | "знакомство" / "понимание" / "решение" |
+| Фаза | Кол-во сообщений от клиента | computed | 3 |
+| **История** | **Сообщения с таймстампами** | `chat_messages.*` | "[04.03 15:32 \| Клиент]: текст" |
+
+**Жирным** выделены поля, добавленные в v3.5.
+
+### Хелперы контекста
+
+**Файл:** `src/lib/ai-context.ts`
+
+| Функция | Назначение |
+|---------|------------|
+| `formatTimestampMSK(ts)` | Формат даты в МСК: "DD.MM HH:MM" |
+| `getTagLabel(tag)` | Человекочитаемый тег: `deletion_offered` → "Предложена компенсация" |
+| `getStatusLabel(status)` | Человекочитаемый статус: `inbox` → "Входящие (покупатель ответил)" |
+| `detectConversationPhase(messages)` | Фаза: discovery/understanding/resolution |
+
+### Что НЕ передаётся AI (осознанно)
+
+- `complaint_status` — не влияет на генерацию ответа
+- Предыдущие компенсации — нет таблицы отслеживания
+- Баланс клиента — не реализовано
+
+### Где используется обогащённый контекст
+
+| Endpoint | Файл | Все данные |
+|----------|------|:----------:|
+| Web generate-ai | `stores/[storeId]/chats/[chatId]/generate-ai/route.ts` | ✅ |
+| TG generate-ai | `telegram/chats/[chatId]/generate-ai/route.ts` | ✅ |
+| Bulk generate-ai | `stores/[storeId]/chats/bulk/generate-ai/route.ts` | ✅ |
 
 ---
 
@@ -577,12 +678,13 @@ Content-Type: application/json
 
 Система инжекции контекста магазина в system prompt AI. Объединяет три источника данных в единый блок инструкций.
 
-### buildStoreInstructions(storeId, aiInstructions?)
+### buildStoreInstructions(storeId, aiInstructions?, marketplace?)
 
 ```typescript
 async function buildStoreInstructions(
   storeId: string,
-  aiInstructions?: string | null
+  aiInstructions?: string | null,
+  marketplace?: 'wb' | 'ozon'
 ): Promise<string | undefined>
 ```
 
@@ -591,6 +693,7 @@ async function buildStoreInstructions(
 1. **AI Instructions** (`stores.ai_instructions`) — свободный текст: тон, правила, ограничения
 2. **FAQ** (`store_faq`) — пары вопрос-ответ, форматируются как `## FAQ магазина\nВ: ...\nО: ...`
 3. **Guides** (`store_guides`) — пошаговые инструкции, форматируются как `## Инструкции для клиентов\n### Title\nContent`
+4. **Marketplace addendum** — OZON-специфичные правила (если `marketplace === 'ozon'`): дополнение отзыва вместо удаления, 1000-символьный лимит, инструкция по редактированию на OZON
 
 **Используется в 6 customer-facing flows:**
 - generate-chat-reply
@@ -1068,4 +1171,4 @@ pr.chat_strategy::text as chat_strategy
 
 ---
 
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-04

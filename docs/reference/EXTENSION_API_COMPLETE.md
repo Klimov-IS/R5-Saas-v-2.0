@@ -654,6 +654,32 @@ curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaint
 - Поля `filed_by` + `complaint_filed_date` на reviews + review_complaints (migration 020)
 - Автодетекция filed_by из текста жалобы ("Жалоба от:" → r5)
 
+### v2.1.0 (2026-03-04) — PLANNED
+
+**Задача: Ретроактивная привязка чатов + защита статусов**
+
+Подробная спецификация: `docs/tasks/TASK-20260304-extension-chat-linking-and-status-protection.md`
+
+**Задача 1: Ретроактивная привязка открытых чатов**
+- При парсинге `chat_status = 'chat_opened'` → проверить наличие `review_chat_links`
+- Если привязки нет → вызвать `POST /api/extension/chat/opened` с контекстом отзыва (nmId, rating, reviewDate, chatUrl)
+- Endpoint идемпотентен (UNIQUE на store_id + review_key) — повторные вызовы безопасны
+- **Цель:** Все 291+ чатов, открытых вручную на WB, получат привязку к отзывам
+
+**Задача 2: Защита от ложных статусов**
+- Если кнопка чата НЕ найдена в DOM (WB не прогрузил) → отправлять `chatStatus: null` (НЕ `'chat_not_activated'`)
+- `'chat_not_activated'` → ТОЛЬКО если расширение **точно** видит disabled кнопку
+- Backend-защита: `opened` → `unavailable`/`available` заблокировано в SQL
+
+**Защита статуса `opened` (уже реализована на бэкенде):**
+
+| Текущий → Новый | unavailable | available | opened |
+|----------------|:-----------:|:---------:|:------:|
+| NULL/unknown   | ✅ | ✅ | ✅ |
+| unavailable    | — | ✅ | ✅ |
+| available      | ✅ | — | ✅ |
+| **opened**     | **❌** | **❌** | — |
+
 ### v2.0.0 (2026-02-16)
 
 **Sprint 002: Review-Chat Linking**
@@ -705,5 +731,5 @@ curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaint
 
 ---
 
-**Последнее обновление:** 2026-02-20
+**Последнее обновление:** 2026-03-04
 **Автор:** R5 Backend Team

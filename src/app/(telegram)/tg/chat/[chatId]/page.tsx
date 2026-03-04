@@ -19,6 +19,7 @@ interface ChatDetail {
   marketplace?: string;
   clientName: string;
   productName: string | null;
+  productNmId?: string | null;
   status: string;
   tag: string | null;
   draftReply: string | null;
@@ -138,6 +139,7 @@ export default function TgChatPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [tagLoading, setTagLoading] = useState(false);
   const [messageSent, setMessageSent] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -220,6 +222,26 @@ export default function TgChatPage() {
     }
   }, [chatId, apiFetch, showFeedback]);
 
+  // Refresh chat without full loading spinner (pull-to-refresh feel)
+  const refreshChat = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const response = await apiFetch(`/api/telegram/chats/${chatId}`);
+      if (!response.ok) throw new Error('Failed to refresh');
+      const data = await response.json();
+      setChat(data.chat);
+      setMessages(data.messages || []);
+      haptic('success');
+      showFeedback('Обновлено');
+    } catch {
+      haptic('error');
+      showFeedback('Ошибка обновления');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [chatId, apiFetch, haptic, showFeedback, isRefreshing]);
+
   useEffect(() => { fetchChat(); }, [fetchChat]);
 
   useEffect(() => {
@@ -294,7 +316,7 @@ export default function TgChatPage() {
       if (!response.ok) throw new Error('Failed to close');
       haptic('success');
       showFeedback('Чат закрыт');
-      setTimeout(() => router.back(), 800);
+      setTimeout(() => router.replace('/tg'), 800);
     } catch {
       haptic('error');
       showFeedback('Ошибка закрытия');
@@ -436,6 +458,7 @@ export default function TgChatPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', backgroundColor: '#F7F8FA' }}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       {/* === COMPACT HEADER (~56px) === */}
       <div style={{
@@ -461,27 +484,53 @@ export default function TgChatPage() {
               {chat.clientName}
             </span>
           </div>
-          <button
-            onClick={() => setShowInfoSheet(true)}
-            style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              border: '1.5px solid #E6E8EC',
-              background: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#6B7280',
-              fontSize: '13px',
-              fontWeight: 700,
-              transition: 'all 0.15s',
-              flexShrink: 0,
-            }}
-          >
-            i
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={refreshChat}
+              disabled={isRefreshing}
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                border: '1.5px solid #E6E8EC',
+                background: 'none',
+                cursor: isRefreshing ? 'default' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: isRefreshing ? '#D1D5DB' : '#6B7280',
+                fontSize: '15px',
+                fontWeight: 500,
+                transition: 'all 0.15s',
+                flexShrink: 0,
+                animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
+              }}
+              title="Обновить диалог"
+            >
+              ↻
+            </button>
+            <button
+              onClick={() => setShowInfoSheet(true)}
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                border: '1.5px solid #E6E8EC',
+                background: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#6B7280',
+                fontSize: '13px',
+                fontWeight: 700,
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+            >
+              i
+            </button>
+          </div>
         </div>
         {/* Row 2: Store + Tag badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
@@ -1016,6 +1065,14 @@ export default function TgChatPage() {
                   <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Продукт</span>
                   <span style={{ fontWeight: 500, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {chat.productName}
+                  </span>
+                </div>
+              )}
+              {chat.productNmId && (
+                <div style={{ fontSize: '13px', color: '#6B7280', padding: '6px 0', display: 'flex', gap: '8px' }}>
+                  <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Артикул</span>
+                  <span style={{ fontWeight: 500, color: '#111827' }}>
+                    {chat.productNmId}
                   </span>
                 </div>
               )}

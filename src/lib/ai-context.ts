@@ -33,6 +33,59 @@ export function detectConversationPhase(
 }
 
 // ============================================================================
+// Context Formatting Helpers
+// ============================================================================
+
+/**
+ * Format a timestamp to Moscow time (UTC+3) for AI context.
+ * Output: "DD.MM HH:MM"
+ */
+export function formatTimestampMSK(ts: string): string {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  const msk = new Date(d.getTime() + 3 * 3600_000);
+  const dd = String(msk.getUTCDate()).padStart(2, '0');
+  const mm = String(msk.getUTCMonth() + 1).padStart(2, '0');
+  const hh = String(msk.getUTCHours()).padStart(2, '0');
+  const min = String(msk.getUTCMinutes()).padStart(2, '0');
+  return `${dd}.${mm} ${hh}:${min}`;
+}
+
+const TAG_LABELS: Record<string, string> = {
+  active: 'Активный',
+  successful: 'Успешный',
+  unsuccessful: 'Неуспешный',
+  no_reply: 'Без ответа',
+  untagged: 'Не классифицирован',
+  completed: 'Завершён',
+  deletion_candidate: 'Кандидат на удаление',
+  deletion_offered: 'Предложена компенсация',
+  deletion_agreed: 'Согласен на удаление',
+  deletion_confirmed: 'Удаление подтверждено',
+  refund_requested: 'Запрошен возврат',
+  deleted_review: 'Отзыв удалён',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  awaiting_reply: 'Ожидание ответа покупателя',
+  inbox: 'Входящие (покупатель ответил)',
+  in_progress: 'В работе (продавец ответил)',
+  closed: 'Закрытый',
+};
+
+/** Human-readable tag label for AI context. */
+export function getTagLabel(tag: string | null | undefined): string {
+  if (!tag) return 'Не классифицирован';
+  return TAG_LABELS[tag] || tag;
+}
+
+/** Human-readable status label for AI context. */
+export function getStatusLabel(status: string | null | undefined): string {
+  if (!status) return 'Неизвестен';
+  return STATUS_LABELS[status] || status;
+}
+
+// ============================================================================
 // Default AI Instructions
 // ============================================================================
 
@@ -101,7 +154,30 @@ const OZON_MARKETPLACE_ADDENDUM = `
 - Ответ на отзыв: СТРОГО до 1000 символов
 - Сообщение в чат: СТРОГО до 1000 символов
 - Не упоминай Wildberries, WB и другие площадки
-- Возврат: через OZON по правилам площадки`;
+- Возврат: через OZON по правилам площадки
+
+## КРИТИЧЕСКОЕ ОТЛИЧИЕ OZON ОТ WB: Дополнение отзыва (не удаление!)
+На OZON отзывы НЕ удаляются. Вместо этого покупатель может ДОПОЛНИТЬ и ИЗМЕНИТЬ свой отзыв, поставив 5★.
+
+ВАЖНО:
+- НЕЛЬЗЯ упоминать "удаление отзыва" — на OZON это невозможно
+- НЕЛЬЗЯ использовать формулировки: "убрать отзыв", "снять отзыв", "удалить"
+- МОЖНО: просить "дополнить отзыв", "обновить оценку", "пересмотреть оценку", "изменить отзыв"
+- Цель: покупатель дополняет отзыв и ставит 5★
+
+Когда покупатель согласился обновить отзыв, отправь ему пошаговую инструкцию:
+
+**Как дополнить отзыв на OZON и поставить 5★:**
+1. Откройте приложение Ozon
+2. Нажмите иконку профиля внизу справа
+3. Перейдите в раздел «Отзывы» → «Мои отзывы»
+4. Найдите нужный товар и откройте свой отзыв
+5. Нажмите «Редактировать»
+6. Поставьте оценку 5★
+7. Нажмите «Отправить отзыв»
+
+Эту инструкцию отправлять ТОЛЬКО в фазе "решение", после согласия покупателя.
+В фазах "знакомство" и "понимание" — работай по общим правилам (узнай проблему, прояви эмпатию).`;
 
 /**
  * Build combined store instructions for AI flows.

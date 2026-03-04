@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChatById, getChatMessages, getStoreById, getProductRulesByNmId, updateChat } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
-import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
-import { findLinkByChatId } from '@/db/review-chat-link-helpers';
+import { buildStoreInstructions, detectConversationPhase, formatTimestampMSK, getTagLabel, getStatusLabel } from '@/lib/ai-context';
+import { findLinkWithReviewByChatId } from '@/db/review-chat-link-helpers';
 
 /**
  * POST /api/stores/[storeId]/chats/[chatId]/generate-ai
@@ -40,10 +40,22 @@ export async function POST(
     // Get chat messages (history)
     const messages = await getChatMessages(chatId);
 
-    // Build context for AI
+    // Build context for AI — with timestamps
     const chatHistory = messages
-      .map((msg) => `[${msg.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${msg.text}`)
+      .filter((msg) => msg.text && msg.text.trim())
+      .map((msg) => {
+        const ts = msg.timestamp ? formatTimestampMSK(msg.timestamp) : '';
+        const prefix = ts ? `${ts} | ` : '';
+        return `[${prefix}${msg.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${msg.text}`;
+      })
       .join('\n');
+
+    // Marketplace-aware labels
+    const isOzon = store.marketplace === 'ozon';
+
+    // Get review link data (for compensation gating + review context)
+    const rcl = await findLinkWithReviewByChatId(chatId);
+    const reviewRating = rcl?.review_rating;
 
     // Load product rules for enriched context
     let productRulesContext = '';
@@ -52,21 +64,34 @@ export async function POST(
       if (rules) {
         productRulesContext = `\n**Правила товара:**\nРабота в чатах: ${rules.work_in_chats ? 'включена' : 'отключена'}`;
 
-        // Check review rating — compensation only for 1-3★ reviews
-        const rcl = await findLinkByChatId(chatId);
-        const reviewRating = rcl?.review_rating;
+        // Compensation gating by review rating
         const isNegativeReview = reviewRating != null && reviewRating <= 3;
 
         if (rules.offer_compensation && isNegativeReview) {
           productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
         } else if (reviewRating != null && reviewRating >= 4) {
-          productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — только повышение до 5★, без кешбека)`;
+          if (isOzon) {
+            productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — попросить дополнить отзыв до 5★)`;
+          } else {
+            productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — только повышение до 5★, без кешбека)`;
+          }
         } else if (!rules.offer_compensation) {
           productRulesContext += `\nКомпенсация: не предлагать`;
         }
         if (rules.chat_strategy) {
           productRulesContext += `\nСтратегия: ${rules.chat_strategy}`;
         }
+      }
+    }
+
+    // Build review context block
+    let reviewContext = '';
+    if (rcl) {
+      const reviewDate = rcl.review_date ? formatTimestampMSK(rcl.review_date) : 'неизвестна';
+      reviewContext = `\n**Отзыв покупателя:**\nОценка: ${rcl.review_rating}★\nДата отзыва: ${reviewDate}`;
+      if (rcl.review_text) {
+        const trimmedText = rcl.review_text.length > 500 ? rcl.review_text.slice(0, 500) + '...' : rcl.review_text;
+        reviewContext += `\nТекст отзыва: ${trimmedText}`;
       }
     }
 
@@ -79,13 +104,15 @@ export async function POST(
 
 **Товар:**
 Название: ${chat.product_name || 'Неизвестно'}
-Артикул WB: ${chat.product_nm_id}
-Вендор код: ${chat.product_vendor_code || 'Неизвестно'}
+${isOzon ? 'ID товара OZON' : 'Артикул WB'}: ${chat.product_nm_id || 'Неизвестно'}${!isOzon ? `\nВендор код: ${chat.product_vendor_code || 'Неизвестно'}` : ''}
 ${productRulesContext}
+${reviewContext}
 
 **Клиент:**
 Имя: ${chat.client_name}
 
+**Текущий этап воронки:** ${getTagLabel(chat.tag)}
+**Статус чата:** ${getStatusLabel(chat.status)}
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
 

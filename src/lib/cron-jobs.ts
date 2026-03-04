@@ -610,7 +610,18 @@ export function startAutoSequenceProcessor() {
           );
 
           if (clientReplied) {
-            if (!dryRun) await dbHelpers.stopSequence(seq.id, 'client_replied');
+            if (!dryRun) {
+              await dbHelpers.stopSequence(seq.id, 'client_replied');
+              // Also update chat status: awaiting_reply → inbox (client replied = Входящие)
+              const chatForStatus = await dbHelpers.getChatById(seq.chat_id);
+              if (chatForStatus && chatForStatus.status === 'awaiting_reply') {
+                await dbHelpers.updateChat(seq.chat_id, {
+                  status: 'inbox' as ChatStatus,
+                  status_updated_at: new Date().toISOString(),
+                });
+                console.log(`[CRON] 📥 Chat ${seq.chat_id}: awaiting_reply → inbox (client replied)`);
+              }
+            }
             stopped++;
             console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (client replied)${dryRun ? ' [DRY RUN]' : ''}`);
             continue;
@@ -636,9 +647,17 @@ export function startAutoSequenceProcessor() {
             continue;
           }
 
-          // Check skip condition: seller already sent a message today?
+          // Check skip condition: seller already sent a message today (MSK)?
+          // MSK = UTC+3, so MSK midnight (00:00 MSK) = 21:00 UTC previous day
           const todayStart = new Date();
-          todayStart.setUTCHours(0, 0, 0, 0);
+          if (todayStart.getUTCHours() >= 21) {
+            // UTC 21:00+ = MSK next day → MSK midnight was at 21:00 UTC today
+            todayStart.setUTCHours(21, 0, 0, 0);
+          } else {
+            // UTC 00:00-20:59 = still same MSK day → MSK midnight was at 21:00 UTC yesterday
+            todayStart.setUTCDate(todayStart.getUTCDate() - 1);
+            todayStart.setUTCHours(21, 0, 0, 0);
+          }
           const sellerSentToday = messages.some(
             m => m.sender === 'seller' && new Date(m.timestamp) >= todayStart
           );
@@ -760,8 +779,15 @@ export function startAutoSequenceProcessor() {
           });
 
           if (!sendResult.sent) {
-            console.error(`[CRON] ❌ Sequence ${seq.id}: send failed - ${sendResult.error}`);
-            errors++;
+            if (sendResult.error === 'permanent') {
+              // Permanent error — stop the sequence to prevent infinite retries
+              await dbHelpers.stopSequence(seq.id, sendResult.errorMessage?.includes('replySign') ? 'missing_reply_sign' : 'send_failed');
+              console.error(`[CRON] 🛑 Sequence ${seq.id}: PERMANENTLY stopped - ${sendResult.errorMessage}`);
+              stopped++;
+            } else {
+              console.error(`[CRON] ❌ Sequence ${seq.id}: send failed (will retry) - ${sendResult.error}`);
+              errors++;
+            }
             continue;
           }
 
@@ -1282,7 +1308,7 @@ export function startResolvedReviewCloser() {
              OR r.review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')
              OR r.rating_excluded = TRUE
            )
-         LIMIT 200`
+         LIMIT 500`
       );
 
       const chats = result.rows;
