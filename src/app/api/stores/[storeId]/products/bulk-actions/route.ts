@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
-import { onProductActivated } from '@/services/backfill-worker';
+import { triggerInstantComplaintGeneration } from '@/services/auto-complaint-generator';
 
 /**
  * POST /api/stores/{storeId}/products/bulk-actions
@@ -109,6 +109,9 @@ export async function POST(
               product_id: productId
             });
             processed++;
+
+            // Instant complaint generation (defaults have submit_complaints=true)
+            triggerInstantComplaintGeneration(productId, storeId);
           } catch (error: any) {
             failed++;
             errors.push({ product_id: productId, error: error.message });
@@ -169,6 +172,11 @@ export async function POST(
               product_id: productId
             });
             processed++;
+
+            // Instant complaint generation if complaints enabled
+            if (customRules.submit_complaints) {
+              triggerInstantComplaintGeneration(productId, storeId);
+            }
           } catch (error: any) {
             failed++;
             errors.push({ product_id: productId, error: error.message });
@@ -194,9 +202,6 @@ export async function POST(
           }, { status: 400 });
         }
 
-        // Track activated products for backfill
-        const activatedProducts: Array<{ id: string; owner_id: string }> = [];
-
         for (const productId of product_ids) {
           try {
             // Verify product exists and belongs to store
@@ -211,29 +216,13 @@ export async function POST(
             await dbHelpers.updateProductWorkStatus(productId, work_status);
             processed++;
 
-            // Track for backfill if activated
+            // Instant complaint generation on activation (fire-and-forget)
             if (isActivation) {
-              activatedProducts.push({ id: productId, owner_id: product.owner_id });
+              triggerInstantComplaintGeneration(productId, storeId);
             }
           } catch (error: any) {
             failed++;
             errors.push({ product_id: productId, error: error.message });
-          }
-        }
-
-        // Trigger backfill for all activated products (fire and forget)
-        if (activatedProducts.length > 0) {
-          console.log(`[BACKFILL] Bulk activation: ${activatedProducts.length} products activated`);
-          for (const product of activatedProducts) {
-            onProductActivated(product.id, storeId, product.owner_id)
-              .then(job => {
-                if (job) {
-                  console.log(`[BACKFILL] Created job ${job.id} for product ${product.id}`);
-                }
-              })
-              .catch(err => {
-                console.error(`[BACKFILL] Failed to create job for product ${product.id}:`, err.message);
-              });
           }
         }
         break;
@@ -302,6 +291,11 @@ export async function POST(
               compensation_by: sourceRules.compensation_by,
             });
             processed++;
+
+            // Instant complaint generation if source has complaints enabled
+            if (sourceRules.submit_complaints) {
+              triggerInstantComplaintGeneration(productId, storeId);
+            }
           } catch (error: any) {
             failed++;
             errors.push({ product_id: productId, error: error.message });

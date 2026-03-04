@@ -17,6 +17,7 @@
  */
 
 import * as dbHelpers from '@/db/helpers';
+import { query } from '@/db/client';
 import { COMPLAINT_CUTOFF_DATE } from '@/db/complaint-helpers';
 
 // ============================================================================
@@ -408,6 +409,112 @@ export function productRulesChanged(
   }
 
   return false;
+}
+
+// ============================================================================
+// Instant Trigger on Product Rules Change
+// ============================================================================
+
+/**
+ * Maximum reviews for rules-triggered instant generation.
+ * Larger batches are left for CRON hourly fallback.
+ */
+const MAX_RULES_TRIGGER_BATCH = 500;
+
+/**
+ * Trigger instant complaint generation when product rules change.
+ *
+ * Called from:
+ * - PUT /products/{id}/rules
+ * - POST /products/{id}/rules/apply-defaults
+ * - Bulk actions (apply_default_rules, apply_custom_rules, copy_rules, update_status)
+ *
+ * Uses a single SQL query with all business-rule filters to find eligible reviews,
+ * then calls autoGenerateComplaintsInBackground() for instant generation.
+ *
+ * Safe to call fire-and-forget — all errors are caught and logged.
+ * CRON hourly fallback picks up anything >500 or failed.
+ *
+ * @param productId - Internal product UUID
+ * @param storeId - Store UUID
+ */
+export async function triggerInstantComplaintGeneration(
+  productId: string,
+  storeId: string,
+): Promise<void> {
+  try {
+    // Single SQL with all business-rule filters (mirrors shouldGenerateComplaint logic)
+    const result = await query<{ id: string }>(
+      `SELECT r.id
+       FROM reviews r
+       JOIN products p ON r.product_id = p.id
+       JOIN product_rules pr ON pr.product_id = p.id
+       JOIN stores s ON r.store_id = s.id
+       WHERE r.product_id = $1
+         AND r.store_id = $2
+         AND r.marketplace = 'wb'
+         AND r.rating BETWEEN 1 AND 4
+         AND r.date >= $3
+         AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
+         AND (r.review_status_wb IS NULL OR r.review_status_wb != 'deleted')
+         AND NOT EXISTS (
+           SELECT 1 FROM review_complaints rc WHERE rc.review_id = r.id
+         )
+         AND s.status = 'active'
+         AND p.is_active = true
+         AND pr.submit_complaints = true
+         AND (
+           (r.rating = 1 AND pr.complaint_rating_1 = true) OR
+           (r.rating = 2 AND pr.complaint_rating_2 = true) OR
+           (r.rating = 3 AND pr.complaint_rating_3 = true) OR
+           (r.rating = 4 AND pr.complaint_rating_4 = true)
+         )
+       ORDER BY r.date DESC
+       LIMIT $4`,
+      [productId, storeId, COMPLAINT_CUTOFF_DATE, MAX_RULES_TRIGGER_BATCH]
+    );
+
+    const reviewIds = result.rows.map(r => r.id);
+
+    if (reviewIds.length === 0) {
+      console.log(`[AUTO-COMPLAINT] Product rules trigger: no eligible reviews for product ${productId}`);
+      return;
+    }
+
+    console.log(`[AUTO-COMPLAINT] 🚀 Product rules trigger: ${reviewIds.length} eligible reviews for product ${productId}`);
+
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || process.env.CRON_API_KEY || '';
+    const baseUrl = getBaseUrl();
+    const endpoint = `${baseUrl}/api/extension/stores/${storeId}/reviews/generate-complaints-batch`;
+
+    // Call batch API directly (bypasses autoGenerateComplaintsInBackground's 100-review limit)
+    // Non-blocking: fire-and-forget with error catching
+    fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ review_ids: reviewIds }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error(`[AUTO-COMPLAINT] ❌ Rules trigger API error: HTTP ${response.status}`, errorData);
+          return;
+        }
+        const data = await response.json();
+        console.log(
+          `[AUTO-COMPLAINT] ✅ Rules trigger done for product ${productId}: ` +
+          `${data.generated?.length || 0} generated, ${data.failed?.length || 0} failed`
+        );
+      })
+      .catch(err => {
+        console.error(`[AUTO-COMPLAINT] ❌ Rules trigger failed (CRON will retry):`, err.message);
+      });
+  } catch (error: any) {
+    console.error(`[AUTO-COMPLAINT] ❌ triggerInstantComplaintGeneration error:`, error.message);
+  }
 }
 
 // ============================================================================

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { triggerAsyncSync } from '@/services/google-sheets-sync';
+import { productRulesChanged, triggerInstantComplaintGeneration } from '@/services/auto-complaint-generator';
 
 /**
  * PUT /api/stores/{storeId}/products/{productId}/rules
@@ -55,6 +56,9 @@ export async function PUT(
       }
     }
 
+    // Get current rules before update (for change detection)
+    const oldRules = await dbHelpers.getProductRule(productId);
+
     // Prepare rules data
     const ruleData: Omit<dbHelpers.ProductRule, 'id' | 'created_at' | 'updated_at'> = {
       product_id: productId,
@@ -87,6 +91,11 @@ export async function PUT(
 
     // Trigger Google Sheets sync (async, non-blocking)
     triggerAsyncSync();
+
+    // Instant complaint generation if complaint-relevant rules changed
+    if (ruleData.submit_complaints && productRulesChanged(oldRules, ruleData)) {
+      triggerInstantComplaintGeneration(productId, storeId);
+    }
 
     return NextResponse.json({
       success: true,
@@ -190,6 +199,9 @@ export async function POST(
 
     // Trigger Google Sheets sync (async, non-blocking)
     triggerAsyncSync();
+
+    // Instant complaint generation (defaults have submit_complaints=true)
+    triggerInstantComplaintGeneration(productId, storeId);
 
     return NextResponse.json({
       success: true,
