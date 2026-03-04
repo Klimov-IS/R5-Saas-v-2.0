@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/db/client';
 import { getUserByApiToken } from '@/db/extension-helpers';
+import { closeLinkedChatsForReviews } from '@/db/review-chat-link-helpers';
 
 // ============================================
 // Types
@@ -292,16 +293,27 @@ export async function POST(request: NextRequest) {
       console.log(`[Extension ComplaintStatuses] 📝 Review complaints updated: ${complaintsUpdated}`);
     }
 
+    // 7. Immediate auto-close chats for approved complaints
+    let chatsClosed = 0;
+    if (reviewsUpdated > 0) {
+      const approvedIds = bulkUpdateResult.rows
+        .filter(r => r.new_status === 'approved')
+        .map(r => r.id);
+      if (approvedIds.length > 0) {
+        chatsClosed = await closeLinkedChatsForReviews(approvedIds, 'review_resolved');
+      }
+    }
+
     const elapsed = Date.now() - startTime;
 
     console.log(
       `[Extension ComplaintStatuses] ✅ Done in ${elapsed}ms: ` +
       `received=${results.length}, valid=${validItems.length}, ` +
       `reviewsUpdated=${reviewsUpdated}, complaintsUpdated=${complaintsUpdated}, ` +
-      `skipped=${skipped.length}`
+      `chatsClosed=${chatsClosed}, skipped=${skipped.length}`
     );
 
-    // 7. Response
+    // 8. Response
     return NextResponse.json({
       success: true,
       data: {
@@ -309,6 +321,7 @@ export async function POST(request: NextRequest) {
         valid: validItems.length,
         reviewsUpdated,
         complaintsUpdated,
+        chatsClosed,
         skipped: skipped.length,
       },
       ...(skipped.length > 0 ? { skippedDetails: skipped.slice(0, 20) } : {}),

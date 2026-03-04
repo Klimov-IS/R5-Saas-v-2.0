@@ -14,6 +14,7 @@ import {
     shouldGenerateComplaint,
 } from '@/services/auto-complaint-generator';
 import { refreshOzonReviews } from '@/lib/ozon-review-sync';
+import { closeLinkedChatsForReviews } from '@/db/review-chat-link-helpers';
 
 /**
  * Generate initial date chunks for WB API with adaptive sizing
@@ -381,6 +382,12 @@ export async function refreshReviewsForStore(storeId: string, mode: 'full' | 'in
                                 [cancelledReviewIds]
                             );
                             console.log(`[DELETED DETECTION] Auto-cancelled ${complaintResult.rowCount} draft complaints on deleted reviews`);
+                        }
+
+                        // Step 5b: Immediately close linked chats for deleted reviews
+                        const deletedChatsClosed = await closeLinkedChatsForReviews(markedIds, 'review_resolved');
+                        if (deletedChatsClosed > 0) {
+                            console.log(`[DELETED DETECTION] Auto-closed ${deletedChatsClosed} linked chats for deleted reviews`);
                         }
                     }
                 }

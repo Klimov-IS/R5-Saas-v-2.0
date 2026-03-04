@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/db/client';
 import { getUserByApiToken } from '@/db/extension-helpers';
 import { refreshReviewsForStore } from '@/lib/review-sync';
+import { closeLinkedChatsForReviews } from '@/db/review-chat-link-helpers';
 
 // ============================================
 // Types
@@ -340,6 +341,7 @@ export async function POST(request: NextRequest) {
     let syncErrors = 0;
     const syncErrorDetails: { reviewKey: string; error: string }[] = [];
     const unmatchedReviews: { reviewKey: string; productId: string; rating: number; reviewDate: string }[] = [];
+    const resolvedReviewIds: string[] = []; // collect for immediate chat closure
 
     for (const review of reviews) {
       // Skip if missing required fields
@@ -390,7 +392,7 @@ export async function POST(request: NextRequest) {
       // 5b. Sync rating_excluded to reviews table
       if (review.ratingExcluded === true || review.ratingExcluded === false) {
         try {
-          await query(
+          const reResult = await query<{ id: string }>(
             `UPDATE reviews
              SET
                rating_excluded = $1,
@@ -400,9 +402,14 @@ export async function POST(request: NextRequest) {
                AND product_id = $3
                AND rating = $4
                AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-               AND rating_excluded != $1`,
+               AND rating_excluded != $1
+             RETURNING id`,
             [review.ratingExcluded, storeId, reviewsProductId, review.rating, review.reviewDate]
           );
+          // rating_excluded = true → review is resolved
+          if (review.ratingExcluded && reResult.rows.length > 0) {
+            for (const r of reResult.rows) resolvedReviewIds.push(r.id);
+          }
         } catch (err: any) {
           console.error(`[Extension ReviewStatuses] ❌ rating_excluded sync error for ${review.reviewKey}:`, err.message);
         }
@@ -413,7 +420,7 @@ export async function POST(request: NextRequest) {
         const reviewStatusWb = getReviewStatusWbFromStatuses(review.statuses);
         if (reviewStatusWb) {
           try {
-            await query(
+            const rswResult = await query<{ id: string }>(
               `UPDATE reviews
                SET
                  review_status_wb = $1::review_status_wb,
@@ -423,9 +430,15 @@ export async function POST(request: NextRequest) {
                  AND product_id = $3
                  AND rating = $4
                  AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-                 AND review_status_wb != $1`,
+                 AND review_status_wb != $1
+               RETURNING id`,
               [reviewStatusWb, storeId, reviewsProductId, review.rating, review.reviewDate]
             );
+            // excluded/unpublished/temporarily_hidden/deleted → review is resolved
+            const resolvedWbStatuses = ['excluded', 'unpublished', 'temporarily_hidden', 'deleted'];
+            if (resolvedWbStatuses.includes(reviewStatusWb) && rswResult.rows.length > 0) {
+              for (const r of rswResult.rows) resolvedReviewIds.push(r.id);
+            }
           } catch (err: any) {
             console.error(`[Extension ReviewStatuses] ❌ review_status_wb sync error for ${review.reviewKey}:`, err.message);
           }
@@ -495,6 +508,10 @@ export async function POST(request: NextRequest) {
                WHERE review_id = $2 AND status = 'draft'`,
               [complaintStatus, row.id]
             );
+            // complaint approved → review is resolved
+            if (complaintStatus === 'approved') {
+              resolvedReviewIds.push(row.id);
+            }
           }
           synced++;
           console.log(`[Extension ReviewStatuses] 🔄 Synced review ${review.reviewKey} → ${complaintStatus}`);
@@ -507,6 +524,12 @@ export async function POST(request: NextRequest) {
         });
         console.error(`[Extension ReviewStatuses] ❌ Sync error for ${review.reviewKey}:`, err.message);
       }
+    }
+
+    // 5e. Immediate auto-close chats for resolved reviews
+    let chatsClosed = 0;
+    if (resolvedReviewIds.length > 0) {
+      chatsClosed = await closeLinkedChatsForReviews(resolvedReviewIds);
     }
 
     // 6. Process notFoundReviewKeys — reviews extension couldn't find on WB (possibly deleted)
@@ -525,7 +548,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, chatStatusSynced=${chatStatusSynced}, syncErrors=${syncErrors}, unmatched=${unmatchedReviews.length}, notFound=${notFoundCount}`);
+    console.log(`[Extension ReviewStatuses] 🔄 Sync complete: synced=${synced}, chatStatusSynced=${chatStatusSynced}, chatsClosed=${chatsClosed}, syncErrors=${syncErrors}, unmatched=${unmatchedReviews.length}, notFound=${notFoundCount}`);
 
     // 7. Trigger targeted sync for unmatched OR notFound reviews (fire-and-forget)
     // - unmatched: extension sees review on WB but it's not in our DB → sync will ADD it
@@ -581,6 +604,7 @@ export async function POST(request: NextRequest) {
         // Sync to reviews table
         synced,
         chatStatusSynced,
+        chatsClosed,
         syncErrors,
         // Unmatched: extension sees on WB but not in our DB
         unmatched: unmatchedReviews.length,

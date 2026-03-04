@@ -10,6 +10,7 @@
  */
 
 import { query } from './client';
+import * as dbHelpers from './helpers';
 
 // ============================================================================
 // Types
@@ -450,6 +451,113 @@ export async function getChatRulesForStore(
       requiredComplaintStatus: 'rejected' as const,
     };
   });
+}
+
+/**
+ * Immediately close all non-closed chats linked to a resolved review.
+ * Called from extension endpoints when review status changes to a "resolved" state.
+ *
+ * Resolved conditions (caller decides which triggered):
+ * - complaint_status = 'approved'
+ * - review_status_wb IN ('excluded','unpublished','temporarily_hidden','deleted')
+ * - rating_excluded = true
+ *
+ * For each linked chat: sets status='closed', completion_reason, stops active sequences.
+ * Returns count of chats closed (0 if none found or already closed).
+ */
+export async function closeLinkedChatsForReview(
+  reviewId: string,
+  reason: dbHelpers.CompletionReason = 'review_resolved'
+): Promise<number> {
+  // Find non-closed chats linked to this review
+  const result = await query<{ chat_id: string }>(
+    `SELECT rcl.chat_id
+     FROM review_chat_links rcl
+     JOIN chats c ON c.id = rcl.chat_id
+     WHERE rcl.review_id = $1
+       AND rcl.chat_id IS NOT NULL
+       AND c.status != 'closed'`,
+    [reviewId]
+  );
+
+  if (result.rows.length === 0) return 0;
+
+  let closed = 0;
+  for (const row of result.rows) {
+    try {
+      await dbHelpers.updateChat(row.chat_id, {
+        status: 'closed' as dbHelpers.ChatStatus,
+        completion_reason: reason,
+        status_updated_at: new Date().toISOString(),
+      });
+
+      // Stop active sequence if any
+      const activeSeq = await dbHelpers.getActiveSequenceForChat(row.chat_id);
+      if (activeSeq) {
+        await dbHelpers.stopSequence(activeSeq.id, 'review_resolved');
+      }
+
+      closed++;
+    } catch (err: any) {
+      console.error(`[closeLinkedChats] Failed to close chat ${row.chat_id}: ${err.message}`);
+    }
+  }
+
+  if (closed > 0) {
+    console.log(`[closeLinkedChats] Closed ${closed} chat(s) for review ${reviewId} (reason: ${reason})`);
+  }
+
+  return closed;
+}
+
+/**
+ * Immediately close chats linked to reviews by their IDs (batch version).
+ * Used when multiple reviews are updated at once (e.g., bulk complaint-statuses sync).
+ */
+export async function closeLinkedChatsForReviews(
+  reviewIds: string[],
+  reason: dbHelpers.CompletionReason = 'review_resolved'
+): Promise<number> {
+  if (reviewIds.length === 0) return 0;
+
+  // Find non-closed chats linked to any of these reviews
+  const result = await query<{ chat_id: string }>(
+    `SELECT DISTINCT rcl.chat_id
+     FROM review_chat_links rcl
+     JOIN chats c ON c.id = rcl.chat_id
+     WHERE rcl.review_id = ANY($1::text[])
+       AND rcl.chat_id IS NOT NULL
+       AND c.status != 'closed'`,
+    [reviewIds]
+  );
+
+  if (result.rows.length === 0) return 0;
+
+  let closed = 0;
+  for (const row of result.rows) {
+    try {
+      await dbHelpers.updateChat(row.chat_id, {
+        status: 'closed' as dbHelpers.ChatStatus,
+        completion_reason: reason,
+        status_updated_at: new Date().toISOString(),
+      });
+
+      const activeSeq = await dbHelpers.getActiveSequenceForChat(row.chat_id);
+      if (activeSeq) {
+        await dbHelpers.stopSequence(activeSeq.id, 'review_resolved');
+      }
+
+      closed++;
+    } catch (err: any) {
+      console.error(`[closeLinkedChats] Failed to close chat ${row.chat_id}: ${err.message}`);
+    }
+  }
+
+  if (closed > 0) {
+    console.log(`[closeLinkedChats] Closed ${closed} chat(s) for ${reviewIds.length} reviews (reason: ${reason})`);
+  }
+
+  return closed;
 }
 
 /**
