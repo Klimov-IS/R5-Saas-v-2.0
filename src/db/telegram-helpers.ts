@@ -53,6 +53,7 @@ export interface QueueChat {
   review_date: string | null;
   review_text: string | null;
   complaint_status: string | null;
+  review_status_wb: string | null;
   product_status: string | null;
   // Product rules (from product_rules)
   offer_compensation: boolean | null;
@@ -250,7 +251,7 @@ export async function getUnifiedChatQueue(
          c.draft_reply, c.status, c.tag, c.completion_reason,
          rcl.review_rating, rcl.review_date,
          r.text as review_text,
-         r.complaint_status, r.product_status_by_review as product_status,
+         r.complaint_status, r.review_status_wb, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
          pr.compensation_type, pr.compensation_by,
          pr.chat_strategy::text as chat_strategy,
@@ -271,10 +272,9 @@ export async function getUnifiedChatQueue(
            r.id IS NULL
            OR NOT (
              r.complaint_status = 'approved'
-             OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+             OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
              OR r.rating_excluded = TRUE
            )
-           OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
          )
          ${statusCondition}
      )
@@ -287,7 +287,7 @@ export async function getUnifiedChatQueue(
          c.draft_reply, c.status, c.tag, c.completion_reason,
          rcl.review_rating, rcl.review_date,
          r.text as review_text,
-         r.complaint_status, r.product_status_by_review as product_status,
+         r.complaint_status, r.review_status_wb, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
          pr.compensation_type, pr.compensation_by,
          pr.chat_strategy::text as chat_strategy,
@@ -310,10 +310,9 @@ export async function getUnifiedChatQueue(
            r.id IS NULL
            OR NOT (
              r.complaint_status = 'approved'
-             OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+             OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
              OR r.rating_excluded = TRUE
            )
-           OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
          )
          ${statusCondition}
      )
@@ -362,10 +361,9 @@ export async function getUnifiedChatQueueCount(
              r.id IS NULL
              OR NOT (
                r.complaint_status = 'approved'
-               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
                OR r.rating_excluded = TRUE
              )
-             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
            )
            ${statusCondition}
        )
@@ -384,10 +382,9 @@ export async function getUnifiedChatQueueCount(
              r.id IS NULL
              OR NOT (
                r.complaint_status = 'approved'
-               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
                OR r.rating_excluded = TRUE
              )
-             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
            )
            ${statusCondition}
        )
@@ -429,10 +426,9 @@ export async function getUnifiedChatQueueCountsByStatus(
              r.id IS NULL
              OR NOT (
                r.complaint_status = 'approved'
-               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
                OR r.rating_excluded = TRUE
              )
-             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
            )
        )
        UNION ALL
@@ -450,10 +446,9 @@ export async function getUnifiedChatQueueCountsByStatus(
              r.id IS NULL
              OR NOT (
                r.complaint_status = 'approved'
-               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted')
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
                OR r.rating_excluded = TRUE
              )
-             OR (r.review_status_wb = 'temporarily_hidden' AND c.last_message_sender = 'client')
            )
        )
      ) t

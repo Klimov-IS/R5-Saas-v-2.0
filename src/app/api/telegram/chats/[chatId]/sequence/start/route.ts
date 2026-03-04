@@ -109,6 +109,31 @@ export async function POST(
       chatTag = 'deletion_candidate' as ChatTag;
     }
 
+    // Check if there's a paused sequence (stopped by manual_reply) to resume
+    const resumable = await dbHelpers.findResumableSequence(chatId, familyPrefix);
+    if (resumable) {
+      const resumeNextSendAt = getNextSlotTime(resumable.current_step);
+      await dbHelpers.resumeSequence(resumable.id, resumeNextSendAt);
+      await dbHelpers.updateChat(chatId, {
+        status: 'awaiting_reply' as ChatStatus,
+        status_updated_at: new Date().toISOString(),
+      });
+      console.log(
+        `[TG-SEQUENCE] Resumed: chat ${chatId}, type=${resumable.sequence_type}, ` +
+        `step ${resumable.current_step}/${resumable.max_steps}`
+      );
+      return NextResponse.json({
+        success: true,
+        resumed: true,
+        sequence: {
+          id: resumable.id,
+          sequenceType: resumable.sequence_type,
+          currentStep: resumable.current_step,
+          maxSteps: resumable.max_steps,
+        },
+      });
+    }
+
     // Check family dedup (active/completed of same family)
     const hasFamily = await dbHelpers.hasCompletedSequenceFamily(chatId, familyPrefix);
     if (hasFamily) {

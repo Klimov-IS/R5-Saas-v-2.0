@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
         reviewRating: c.review_rating,
         reviewDate: c.review_date,
         complaintStatus: c.complaint_status,
+        reviewStatusWb: c.review_status_wb,
         productStatus: c.product_status,
         offerCompensation: c.offer_compensation,
         maxCompensation: c.max_compensation,

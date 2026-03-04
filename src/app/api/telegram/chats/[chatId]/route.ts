@@ -28,7 +28,7 @@ export async function GET(
       `SELECT c.*, s.name as store_name,
          rcl.review_rating, rcl.review_date, rcl.chat_url,
          r.text as review_text,
-         r.complaint_status, r.product_status_by_review as product_status,
+         r.complaint_status, r.review_status_wb, r.product_status_by_review as product_status,
          pr.offer_compensation, pr.max_compensation,
          pr.compensation_type, pr.compensation_by,
          pr.chat_strategy::text as chat_strategy
@@ -110,6 +110,7 @@ export async function GET(
         reviewRating: chat.review_rating ?? null,
         reviewDate: chat.review_date ?? null,
         complaintStatus: chat.complaint_status ?? null,
+        reviewStatusWb: chat.review_status_wb ?? null,
         productStatus: chat.product_status ?? null,
         offerCompensation: chat.offer_compensation ?? null,
         maxCompensation: chat.max_compensation ?? null,

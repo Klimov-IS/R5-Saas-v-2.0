@@ -2805,6 +2805,42 @@ export async function stopSequence(
 }
 
 /**
+ * Find a sequence stopped by manual_reply that can be resumed.
+ * Only manual_reply stops are resumable — other stops (client_replied, manual_close, etc.) are not.
+ */
+export async function findResumableSequence(
+  chatId: string, familyPrefix: string
+): Promise<ChatAutoSequence | null> {
+  const result = await query<ChatAutoSequence>(
+    `SELECT * FROM chat_auto_sequences
+     WHERE chat_id = $1
+       AND sequence_type LIKE $2
+       AND status = 'stopped'
+       AND stop_reason = 'manual_reply'
+     ORDER BY updated_at DESC LIMIT 1`,
+    [chatId, familyPrefix + '%']
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Re-activate a stopped sequence from its current_step.
+ */
+export async function resumeSequence(
+  id: string, nextSendAt: string
+): Promise<ChatAutoSequence | null> {
+  const result = await query<ChatAutoSequence>(
+    `UPDATE chat_auto_sequences
+     SET status = 'active', stop_reason = NULL,
+         next_send_at = $2, updated_at = NOW()
+     WHERE id = $1 AND status = 'stopped'
+     RETURNING *`,
+    [id, nextSendAt]
+  );
+  return result.rows[0] || null;
+}
+
+/**
  * Reschedule a sequence to a new send time (without advancing step)
  */
 export async function rescheduleSequence(id: string, nextSendAt: string): Promise<void> {

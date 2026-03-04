@@ -92,9 +92,13 @@ export async function POST(
       }
     }
 
-    // If active auto-sequence exists, keep awaiting_reply; otherwise in_progress
+    // Manual reply from TG → pause active sequence, move to in_progress
     const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
-    const newStatus = activeSeq ? 'awaiting_reply' : 'in_progress';
+    if (activeSeq) {
+      await dbHelpers.stopSequence(activeSeq.id, 'manual_reply');
+      console.log(`[TG-SEND] Sequence paused for chat ${chatId} (manual reply, step ${activeSeq.current_step}/${activeSeq.max_steps})`);
+    }
+    const newStatus = 'in_progress';
 
     // Clear draft, update status, and mark as seller-replied
     await dbHelpers.updateChat(chatId, {

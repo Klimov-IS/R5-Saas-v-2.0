@@ -27,6 +27,7 @@ interface ChatDetail {
   reviewRating?: number | null;
   reviewDate?: string | null;
   complaintStatus?: string | null;
+  reviewStatusWb?: string | null;
   productStatus?: string | null;
   offerCompensation?: boolean | null;
   maxCompensation?: string | null;
@@ -80,6 +81,11 @@ const COMPLAINT_STATUS_LABELS: Record<string, string> = {
   not_sent: 'Не отправлена', draft: 'Черновик', sent: 'Отправлена',
   approved: 'Одобрена', rejected: 'Отклонена', pending: 'На рассмотрении',
   reconsidered: 'Пересмотрена', not_applicable: 'Нельзя подать',
+};
+
+const REVIEW_STATUS_LABELS: Record<string, string> = {
+  visible: 'Видимый', unpublished: 'Снят с публикации',
+  excluded: 'Исключён', temporarily_hidden: 'Временно скрыт', deleted: 'Удалён',
 };
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -318,13 +324,16 @@ export default function TgChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'closed', completion_reason: reason }),
       });
-      if (!response.ok) throw new Error('Failed to close');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || `Ошибка ${response.status}`);
+      }
       haptic('success');
       showFeedback('Чат закрыт');
       setTimeout(() => router.replace('/tg'), 800);
-    } catch {
+    } catch (e) {
       haptic('error');
-      showFeedback('Ошибка закрытия');
+      showFeedback(e instanceof Error ? e.message : 'Ошибка закрытия');
     }
   };
 
@@ -864,6 +873,7 @@ export default function TgChatPage() {
             {/* Section: КОНТЕКСТ */}
             {(chat.chatStrategy || (chat.offerCompensation && chat.reviewRating != null && chat.reviewRating <= 3) ||
               (chat.complaintStatus && chat.complaintStatus !== 'not_sent') ||
+              (chat.reviewStatusWb && chat.reviewStatusWb !== 'visible' && chat.reviewStatusWb !== 'unknown') ||
               (chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified')) && (
               <>
                 <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9CA3AF', marginBottom: '8px' }}>
@@ -898,6 +908,18 @@ export default function TgChatPage() {
                         chat.complaintStatus === 'approved' ? '#065F46' : '#92400E',
                     }}>
                       Жалоба: {COMPLAINT_STATUS_LABELS[chat.complaintStatus] || chat.complaintStatus}
+                    </span>
+                  )}
+                  {chat.reviewStatusWb && chat.reviewStatusWb !== 'visible' && chat.reviewStatusWb !== 'unknown' && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '100px',
+                      backgroundColor: chat.reviewStatusWb === 'temporarily_hidden' ? '#EDE9FE' :
+                        chat.reviewStatusWb === 'deleted' ? '#FEE2E2' : '#FEF3C7',
+                      color: chat.reviewStatusWb === 'temporarily_hidden' ? '#5B21B6' :
+                        chat.reviewStatusWb === 'deleted' ? '#991B1B' : '#92400E',
+                    }}>
+                      Отзыв: {REVIEW_STATUS_LABELS[chat.reviewStatusWb] || chat.reviewStatusWb}
                     </span>
                   )}
                   {chat.productStatus && chat.productStatus !== 'unknown' && chat.productStatus !== 'not_specified' && (
