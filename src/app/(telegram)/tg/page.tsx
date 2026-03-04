@@ -106,6 +106,13 @@ export default function TgQueuePage() {
   const [showStoreFilter, setShowStoreFilter] = useState(false);
   const [storeSearch, setStoreSearch] = useState('');
 
+  // Infinite scroll pagination
+  const PAGE_SIZE = 50;
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const offsetRef = useRef(0);
+
   // Selection mode
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -158,12 +165,20 @@ export default function TgQueuePage() {
     } catch {}
   }, [selectedStoreIds]);
 
-  const fetchQueue = useCallback(async () => {
+  const fetchQueue = useCallback(async (loadMore = false) => {
     try {
-      setIsLoading(true);
-      setError(null);
+      const currentOffset = loadMore ? offsetRef.current : 0;
+      if (!loadMore) {
+        setIsLoading(true);
+        setError(null);
+        offsetRef.current = 0;
+      } else {
+        setIsLoadingMore(true);
+      }
+
       const params = new URLSearchParams();
-      params.set('limit', '50');
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', String(currentOffset));
       params.set('status', activeStatus);
       if (selectedStoreIds.length > 0) {
         params.set('storeIds', selectedStoreIds.join(','));
@@ -171,20 +186,32 @@ export default function TgQueuePage() {
       const response = await apiFetch(`/api/telegram/queue?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to load queue');
       const data = await response.json();
-      setQueue(data.data || []);
+      const items: QueueItem[] = data.data || [];
+
+      if (loadMore) {
+        setQueue(prev => [...prev, ...items]);
+      } else {
+        setQueue(items);
+      }
       setTotalCount(data.totalCount || 0);
       setStatusCounts(data.statusCounts || {});
-      // Cache in sessionStorage to restore on next mount (prevents blank state on navigation back)
-      try {
-        sessionStorage.setItem('tg_total_count', String(data.totalCount || 0));
-        sessionStorage.setItem('tg_status_counts', JSON.stringify(data.statusCounts || {}));
-        sessionStorage.setItem(`tg_queue_items_${activeStatus}`, JSON.stringify(data.data || []));
-        sessionStorage.setItem(`tg_queue_ts_${activeStatus}`, Date.now().toString());
-      } catch {}
+      setHasMore(items.length === PAGE_SIZE);
+      offsetRef.current = currentOffset + items.length;
+
+      // Cache first page in sessionStorage (prevents blank state on navigation back)
+      if (!loadMore) {
+        try {
+          sessionStorage.setItem('tg_total_count', String(data.totalCount || 0));
+          sessionStorage.setItem('tg_status_counts', JSON.stringify(data.statusCounts || {}));
+          sessionStorage.setItem(`tg_queue_items_${activeStatus}`, JSON.stringify(items));
+          sessionStorage.setItem(`tg_queue_ts_${activeStatus}`, Date.now().toString());
+        } catch {}
+      }
     } catch (err: any) {
-      setError(err.message);
+      if (!loadMore) setError(err.message);
     } finally {
-      setIsLoading(false);
+      if (!loadMore) setIsLoading(false);
+      else setIsLoadingMore(false);
     }
   }, [apiFetch, activeStatus, selectedStoreIds]);
 
@@ -208,6 +235,9 @@ export default function TgQueuePage() {
   useEffect(() => {
     if (prevStatusRef.current === activeStatus) return; // skip on mount
     prevStatusRef.current = activeStatus;
+    // Reset pagination on tab change
+    offsetRef.current = 0;
+    setHasMore(true);
     if (isCacheValid(activeStatus)) {
       try {
         const saved = sessionStorage.getItem(`tg_queue_items_${activeStatus}`);
@@ -221,6 +251,22 @@ export default function TgQueuePage() {
     setQueue([]);
     setIsLoading(true);
   }, [activeStatus]);
+
+  // Infinite scroll: IntersectionObserver on sentinel element
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+          fetchQueue(true);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, isLoading, fetchQueue]);
 
   // Reset selection mode when tab or store filter changes
   useEffect(() => {
@@ -703,6 +749,38 @@ export default function TgQueuePage() {
           onClick={() => router.push(`/tg/chat/${item.id}?storeId=${item.storeId}${devUser ? `&dev_user=${devUser}` : ''}`)}
         />
       ))}
+
+      {/* Infinite scroll sentinel */}
+      {!error && sortedQueue.length > 0 && (
+        <div ref={sentinelRef} style={{ padding: '12px 0', textAlign: 'center', minHeight: '1px' }}>
+          {isLoadingMore && (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px',
+              color: '#6B7280',
+              fontSize: '13px',
+            }}>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid #E6E8EC',
+                borderTopColor: '#2563EB',
+                borderRadius: '50%',
+                animation: 'r5-spin 0.6s linear infinite',
+              }} />
+              Загрузка...
+            </div>
+          )}
+          {!hasMore && sortedQueue.length >= PAGE_SIZE && (
+            <div style={{ fontSize: '12px', color: '#9CA3AF', padding: '4px' }}>
+              Все чаты загружены
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bulk action bar */}
       {selectionMode && selectedIds.size > 0 && !bulkAction && (

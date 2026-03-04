@@ -69,6 +69,12 @@
   50% { opacity: 0.25; }
 }
 
+/* Spinner animation */
+@keyframes r5-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Line clamp utility */
 .line-clamp-2 {
   display: -webkit-box;
