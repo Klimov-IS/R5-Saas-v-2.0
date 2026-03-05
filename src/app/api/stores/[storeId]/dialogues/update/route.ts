@@ -215,14 +215,27 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
 
                     chatsToClassify.add(chatId); // Mark chat for re-classification (Sprint 3)
 
-                    // Save message
+                    // Save message (skip if auto-sequence already recorded it)
+                    const msgText = event.message?.text || '';
+                    if (event.sender === 'seller' && msgText) {
+                        const isDupe = await query(
+                            `SELECT 1 FROM chat_messages
+                             WHERE chat_id = $1 AND sender = 'seller' AND is_auto_reply = true
+                               AND text = $2 AND timestamp >= $3::timestamptz - interval '5 minutes'
+                               AND timestamp <= $3::timestamptz + interval '5 minutes'
+                             LIMIT 1`,
+                            [chatId, msgText, event.addTime]
+                        );
+                        if (isDupe.rows.length > 0) continue;
+                    }
+
                     const messagePayload: Omit<dbHelpers.ChatMessage, 'created_at'> = {
                         id: event.eventID,
                         chat_id: chatId,
                         store_id: storeId,
                         owner_id: ownerId,
                         marketplace: 'wb',
-                        text: event.message?.text || '',
+                        text: msgText,
                         sender: event.sender,
                         timestamp: event.addTime,
                         download_id: event.downloadID || null,

@@ -227,6 +227,19 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
 
           const text = extractMessageText(msg.data, msg.is_image);
 
+          // Skip if auto-sequence already recorded this seller message
+          if (sender === 'seller' && text) {
+            const isDupe = await query(
+              `SELECT 1 FROM chat_messages
+               WHERE chat_id = $1 AND sender = 'seller' AND is_auto_reply = true
+                 AND text = $2 AND timestamp >= $3::timestamptz - interval '5 minutes'
+                 AND timestamp <= $3::timestamptz + interval '5 minutes'
+               LIMIT 1`,
+              [chatId, text, msg.created_at]
+            );
+            if (isDupe.rows.length > 0) continue;
+          }
+
           await dbHelpers.upsertChatMessage({
             id: `ozon_${msg.message_id}`,
             chat_id: chatId,
