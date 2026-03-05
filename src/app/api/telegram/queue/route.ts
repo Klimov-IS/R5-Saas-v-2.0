@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
-import { getUnifiedChatQueue, getUnifiedChatQueueCount, getUnifiedChatQueueCountsByStatus } from '@/db/telegram-helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
+import { getQueue } from '@/core/services/queue-service';
 
 /**
  * GET /api/telegram/queue
  *
  * Returns unified cross-store chat queue with status and store filtering.
  * Query params:
- *   - status: chat status filter (default: 'inbox'). Use 'all' for no filter.
+ *   - status: chat status filter (default: 'awaiting_reply'). Use 'all' for no filter.
  *   - storeIds: comma-separated store IDs to filter (intersected with accessible).
  *   - ratings: comma-separated review ratings to filter (e.g. '1,2,3').
  *   - limit: max items (default 50, max 100).
@@ -23,65 +23,24 @@ export async function GET(request: NextRequest) {
     }
 
     const storeIds = await getAccessibleStoreIds(auth.userId);
-    if (storeIds.length === 0) {
-      return NextResponse.json({ data: [], totalCount: 0, statusCounts: {} });
-    }
 
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
-    const offset = parseInt(searchParams.get('offset') || '0', 10);
-    const status = searchParams.get('status') || 'awaiting_reply';
     const filterStoreIdsParam = searchParams.get('storeIds');
-    const filterStoreIds = filterStoreIdsParam
-      ? filterStoreIdsParam.split(',').filter(Boolean)
-      : undefined;
     const ratingsParam = searchParams.get('ratings');
-    const filterRatings = ratingsParam
-      ? ratingsParam.split(',').map(Number).filter(n => n >= 1 && n <= 5)
-      : undefined;
 
-    const [chats, totalCount, statusCounts] = await Promise.all([
-      getUnifiedChatQueue(storeIds, limit, offset, status, filterStoreIds, filterRatings),
-      getUnifiedChatQueueCount(storeIds, status, filterStoreIds, filterRatings),
-      getUnifiedChatQueueCountsByStatus(storeIds, filterStoreIds, filterRatings),
-    ]);
-
-    return NextResponse.json({
-      data: chats.map(c => ({
-        id: c.id,
-        storeId: c.store_id,
-        storeName: c.store_name,
-        marketplace: c.marketplace,
-        clientName: c.client_name,
-        productName: c.product_name,
-        lastMessageText: c.last_message_text,
-        lastMessageDate: c.last_message_date,
-        hasDraft: !!c.draft_reply,
-        draftPreview: c.draft_reply ? c.draft_reply.substring(0, 100) : null,
-        lastMessageSender: c.last_message_sender,
-        status: c.status,
-        tag: c.tag,
-        completionReason: c.completion_reason,
-        // Review & product rules data
-        reviewRating: c.review_rating,
-        reviewDate: c.review_date,
-        complaintStatus: c.complaint_status,
-        reviewStatusWb: c.review_status_wb,
-        productStatus: c.product_status,
-        offerCompensation: c.offer_compensation,
-        maxCompensation: c.max_compensation,
-        compensationType: c.compensation_type,
-        compensationBy: c.compensation_by,
-        chatStrategy: c.chat_strategy,
-        reviewText: c.review_text ?? null,
-        // Auto-sequence data
-        seqCurrentStep: c.seq_current_step,
-        seqMaxSteps: c.seq_max_steps,
-        seqStatus: c.seq_status,
-      })),
-      totalCount,
-      statusCounts,
+    const result = await getQueue(storeIds, {
+      status: (searchParams.get('status') || 'awaiting_reply') as any,
+      limit: Math.min(parseInt(searchParams.get('limit') || '50', 10), 100),
+      offset: parseInt(searchParams.get('offset') || '0', 10),
+      filterStoreIds: filterStoreIdsParam
+        ? filterStoreIdsParam.split(',').filter(Boolean)
+        : undefined,
+      filterRatings: ratingsParam
+        ? ratingsParam.split(',').map(Number).filter(n => n >= 1 && n <= 5)
+        : undefined,
     });
+
+    return NextResponse.json(result);
   } catch (error: any) {
     console.error('[TG-QUEUE] Error:', error.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

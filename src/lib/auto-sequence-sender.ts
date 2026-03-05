@@ -5,6 +5,7 @@
  */
 import * as dbHelpers from '@/db/helpers';
 import { getDaysUntilNextMessage, type SequenceMessage } from '@/lib/auto-sequence-templates';
+import { sendMessageToMarketplace } from '@/core/services/message-sender';
 
 interface SendSequenceMessageParams {
   sequenceId: string;
@@ -19,7 +20,7 @@ interface SendSequenceMessageParams {
  * Send a single auto-sequence message and advance the sequence.
  *
  * Handles:
- * - Marketplace-aware dispatch (WB / OZON)
+ * - Marketplace-aware dispatch via sendMessageToMarketplace (WB / OZON)
  * - Recording sent message in chat_messages
  * - Updating chat's last_message_* fields
  * - Advancing the sequence to the next step
@@ -41,38 +42,22 @@ export async function sendSequenceMessage(
     return { sent: false, error: 'Store not found' };
   }
 
-  // Send message via marketplace-aware dispatch
-  try {
-    if (store.marketplace === 'ozon' && store.ozon_client_id && store.ozon_api_key) {
-      const { createOzonClient } = await import('@/lib/ozon-api');
-      const ozonClient = createOzonClient(store.ozon_client_id, store.ozon_api_key);
-      await ozonClient.sendChatMessage(chatId, template.text);
-    } else {
-      const { sendChatMessage } = await import('@/lib/wb-chat-api');
-      await sendChatMessage(storeId, chatId, template.text);
-    }
-    console.log(`[AUTO-SEQ-SEND] Sent step ${currentStep} for chat ${chatId} (seq ${sequenceId})`);
-  } catch (sendError: any) {
-    const errorMsg = sendError.message || String(sendError);
+  // Send message via shared marketplace dispatch (no replySign — helper fetches it for WB)
+  const result = await sendMessageToMarketplace({
+    store,
+    chatId,
+    message: template.text,
+  });
 
-    // Classify error as permanent (should stop sequence) or transient (retry later)
-    const permanentPatterns = [
-      'does not have a replySign',
-      'Chat not found',
-      'Store not found',
-      '"code":7',                 // OZON: chat not started (JSON response)
-      'chat not started',         // OZON: chat not started (error message text)
-      'chat_not_started',
-      'CHAT_IS_NOT_STARTED',
-      'access period has expired', // OZON: chat window expired
-      'PermissionDenied',         // OZON: generic permission error
-    ];
-    const isPermanent = permanentPatterns.some(p => errorMsg.includes(p));
-
-    console.error(`[AUTO-SEQ-SEND] ${isPermanent ? 'PERMANENT' : 'TRANSIENT'} error step ${currentStep} for chat ${chatId} (seq ${sequenceId}): ${errorMsg}`);
-
-    return { sent: false, error: isPermanent ? 'permanent' : 'transient', errorMessage: errorMsg };
+  if (!result.sent) {
+    console.error(
+      `[AUTO-SEQ-SEND] ${result.error === 'permanent' ? 'PERMANENT' : 'TRANSIENT'} error ` +
+      `step ${currentStep} for chat ${chatId} (seq ${sequenceId}): ${result.errorMessage}`
+    );
+    return { sent: false, error: result.error, errorMessage: result.errorMessage };
   }
+
+  console.log(`[AUTO-SEQ-SEND] Sent step ${currentStep} for chat ${chatId} (seq ${sequenceId})`);
 
   // Record sent message in chat_messages
   const msgId = `auto_${sequenceId}_${currentStep}`;

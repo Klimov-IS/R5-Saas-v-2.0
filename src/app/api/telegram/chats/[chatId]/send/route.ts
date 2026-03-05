@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
-import { query } from '@/db/client';
-import * as dbHelpers from '@/db/helpers';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
-import { createOzonClient } from '@/lib/ozon-api';
+import { sendMessage, ChatNotFoundError, OzonChatNotStartedError } from '@/core/services/chat-service';
 
 /**
  * POST /api/telegram/chats/[chatId]/send
@@ -22,97 +20,22 @@ export async function POST(
       return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
     }
 
-    const { chatId } = params;
     const { message } = await request.json();
-
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Get chat with org-based access check
     const storeIds = await getAccessibleStoreIds(auth.userId);
-    const chatResult = await query(
-      `SELECT c.id, c.store_id, c.reply_sign, c.owner_id
-       FROM chats c
-       WHERE c.id = $1 AND c.store_id = ANY($2::text[])`,
-      [chatId, storeIds]
-    );
+    const result = await sendMessage(params.chatId, message, storeIds);
 
-    if (!chatResult.rows[0]) {
+    return NextResponse.json(result);
+  } catch (error: any) {
+    if (error instanceof ChatNotFoundError) {
       return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
     }
-
-    const chat = chatResult.rows[0];
-
-    // Get store
-    const store = await dbHelpers.getStoreById(chat.store_id);
-    if (!store) {
-      return NextResponse.json({ error: 'Store not found' }, { status: 404 });
+    if (error instanceof OzonChatNotStartedError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
     }
-
-    // OZON stores: use OZON Chat API
-    if (store.marketplace === 'ozon') {
-      if (!store.ozon_client_id || !store.ozon_api_key) {
-        return NextResponse.json({ error: 'OZON credentials not configured' }, { status: 400 });
-      }
-
-      const client = createOzonClient(store.ozon_client_id, store.ozon_api_key);
-      try {
-        await client.sendChatMessage(chatId, message.trim());
-      } catch (ozonErr: any) {
-        // OZON code 7: chat exists but buyer hasn't activated it yet
-        if (ozonErr.message?.includes('"code":7') || ozonErr.message?.includes('chat not started')) {
-          return NextResponse.json({
-            error: 'Покупатель ещё не принял чат. Отправить сообщение невозможно — дождитесь ответа покупателя.',
-          }, { status: 422 });
-        }
-        throw ozonErr;
-      }
-    } else {
-      // WB stores: use WB Chat API
-      const token = store.chat_api_token || store.api_token;
-      if (!token) {
-        return NextResponse.json({ error: 'Chat API token not configured' }, { status: 400 });
-      }
-
-      const formData = new FormData();
-      formData.append('replySign', chat.reply_sign);
-      formData.append('message', message.trim());
-
-      const wbResponse = await fetch('https://buyer-chat-api.wildberries.ru/api/v1/seller/message', {
-        method: 'POST',
-        headers: { 'Authorization': token },
-        body: formData,
-      });
-
-      if (!wbResponse.ok) {
-        const errorText = await wbResponse.text();
-        console.error(`[TG-SEND] WB API error: ${wbResponse.status} ${errorText}`);
-        return NextResponse.json({ error: 'Failed to send message to WB' }, { status: 502 });
-      }
-    }
-
-    // Manual reply from TG → pause active sequence, move to in_progress
-    const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
-    if (activeSeq) {
-      await dbHelpers.stopSequence(activeSeq.id, 'manual_reply');
-      console.log(`[TG-SEND] Sequence paused for chat ${chatId} (manual reply, step ${activeSeq.current_step}/${activeSeq.max_steps})`);
-    }
-    const newStatus = 'in_progress';
-
-    // Clear draft, update status, and mark as seller-replied
-    await dbHelpers.updateChat(chatId, {
-      draft_reply: null,
-      draft_reply_generated_at: null,
-      draft_reply_edited: null,
-      status: newStatus,
-      last_message_sender: 'seller',
-      last_message_text: message.trim(),
-      last_message_date: new Date().toISOString(),
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
     console.error('[TG-SEND] Error:', error.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
