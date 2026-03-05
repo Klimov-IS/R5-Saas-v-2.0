@@ -60,9 +60,12 @@ export async function sendSequenceMessage(
       'does not have a replySign',
       'Chat not found',
       'Store not found',
-      'code 7',                   // OZON: chat not started by buyer
+      '"code":7',                 // OZON: chat not started (JSON response)
+      'chat not started',         // OZON: chat not started (error message text)
       'chat_not_started',
       'CHAT_IS_NOT_STARTED',
+      'access period has expired', // OZON: chat window expired
+      'PermissionDenied',         // OZON: generic permission error
     ];
     const isPermanent = permanentPatterns.some(p => errorMsg.includes(p));
 
