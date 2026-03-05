@@ -3026,9 +3026,62 @@ export interface DashboardStats {
   chats: { total: number; activeDeletion: number; breakdown: { deletion_candidate: number; deletion_offered: number; deletion_agreed: number; deletion_confirmed: number; refund_requested: number } };
 }
 
-// In-memory cache for dashboard stats (expensive query across 3.2M+ reviews)
+// In-memory cache for dashboard stats (expensive review query across 3.2M+ reviews)
 let dashboardStatsCache: { data: DashboardStats; timestamp: number } | null = null;
+let reviewStatsCache: { total: number; withComplaints: number; timestamp: number } | null = null;
 const DASHBOARD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let reviewStatsLoading = false;
+
+// Background loader for review stats (fire-and-forget)
+function loadReviewStatsInBackground(): void {
+  if (reviewStatsLoading) return;
+  reviewStatsLoading = true;
+
+  const reviewSql = `
+    WITH complaint_products AS (
+      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3
+      FROM products p
+      INNER JOIN product_rules pr ON pr.product_id = p.id
+      WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial'))
+        AND p.is_active = TRUE
+        AND pr.submit_complaints = TRUE
+    )
+    SELECT
+      COUNT(*) AS total_reviews_in_work,
+      COUNT(rc.id) AS with_complaints
+    FROM complaint_products cp
+    INNER JOIN reviews r ON r.product_id = cp.id
+      AND r.marketplace = 'wb'
+      AND r.rating BETWEEN 1 AND 3
+      AND r.date >= '2023-10-01'
+      AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
+      AND (
+        (r.rating = 1 AND cp.complaint_rating_1 = TRUE) OR
+        (r.rating = 2 AND cp.complaint_rating_2 = TRUE) OR
+        (r.rating = 3 AND cp.complaint_rating_3 = TRUE)
+      )
+    LEFT JOIN review_complaints rc ON rc.review_id = r.id
+  `;
+
+  query(reviewSql)
+    .then(r => {
+      const row = r.rows[0];
+      reviewStatsCache = {
+        total: parseInt(row.total_reviews_in_work, 10) || 0,
+        withComplaints: parseInt(row.with_complaints, 10) || 0,
+        timestamp: Date.now(),
+      };
+      // Invalidate dashboard cache so next call includes review data
+      dashboardStatsCache = null;
+      console.log('[DASHBOARD] Review stats loaded in background:', reviewStatsCache);
+    })
+    .catch(err => {
+      console.warn('[DASHBOARD] Background review_stats query failed:', err.message);
+    })
+    .finally(() => {
+      reviewStatsLoading = false;
+    });
+}
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   // Return cached result if fresh
@@ -3079,49 +3132,20 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     SELECT * FROM store_stats, product_stats, chat_stats
   `;
 
-  // Slow query: review stats (3.2M reviews) — run separately with fallback
-  const reviewSql = `
-    WITH complaint_products AS (
-      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3
-      FROM products p
-      INNER JOIN product_rules pr ON pr.product_id = p.id
-      WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial'))
-        AND p.is_active = TRUE
-        AND pr.submit_complaints = TRUE
-    )
-    SELECT
-      COUNT(*) AS total_reviews_in_work,
-      COUNT(rc.id) AS with_complaints
-    FROM complaint_products cp
-    INNER JOIN reviews r ON r.product_id = cp.id
-      AND r.marketplace = 'wb'
-      AND r.rating BETWEEN 1 AND 3
-      AND r.date >= '2023-10-01'
-      AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
-      AND (
-        (r.rating = 1 AND cp.complaint_rating_1 = TRUE) OR
-        (r.rating = 2 AND cp.complaint_rating_2 = TRUE) OR
-        (r.rating = 3 AND cp.complaint_rating_3 = TRUE)
-      )
-    LEFT JOIN review_complaints rc ON rc.review_id = r.id
-  `;
-
-  // Run both in parallel — fast part always succeeds, review part may timeout
-  const [fastResult, reviewResult] = await Promise.all([
-    query(fastSql),
-    query(reviewSql).catch(err => {
-      console.warn('[DASHBOARD] review_stats query failed (timeout?), using 0:', err.message);
-      return { rows: [{ total_reviews_in_work: 0, with_complaints: 0 }] };
-    }),
-  ]);
-
+  const fastResult = await query(fastSql);
   const row = fastResult.rows[0];
-  const reviewRow = reviewResult.rows[0];
+
+  // Use cached review stats or trigger background load
+  const reviewsInWork = reviewStatsCache ? reviewStatsCache.total : 0;
+  const withComplaints = reviewStatsCache ? reviewStatsCache.withComplaints : 0;
+
+  // Trigger background load if no review data or stale
+  if (!reviewStatsCache || Date.now() - reviewStatsCache.timestamp > DASHBOARD_CACHE_TTL) {
+    loadReviewStatsInBackground();
+  }
 
   const activeProducts = toNum(row.active_products);
   const totalProducts = toNum(row.total_products);
-  const reviewsInWork = toNum(reviewRow.total_reviews_in_work);
-  const withComplaints = toNum(reviewRow.with_complaints);
 
   const stats: DashboardStats = {
     stores: {
