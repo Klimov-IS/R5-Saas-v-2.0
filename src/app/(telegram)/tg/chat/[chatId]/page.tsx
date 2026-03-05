@@ -393,6 +393,7 @@ export default function TgChatPage() {
       haptic('success');
       showFeedback(`Этап: ${TAG_LABELS[newTag] || newTag}`);
       if (chat) setChat({ ...chat, tag: newTag });
+      await fetchSequence();
     } catch {
       haptic('error');
       showFeedback('Ошибка смены тега');

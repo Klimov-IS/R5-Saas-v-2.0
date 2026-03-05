@@ -99,8 +99,23 @@ export async function PATCH(
 
     await dbHelpers.updateChat(chatId, updateData);
 
+    // Stop active sequence when tag changes (family mismatch)
+    let sequenceStopped = false;
+    if (tag && tag !== currentChat?.tag) {
+      try {
+        const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
+        if (activeSeq) {
+          await dbHelpers.stopSequence(activeSeq.id, 'tag_changed');
+          sequenceStopped = true;
+          console.log(`[TG-STATUS] Sequence stopped: chat ${chatId}, tag ${currentChat?.tag}→${tag} (was ${activeSeq.sequence_type})`);
+        }
+      } catch (seqErr: any) {
+        console.error(`[TG-STATUS] Failed to stop sequence on tag change:`, seqErr.message);
+      }
+    }
+
     // Stop active auto-sequence when closing or moving away from awaiting_reply
-    if (status === 'closed' || (currentChat?.status === 'awaiting_reply' && status !== 'awaiting_reply')) {
+    if (!sequenceStopped && (status === 'closed' || (currentChat?.status === 'awaiting_reply' && status !== 'awaiting_reply'))) {
       try {
         const activeSeq = await dbHelpers.getActiveSequenceForChat(chatId);
         if (activeSeq) {
@@ -113,7 +128,7 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ success: true, tag: tag || undefined });
+    return NextResponse.json({ success: true, tag: tag || undefined, sequenceStopped });
   } catch (error: any) {
     console.error('[TG-STATUS] Error:', error.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

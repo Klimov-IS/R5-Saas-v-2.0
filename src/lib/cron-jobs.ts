@@ -9,6 +9,7 @@
 
 import cron from 'node-cron';
 import * as dbHelpers from '@/db/helpers';
+import { query } from '@/db/client';
 import { runBackfillWorker } from '@/services/backfill-worker';
 
 import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
@@ -806,6 +807,35 @@ export function startAutoSequenceProcessor() {
       if (sent > 0 || stopped > 0 || skipped > 0 || errors > 0) {
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.log(`[CRON] 📨 Auto-sequence: ${sent} sent, ${stopped} stopped, ${skipped} skipped, ${errors} errors (${duration}s)${dryRun ? ' [DRY RUN]' : ''}`);
+      }
+
+      // Enforce queue rules: awaiting_reply without active sequence → fix status
+      // Catches ALL edge cases (send_failed, tag_changed, race conditions)
+      if (!dryRun) {
+        try {
+          const staleResult = await query(
+            `UPDATE chats
+             SET status = CASE
+               WHEN last_message_sender = 'client' THEN 'inbox'
+               ELSE 'in_progress'
+             END,
+             status_updated_at = NOW()
+             WHERE status = 'awaiting_reply'
+               AND NOT EXISTS (
+                 SELECT 1 FROM chat_auto_sequences cas
+                 WHERE cas.chat_id = chats.id AND cas.status = 'active'
+               )
+               AND store_id IN (SELECT id FROM stores WHERE status = 'active')
+             RETURNING id, last_message_sender`
+          );
+          if (staleResult.rows.length > 0) {
+            const toInbox = staleResult.rows.filter((r: any) => r.last_message_sender === 'client').length;
+            const toInProgress = staleResult.rows.length - toInbox;
+            console.log(`[CRON] 🔧 Fixed ${staleResult.rows.length} stale awaiting_reply chats (${toInbox} → inbox, ${toInProgress} → in_progress)`);
+          }
+        } catch (cleanupErr: any) {
+          console.error(`[CRON] Cleanup stale awaiting_reply failed:`, cleanupErr.message);
+        }
       }
 
     } catch (error: any) {
