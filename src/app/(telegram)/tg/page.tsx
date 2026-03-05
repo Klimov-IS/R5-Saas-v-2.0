@@ -6,6 +6,20 @@ import { useTelegramAuth } from '@/lib/telegram-auth-context';
 import TgQueueCard from '@/components/telegram/TgQueueCard';
 import TgLoginForm from '@/components/telegram/TgLoginForm';
 
+const COMPLETION_REASONS = [
+  { value: 'not_our_issue', label: 'Не наш вопрос', icon: '❓' },
+  { value: 'no_reply', label: 'Нет ответа', icon: '🔇' },
+  { value: 'negative', label: 'Негатив', icon: '😠' },
+  { value: 'refusal', label: 'Отказ', icon: '✋' },
+  { value: 'review_deleted', label: 'Отзыв удален', icon: '🗑️' },
+  { value: 'review_upgraded', label: 'Отзыв дополнен', icon: '⭐' },
+  { value: 'review_resolved', label: 'Не влияет на рейтинг', icon: '✅' },
+  { value: 'temporarily_hidden', label: 'Временно скрыт', icon: '👻' },
+  { value: 'spam', label: 'Спам', icon: '🚫' },
+  { value: 'old_dialog', label: 'Старый диалог', icon: '⏰' },
+  { value: 'other', label: 'Другое', icon: '📋' },
+];
+
 interface QueueItem {
   id: string;
   storeId: string;
@@ -437,6 +451,41 @@ export default function TgQueuePage() {
   const clearRatingFilter = useCallback(() => {
     setSelectedRatings([]);
   }, []);
+
+  // Bulk close modal
+  const [showCloseReasonModal, setShowCloseReasonModal] = useState(false);
+
+  // Bulk close with reason
+  const bulkClose = useCallback(async (reason: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    setShowCloseReasonModal(false);
+    setBulkAction('close');
+    setBulkProgress({ done: 0, total: ids.length, errors: 0 });
+
+    let errors = 0;
+    for (const chatId of ids) {
+      try {
+        const item = queue.find(q => q.id === chatId);
+        const storeId = item?.storeId;
+        if (!storeId) { errors++; continue; }
+
+        const response = await apiFetch(`/api/telegram/chats/${chatId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'closed', completion_reason: reason }),
+        });
+        if (!response.ok) errors++;
+      } catch { errors++; }
+      setBulkProgress(prev => ({ ...prev, done: prev.done + 1, errors }));
+    }
+
+    haptic(errors === 0 ? 'success' : errors < ids.length ? 'warning' : 'error');
+    await fetchQueue();
+    setBulkAction(null);
+    exitSelectionMode();
+  }, [selectedIds, queue, apiFetch, haptic, fetchQueue, exitSelectionMode]);
 
   // Bulk sequence start
   const bulkSequenceStart = useCallback(async () => {
@@ -989,6 +1038,24 @@ export default function TgQueuePage() {
             Отправить ({selectedWithDrafts})
           </button>
           <button
+            onClick={() => setShowCloseReasonModal(true)}
+            style={{
+              padding: '12px 14px',
+              borderRadius: '12px',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor: '#EF4444',
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'all 0.15s ease-out',
+            }}
+          >
+            ✕
+          </button>
+          <button
             onClick={bulkSequenceStart}
             style={{
               padding: '12px 14px',
@@ -1031,6 +1098,91 @@ export default function TgQueuePage() {
         </div>
       )}
 
+      {/* Close reason modal */}
+      {showCloseReasonModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'center',
+        }}
+        onClick={() => setShowCloseReasonModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '20px 20px 0 0',
+              padding: '20px 16px',
+              paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+              width: '100%',
+              maxHeight: '70vh',
+              overflowY: 'auto',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              fontSize: '16px', fontWeight: 700, color: '#111827',
+              marginBottom: '4px', textAlign: 'center',
+            }}>
+              Причина закрытия
+            </div>
+            <div style={{
+              fontSize: '13px', color: '#6B7280',
+              marginBottom: '16px', textAlign: 'center',
+            }}>
+              Будет применена ко всем {selectedIds.size} чатам
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {COMPLETION_REASONS.map(reason => (
+                <button
+                  key={reason.value}
+                  onClick={() => bulkClose(reason.value)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '14px 16px',
+                    borderRadius: '14px',
+                    border: '1px solid #E6E8EC',
+                    backgroundColor: '#F9FAFB',
+                    cursor: 'pointer',
+                    fontSize: '15px',
+                    fontWeight: 500,
+                    color: '#111827',
+                    textAlign: 'left',
+                    width: '100%',
+                    transition: 'all 0.1s ease-out',
+                  }}
+                >
+                  <span style={{ fontSize: '18px' }}>{reason.icon}</span>
+                  {reason.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowCloseReasonModal(false)}
+              style={{
+                marginTop: '12px',
+                width: '100%',
+                padding: '14px',
+                borderRadius: '14px',
+                border: 'none',
+                backgroundColor: '#F3F4F6',
+                color: '#6B7280',
+                fontSize: '15px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bulk action progress */}
       {bulkAction && (
         <div style={{
@@ -1047,7 +1199,7 @@ export default function TgQueuePage() {
           boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
         }}>
           <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
-            {bulkAction === 'generate' ? 'Генерация AI...' : bulkAction === 'sequence' ? 'Запуск рассылки...' : 'Отправка...'}
+            {bulkAction === 'generate' ? 'Генерация AI...' : bulkAction === 'sequence' ? 'Запуск рассылки...' : bulkAction === 'close' ? 'Закрытие...' : 'Отправка...'}
             {' '}{bulkProgress.done} / {bulkProgress.total}
             {bulkProgress.errors > 0 && (
               <span style={{ color: '#EF4444', marginLeft: '8px' }}>
@@ -1064,7 +1216,7 @@ export default function TgQueuePage() {
             <div style={{
               height: '100%',
               width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
-              backgroundColor: bulkAction === 'generate' ? '#2563EB' : bulkAction === 'sequence' ? '#F59E0B' : '#10B981',
+              backgroundColor: bulkAction === 'generate' ? '#2563EB' : bulkAction === 'sequence' ? '#F59E0B' : bulkAction === 'close' ? '#EF4444' : '#10B981',
               borderRadius: '2px',
               transition: 'width 0.3s ease',
             }} />
