@@ -392,8 +392,22 @@ export async function updateUserSettings(
 // ============================================================================
 
 export async function getStores(ownerId?: string): Promise<Store[]> {
-  // Include status and compute product_count from products table
+  // Pre-aggregate counts in CTEs to avoid N+1 correlated subqueries
   const selectQuery = `
+    WITH product_counts AS (
+      SELECT store_id, COUNT(*)::int AS cnt FROM products GROUP BY store_id
+    ),
+    review_counts AS (
+      SELECT store_id, COUNT(*)::int AS cnt FROM reviews GROUP BY store_id
+    ),
+    chat_counts AS (
+      SELECT store_id, COUNT(*)::int AS cnt FROM chats GROUP BY store_id
+    ),
+    chat_tags AS (
+      SELECT store_id, jsonb_object_agg(tag, cnt) AS tag_counts
+      FROM (SELECT store_id, tag, COUNT(*)::int AS cnt FROM chats GROUP BY store_id, tag) t
+      GROUP BY store_id
+    )
     SELECT
       s.id, s.name, s.marketplace, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
       s.ozon_client_id, s.ozon_api_key, s.ozon_subscription,
@@ -403,13 +417,15 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
       s.last_chat_update_status, s.last_chat_update_date, s.last_chat_update_next, s.last_chat_update_error,
       s.last_question_update_status, s.last_question_update_date, s.last_question_update_error,
       s.created_at, s.updated_at,
-      (SELECT COUNT(*)::int FROM products WHERE store_id = s.id) as product_count,
-      (SELECT COUNT(*)::int FROM reviews WHERE store_id = s.id) as total_reviews,
-      (SELECT COUNT(*)::int FROM chats WHERE store_id = s.id) as total_chats,
-      (SELECT jsonb_object_agg(tag, count) FROM (
-        SELECT tag, COUNT(*)::int as count FROM chats WHERE store_id = s.id GROUP BY tag
-      ) t) as chat_tag_counts
+      COALESCE(pc.cnt, 0) AS product_count,
+      COALESCE(rc.cnt, 0) AS total_reviews,
+      COALESCE(cc.cnt, 0) AS total_chats,
+      COALESCE(ct.tag_counts, '{}'::jsonb) AS chat_tag_counts
     FROM stores s
+    LEFT JOIN product_counts pc ON pc.store_id = s.id
+    LEFT JOIN review_counts rc ON rc.store_id = s.id
+    LEFT JOIN chat_counts cc ON cc.store_id = s.id
+    LEFT JOIN chat_tags ct ON ct.store_id = s.id
   `;
 
   let result;
@@ -428,6 +444,7 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
     product_count: typeof store.product_count === 'string' ? parseInt(store.product_count, 10) : store.product_count,
     total_reviews: typeof store.total_reviews === 'string' ? parseInt(store.total_reviews, 10) : store.total_reviews,
     total_chats: typeof store.total_chats === 'string' ? parseInt(store.total_chats, 10) : store.total_chats,
+    chat_tag_counts: store.chat_tag_counts || {},
   }));
 }
 
@@ -3067,24 +3084,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     ),
     chat_stats AS (
       SELECT
-        COUNT(DISTINCT c.id) AS total_our_chats,
-        COUNT(DISTINCT c.id) FILTER (
+        COUNT(DISTINCT rcl.chat_id) AS total_our_chats,
+        COUNT(DISTINCT rcl.chat_id) FILTER (
           WHERE c.tag IN ('deletion_candidate','deletion_offered','deletion_agreed','deletion_confirmed','refund_requested')
           AND c.status != 'closed'
         ) AS active_deletion_chats,
-        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_candidate' AND c.status != 'closed') AS deletion_candidates,
-        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_offered' AND c.status != 'closed') AS deletion_offered,
-        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_agreed' AND c.status != 'closed') AS deletion_agreed,
-        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'deletion_confirmed' AND c.status != 'closed') AS deletion_confirmed,
-        COUNT(DISTINCT c.id) FILTER (WHERE c.tag = 'refund_requested' AND c.status != 'closed') AS refund_requested
-      FROM chats c
-      INNER JOIN products p ON p.store_id = c.store_id AND (
-        (c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
-        OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku))
-      )
-      INNER JOIN product_rules pr ON pr.product_id = p.id AND pr.work_in_chats = TRUE
-      WHERE c.store_id IN (SELECT id FROM active_store_ids)
-        AND c.product_nm_id IS NOT NULL
+        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_candidate' AND c.status != 'closed') AS deletion_candidates,
+        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_offered' AND c.status != 'closed') AS deletion_offered,
+        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_agreed' AND c.status != 'closed') AS deletion_agreed,
+        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_confirmed' AND c.status != 'closed') AS deletion_confirmed,
+        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'refund_requested' AND c.status != 'closed') AS refund_requested
+      FROM review_chat_links rcl
+      INNER JOIN chats c ON c.id = rcl.chat_id AND c.store_id = rcl.store_id
+      WHERE rcl.store_id IN (SELECT id FROM active_store_ids)
     )
     SELECT * FROM store_stats, product_stats, review_stats, chat_stats
   `;
