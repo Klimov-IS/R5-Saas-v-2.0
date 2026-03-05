@@ -123,36 +123,33 @@ export async function GET(request: NextRequest) {
     }
 
     // 4. Run all count queries in parallel for performance
-    // Optimized: Q1 scoped to owner's stores, Q2 starts from products (uses idx_reviews_parse_pending)
-    // Q2 and Q3 use timeout — if DB is overloaded, stores still load with counts = 0
-    const [storesResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Q1: stores + draftComplaintsCount (scoped subquery) ──
+    // All heavy count queries use timeout — if DB is overloaded, stores still load with counts = 0
+    const [storesResult, draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
+      // ── Q1: stores (fast, no heavy joins) ──
       query<{
         id: string;
         name: string;
         status: string;
-        draft_complaints_count: string;
       }>(
-        `SELECT
-          s.id,
-          s.name,
-          s.status,
-          COALESCE(cnt.draft_count, 0)::text as draft_complaints_count
+        `SELECT s.id, s.name, s.status
         FROM stores s
-        LEFT JOIN (
-          SELECT rc.store_id, COUNT(*) as draft_count
-          FROM review_complaints rc
-          JOIN reviews r ON r.id = rc.review_id
-          JOIN products p ON rc.product_id = p.id
-          WHERE rc.status = 'draft'
-            AND p.work_status = 'active'
-            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-            AND r.review_status_wb != 'deleted'
-            AND rc.store_id IN (SELECT id FROM stores WHERE owner_id = $1)
-          GROUP BY rc.store_id
-        ) cnt ON cnt.store_id = s.id
         WHERE s.owner_id = $1
         ORDER BY s.name ASC`,
+        [user.id]
+      ),
+
+      // ── Q1b: draftComplaintsCount (with timeout) ──
+      queryWithTimeout<{ store_id: string; draft_count: string }>(
+        `SELECT rc.store_id, COUNT(*)::text as draft_count
+        FROM review_complaints rc
+        JOIN reviews r ON r.id = rc.review_id
+        JOIN products p ON rc.product_id = p.id
+        WHERE rc.status = 'draft'
+          AND p.work_status = 'active'
+          AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+          AND r.review_status_wb != 'deleted'
+          AND rc.store_id IN (SELECT id FROM stores WHERE owner_id = $1)
+        GROUP BY rc.store_id`,
         [user.id]
       ),
 
@@ -245,6 +242,10 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Build lookup maps for counts
+    const draftComplaintsMap = new Map<string, number>();
+    for (const row of draftComplaintsResult.rows) {
+      draftComplaintsMap.set(row.store_id, parseInt(row.draft_count) || 0);
+    }
     const statusParsesMap = new Map<string, number>();
     for (const row of statusParsesResult.rows) {
       statusParsesMap.set(row.store_id, parseInt(row.count) || 0);
@@ -258,7 +259,7 @@ export async function GET(request: NextRequest) {
       id: row.id,
       name: row.name,
       isActive: row.status === 'active',
-      draftComplaintsCount: parseInt(row.draft_complaints_count) || 0,
+      draftComplaintsCount: draftComplaintsMap.get(row.id) || 0,
       pendingChatsCount: pendingChatsMap.get(row.id) || 0,
       pendingStatusParsesCount: statusParsesMap.get(row.id) || 0,
     }));
