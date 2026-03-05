@@ -3036,17 +3036,20 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     return dashboardStatsCache.data;
   }
 
-  const sql = `
+  const toNum = (v: any) => parseInt(v, 10) || 0;
+
+  // Fast query: stores + products + chats (all small tables, <1s)
+  const fastSql = `
     WITH
+    active_store_ids AS (
+      SELECT id FROM stores WHERE status IN ('active', 'trial')
+    ),
     store_stats AS (
       SELECT
         COUNT(*) FILTER (WHERE status IN ('active', 'trial')) AS active_stores,
         COUNT(*) FILTER (WHERE status IN ('active', 'trial') AND created_at >= date_trunc('month', CURRENT_DATE)) AS new_stores_this_month,
         COUNT(*) AS total_stores
       FROM stores
-    ),
-    active_store_ids AS (
-      SELECT id FROM stores WHERE status IN ('active', 'trial')
     ),
     product_stats AS (
       SELECT
@@ -3056,31 +3059,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       LEFT JOIN product_rules pr ON pr.product_id = p.id
       WHERE p.store_id IN (SELECT id FROM active_store_ids)
         AND p.is_active = TRUE
-    ),
-    complaint_products AS (
-      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3
-      FROM products p
-      INNER JOIN product_rules pr ON pr.product_id = p.id
-      WHERE p.store_id IN (SELECT id FROM active_store_ids)
-        AND p.is_active = TRUE
-        AND pr.submit_complaints = TRUE
-    ),
-    review_stats AS (
-      SELECT
-        COUNT(*) AS total_reviews_in_work,
-        COUNT(rc.id) AS with_complaints
-      FROM complaint_products cp
-      INNER JOIN reviews r ON r.product_id = cp.id
-        AND r.marketplace = 'wb'
-        AND r.rating BETWEEN 1 AND 3
-        AND r.date >= '2023-10-01'
-        AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
-        AND (
-          (r.rating = 1 AND cp.complaint_rating_1 = TRUE) OR
-          (r.rating = 2 AND cp.complaint_rating_2 = TRUE) OR
-          (r.rating = 3 AND cp.complaint_rating_3 = TRUE)
-        )
-      LEFT JOIN review_complaints rc ON rc.review_id = r.id
     ),
     chat_stats AS (
       SELECT
@@ -3098,18 +3076,52 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       INNER JOIN chats c ON c.id = rcl.chat_id AND c.store_id = rcl.store_id
       WHERE rcl.store_id IN (SELECT id FROM active_store_ids)
     )
-    SELECT * FROM store_stats, product_stats, review_stats, chat_stats
+    SELECT * FROM store_stats, product_stats, chat_stats
   `;
 
-  const result = await query(sql);
-  const row = result.rows[0];
+  // Slow query: review stats (3.2M reviews) — run separately with fallback
+  const reviewSql = `
+    WITH complaint_products AS (
+      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3
+      FROM products p
+      INNER JOIN product_rules pr ON pr.product_id = p.id
+      WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial'))
+        AND p.is_active = TRUE
+        AND pr.submit_complaints = TRUE
+    )
+    SELECT
+      COUNT(*) AS total_reviews_in_work,
+      COUNT(rc.id) AS with_complaints
+    FROM complaint_products cp
+    INNER JOIN reviews r ON r.product_id = cp.id
+      AND r.marketplace = 'wb'
+      AND r.rating BETWEEN 1 AND 3
+      AND r.date >= '2023-10-01'
+      AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
+      AND (
+        (r.rating = 1 AND cp.complaint_rating_1 = TRUE) OR
+        (r.rating = 2 AND cp.complaint_rating_2 = TRUE) OR
+        (r.rating = 3 AND cp.complaint_rating_3 = TRUE)
+      )
+    LEFT JOIN review_complaints rc ON rc.review_id = r.id
+  `;
 
-  const toNum = (v: any) => parseInt(v, 10) || 0;
+  // Run both in parallel — fast part always succeeds, review part may timeout
+  const [fastResult, reviewResult] = await Promise.all([
+    query(fastSql),
+    query(reviewSql).catch(err => {
+      console.warn('[DASHBOARD] review_stats query failed (timeout?), using 0:', err.message);
+      return { rows: [{ total_reviews_in_work: 0, with_complaints: 0 }] };
+    }),
+  ]);
+
+  const row = fastResult.rows[0];
+  const reviewRow = reviewResult.rows[0];
 
   const activeProducts = toNum(row.active_products);
   const totalProducts = toNum(row.total_products);
-  const reviewsInWork = toNum(row.total_reviews_in_work);
-  const withComplaints = toNum(row.with_complaints);
+  const reviewsInWork = toNum(reviewRow.total_reviews_in_work);
+  const withComplaints = toNum(reviewRow.with_complaints);
 
   const stats: DashboardStats = {
     stores: {
