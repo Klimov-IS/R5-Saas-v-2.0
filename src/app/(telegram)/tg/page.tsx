@@ -25,12 +25,17 @@ interface QueueItem {
   reviewRating?: number | null;
   reviewDate?: string | null;
   complaintStatus?: string | null;
+  reviewStatusWb?: string | null;
   productStatus?: string | null;
   offerCompensation?: boolean | null;
   maxCompensation?: string | null;
   compensationType?: string | null;
   compensationBy?: string | null;
   chatStrategy?: string | null;
+  // Auto-sequence data
+  seqCurrentStep?: number | null;
+  seqMaxSteps?: number | null;
+  seqStatus?: string | null;
 }
 
 const STATUS_TABS = [
@@ -106,6 +111,15 @@ export default function TgQueuePage() {
   const [showStoreFilter, setShowStoreFilter] = useState(false);
   const [storeSearch, setStoreSearch] = useState('');
 
+  // Rating filter
+  const [selectedRatings, setSelectedRatings] = useState<number[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('tg_rating_filter');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [showRatingFilter, setShowRatingFilter] = useState(false);
+
   // Infinite scroll pagination
   const PAGE_SIZE = 50;
   const [hasMore, setHasMore] = useState(true);
@@ -165,6 +179,17 @@ export default function TgQueuePage() {
     } catch {}
   }, [selectedStoreIds]);
 
+  // Persist rating filter
+  useEffect(() => {
+    try {
+      if (selectedRatings.length > 0) {
+        sessionStorage.setItem('tg_rating_filter', JSON.stringify(selectedRatings));
+      } else {
+        sessionStorage.removeItem('tg_rating_filter');
+      }
+    } catch {}
+  }, [selectedRatings]);
+
   const fetchQueue = useCallback(async (loadMore = false) => {
     try {
       const currentOffset = loadMore ? offsetRef.current : 0;
@@ -182,6 +207,9 @@ export default function TgQueuePage() {
       params.set('status', activeStatus);
       if (selectedStoreIds.length > 0) {
         params.set('storeIds', selectedStoreIds.join(','));
+      }
+      if (selectedRatings.length > 0) {
+        params.set('ratings', selectedRatings.join(','));
       }
       const response = await apiFetch(`/api/telegram/queue?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to load queue');
@@ -213,7 +241,7 @@ export default function TgQueuePage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [apiFetch, activeStatus, selectedStoreIds]);
+  }, [apiFetch, activeStatus, selectedStoreIds, selectedRatings]);
 
   useEffect(() => {
     if (isAuthenticated && isLinked) {
@@ -273,7 +301,7 @@ export default function TgQueuePage() {
     setSelectionMode(false);
     setSelectedIds(new Set());
     setBulkAction(null);
-  }, [activeStatus, selectedStoreIds]);
+  }, [activeStatus, selectedStoreIds, selectedRatings]);
 
   // Haptic feedback helper
   const haptic = useCallback((type: 'success' | 'error' | 'warning') => {
@@ -398,6 +426,56 @@ export default function TgQueuePage() {
     setSelectedStoreIds([]);
   }, []);
 
+  // Rating filter handlers
+  const toggleRatingFilter = useCallback((rating: number) => {
+    setSelectedRatings(prev => {
+      if (prev.includes(rating)) return prev.filter(r => r !== rating);
+      return [...prev, rating];
+    });
+  }, []);
+
+  const clearRatingFilter = useCallback(() => {
+    setSelectedRatings([]);
+  }, []);
+
+  // Bulk sequence start
+  const bulkSequenceStart = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    setBulkAction('sequence');
+    setBulkProgress({ done: 0, total: ids.length, errors: 0 });
+    let errors = 0;
+    let skipped = 0;
+
+    for (let i = 0; i < ids.length; i++) {
+      try {
+        const res = await apiFetch(`/api/telegram/chats/${ids[i]}/sequence/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          // 409 = already exists (skip, not error), 400 = review resolved (skip)
+          if (res.status === 409 || res.status === 400) {
+            skipped++;
+          } else {
+            errors++;
+          }
+        }
+      } catch {
+        errors++;
+      }
+      setBulkProgress({ done: i + 1, total: ids.length, errors });
+    }
+
+    haptic(errors === 0 ? 'success' : 'warning');
+    await fetchQueue();
+    setBulkAction(null);
+    exitSelectionMode();
+  }, [selectedIds, apiFetch, haptic, fetchQueue, exitSelectionMode]);
+
   // Auth loading state
   if (authLoading) {
     return (
@@ -468,7 +546,7 @@ export default function TgQueuePage() {
             <>
               {/* Store filter button */}
               <button
-                onClick={() => setShowStoreFilter(!showStoreFilter)}
+                onClick={() => { setShowStoreFilter(!showStoreFilter); setShowRatingFilter(false); }}
                 style={{
                   backgroundColor: selectedStoreIds.length > 0 ? '#EEF2FF' : 'transparent',
                   border: selectedStoreIds.length > 0 ? '1px solid rgba(37,99,235,0.2)' : 'none',
@@ -486,6 +564,26 @@ export default function TgQueuePage() {
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/></svg>
                 {selectedStoreIds.length > 0 ? selectedStoreIds.length : ''}
+              </button>
+              {/* Rating filter button */}
+              <button
+                onClick={() => { setShowRatingFilter(!showRatingFilter); setShowStoreFilter(false); }}
+                style={{
+                  backgroundColor: selectedRatings.length > 0 ? '#FEF3C7' : 'transparent',
+                  border: selectedRatings.length > 0 ? '1px solid rgba(245,158,11,0.3)' : 'none',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '6px 10px',
+                  color: selectedRatings.length > 0 ? '#92400E' : '#6B7280',
+                  fontWeight: selectedRatings.length > 0 ? 600 : 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  transition: 'all 0.15s ease-out',
+                }}
+              >
+                ★{selectedRatings.length > 0 ? ` ${selectedRatings.sort().join(',')}` : ''}
               </button>
               <button
                 onClick={() => setSelectionMode(true)}
@@ -594,6 +692,63 @@ export default function TgQueuePage() {
                   />
                   {store.name}
                 </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Rating filter panel */}
+      {showRatingFilter && (
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          border: '1px solid #E6E8EC',
+          padding: '14px',
+          marginBottom: '12px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#6B7280' }}>Рейтинг</span>
+            <button
+              onClick={clearRatingFilter}
+              style={{
+                fontSize: '12px',
+                color: selectedRatings.length > 0 ? '#2563EB' : '#6B7280',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'color 0.15s',
+              }}
+            >
+              Все рейтинги
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {[1, 2, 3, 4, 5].map(rating => {
+              const isChecked = selectedRatings.includes(rating);
+              const ratingColor = ({ 1: '#ef4444', 2: '#f97316', 3: '#f59e0b', 4: '#84cc16', 5: '#22c55e' } as Record<number, string>)[rating];
+              return (
+                <button
+                  key={rating}
+                  onClick={() => toggleRatingFilter(rating)}
+                  style={{
+                    flex: 1,
+                    padding: '10px 0',
+                    borderRadius: '12px',
+                    border: isChecked ? `2px solid ${ratingColor}` : '2px solid #E6E8EC',
+                    backgroundColor: isChecked ? `${ratingColor}15` : '#FFFFFF',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 700,
+                    color: ratingColor,
+                    textAlign: 'center',
+                    transition: 'all 0.15s ease-out',
+                  }}
+                >
+                  {'★'.repeat(rating)}
+                </button>
               );
             })}
           </div>
@@ -834,6 +989,25 @@ export default function TgQueuePage() {
             Отправить ({selectedWithDrafts})
           </button>
           <button
+            onClick={bulkSequenceStart}
+            style={{
+              padding: '12px 14px',
+              borderRadius: '12px',
+              border: 'none',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              backgroundColor: '#F59E0B',
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.15s ease-out',
+            }}
+          >
+            📨
+          </button>
+          <button
             onClick={async () => {
               await fetchQueue();
               exitSelectionMode();
@@ -873,7 +1047,7 @@ export default function TgQueuePage() {
           boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
         }}>
           <div style={{ fontSize: '14px', fontWeight: 600, color: '#111827', marginBottom: '8px' }}>
-            {bulkAction === 'generate' ? 'Генерация AI...' : 'Отправка...'}
+            {bulkAction === 'generate' ? 'Генерация AI...' : bulkAction === 'sequence' ? 'Запуск рассылки...' : 'Отправка...'}
             {' '}{bulkProgress.done} / {bulkProgress.total}
             {bulkProgress.errors > 0 && (
               <span style={{ color: '#EF4444', marginLeft: '8px' }}>
@@ -890,7 +1064,7 @@ export default function TgQueuePage() {
             <div style={{
               height: '100%',
               width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
-              backgroundColor: bulkAction === 'generate' ? '#2563EB' : '#10B981',
+              backgroundColor: bulkAction === 'generate' ? '#2563EB' : bulkAction === 'sequence' ? '#F59E0B' : '#10B981',
               borderRadius: '2px',
               transition: 'width 0.3s ease',
             }} />

@@ -220,7 +220,8 @@ export async function getUnifiedChatQueue(
   limit: number = 50,
   offset: number = 0,
   status?: string,
-  filterStoreIds?: string[]
+  filterStoreIds?: string[],
+  filterRatings?: number[]
 ): Promise<QueueChat[]> {
   if (storeIds.length === 0) return [];
 
@@ -235,6 +236,9 @@ export async function getUnifiedChatQueue(
   const params: any[] = [effectiveStoreIds];
   const statusCondition = (status && status !== 'all')
     ? (() => { params.push(status); return `AND c.status = $${params.length}`; })()
+    : '';
+  const ratingCondition = (filterRatings && filterRatings.length > 0)
+    ? (() => { params.push(filterRatings); return `AND rcl.review_rating = ANY($${params.length}::int[])`; })()
     : '';
 
   params.push(limit);
@@ -277,6 +281,7 @@ export async function getUnifiedChatQueue(
            )
          )
          ${statusCondition}
+         ${ratingCondition}
      )
      UNION ALL
      (
@@ -315,6 +320,7 @@ export async function getUnifiedChatQueue(
            )
          )
          ${statusCondition}
+         ${ratingCondition}
      )
      ORDER BY last_message_date DESC NULLS LAST
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -329,7 +335,8 @@ export async function getUnifiedChatQueue(
 export async function getUnifiedChatQueueCount(
   storeIds: string[],
   status?: string,
-  filterStoreIds?: string[]
+  filterStoreIds?: string[],
+  filterRatings?: number[]
 ): Promise<number> {
   if (storeIds.length === 0) return 0;
 
@@ -342,6 +349,9 @@ export async function getUnifiedChatQueueCount(
   const params: any[] = [effectiveStoreIds];
   const statusCondition = (status && status !== 'all')
     ? (() => { params.push(status); return `AND c.status = $${params.length}`; })()
+    : '';
+  const ratingCondition = (filterRatings && filterRatings.length > 0)
+    ? (() => { params.push(filterRatings); return `AND rcl.review_rating = ANY($${params.length}::int[])`; })()
     : '';
 
   const result = await query<{ count: string }>(
@@ -366,6 +376,7 @@ export async function getUnifiedChatQueueCount(
              )
            )
            ${statusCondition}
+           ${ratingCondition}
        )
        UNION ALL
        (
@@ -387,6 +398,7 @@ export async function getUnifiedChatQueueCount(
              )
            )
            ${statusCondition}
+           ${ratingCondition}
        )
      ) t`,
     params
@@ -400,7 +412,8 @@ export async function getUnifiedChatQueueCount(
  */
 export async function getUnifiedChatQueueCountsByStatus(
   storeIds: string[],
-  filterStoreIds?: string[]
+  filterStoreIds?: string[],
+  filterRatings?: number[]
 ): Promise<Record<string, number>> {
   if (storeIds.length === 0) return { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 };
 
@@ -408,6 +421,11 @@ export async function getUnifiedChatQueueCountsByStatus(
     ? storeIds.filter(id => filterStoreIds.includes(id))
     : storeIds;
   if (effectiveStoreIds.length === 0) return { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 };
+
+  const params: any[] = [effectiveStoreIds];
+  const ratingCondition = (filterRatings && filterRatings.length > 0)
+    ? (() => { params.push(filterRatings); return `AND rcl.review_rating = ANY($${params.length}::int[])`; })()
+    : '';
 
   const result = await query<{ status: string; count: string }>(
     `SELECT status, COUNT(*) as count FROM (
@@ -430,6 +448,7 @@ export async function getUnifiedChatQueueCountsByStatus(
                OR r.rating_excluded = TRUE
              )
            )
+           ${ratingCondition}
        )
        UNION ALL
        (
@@ -450,10 +469,11 @@ export async function getUnifiedChatQueueCountsByStatus(
                OR r.rating_excluded = TRUE
              )
            )
+           ${ratingCondition}
        )
      ) t
      GROUP BY status`,
-    [effectiveStoreIds]
+    params
   );
 
   const counts: Record<string, number> = {

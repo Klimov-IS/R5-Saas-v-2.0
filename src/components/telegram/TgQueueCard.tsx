@@ -36,6 +36,13 @@ const TAG_META_COLORS: Record<string, string> = {
   deletion_confirmed: '#065F46',
 };
 
+const REVIEW_STATUS_SHORT: Record<string, { label: string; color: string }> = {
+  excluded: { label: 'Исключён', color: '#92400E' },
+  unpublished: { label: 'Снят', color: '#92400E' },
+  temporarily_hidden: { label: 'Скрыт', color: '#5B21B6' },
+  deleted: { label: 'Удалён', color: '#991B1B' },
+};
+
 interface TgQueueCardProps {
   id: string;
   storeId: string;
@@ -58,6 +65,7 @@ interface TgQueueCardProps {
   onClick: () => void;
   reviewRating?: number | null;
   reviewDate?: string | null;
+  reviewStatusWb?: string | null;
   seqCurrentStep?: number | null;
   seqMaxSteps?: number | null;
   seqStatus?: string | null;
@@ -81,6 +89,7 @@ export default function TgQueueCard({
   onToggleSelect,
   onClick,
   reviewRating,
+  reviewStatusWb,
   seqCurrentStep,
   seqMaxSteps,
   seqStatus,
@@ -106,10 +115,11 @@ export default function TgQueueCard({
   const ratingStars = reviewRating != null ? '★'.repeat(reviewRating) : null;
   const ratingColor = reviewRating != null ? (RATING_COLORS[reviewRating] || '#9CA3AF') : undefined;
 
-  // Build meta-line parts: store name + optional tag
+  // Build meta-line parts: store name + optional tag + review status
   const tagLabel = tag && TAG_LABELS[tag] ? TAG_LABELS[tag] : null;
   const tagColor = tag && TAG_META_COLORS[tag] ? TAG_META_COLORS[tag] : undefined;
   const ozonBadge = marketplace === 'ozon';
+  const reviewStatusInfo = reviewStatusWb && REVIEW_STATUS_SHORT[reviewStatusWb] || null;
 
   return (
     <div
@@ -234,6 +244,12 @@ export default function TgQueueCard({
           <>
             <span style={{ color: '#D1D5DB' }}>·</span>
             <span style={{ color: tagColor, fontWeight: 600 }}>{tagLabel}</span>
+          </>
+        )}
+        {reviewStatusInfo && (
+          <>
+            <span style={{ color: '#D1D5DB' }}>·</span>
+            <span style={{ color: reviewStatusInfo.color, fontWeight: 600 }}>{reviewStatusInfo.label}</span>
           </>
         )}
       </div>

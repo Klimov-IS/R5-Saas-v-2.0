@@ -11,6 +11,7 @@ import { getAccessibleStoreIds } from '@/db/auth-helpers';
  * Query params:
  *   - status: chat status filter (default: 'inbox'). Use 'all' for no filter.
  *   - storeIds: comma-separated store IDs to filter (intersected with accessible).
+ *   - ratings: comma-separated review ratings to filter (e.g. '1,2,3').
  *   - limit: max items (default 50, max 100).
  *   - offset: pagination offset.
  */
@@ -34,11 +35,15 @@ export async function GET(request: NextRequest) {
     const filterStoreIds = filterStoreIdsParam
       ? filterStoreIdsParam.split(',').filter(Boolean)
       : undefined;
+    const ratingsParam = searchParams.get('ratings');
+    const filterRatings = ratingsParam
+      ? ratingsParam.split(',').map(Number).filter(n => n >= 1 && n <= 5)
+      : undefined;
 
     const [chats, totalCount, statusCounts] = await Promise.all([
-      getUnifiedChatQueue(storeIds, limit, offset, status, filterStoreIds),
-      getUnifiedChatQueueCount(storeIds, status, filterStoreIds),
-      getUnifiedChatQueueCountsByStatus(storeIds, filterStoreIds),
+      getUnifiedChatQueue(storeIds, limit, offset, status, filterStoreIds, filterRatings),
+      getUnifiedChatQueueCount(storeIds, status, filterStoreIds, filterRatings),
+      getUnifiedChatQueueCountsByStatus(storeIds, filterStoreIds, filterRatings),
     ]);
 
     return NextResponse.json({

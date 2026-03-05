@@ -105,6 +105,7 @@ export async function GET(
         status: chat.status,
         tag: chat.tag,
         draftReply: chat.draft_reply,
+        draftReplyGeneratedAt: chat.draft_reply_generated_at ?? null,
         completionReason: chat.completion_reason,
         // Review & product rules
         reviewRating: chat.review_rating ?? null,

@@ -23,6 +23,7 @@ interface ChatDetail {
   status: string;
   tag: string | null;
   draftReply: string | null;
+  draftReplyGeneratedAt?: string | null;
   // Review & product rules
   reviewRating?: number | null;
   reviewDate?: string | null;
@@ -725,10 +726,17 @@ export default function TgChatPage() {
                   }}
                 />
                 <div style={{
-                  textAlign: 'right', fontSize: '11px', marginTop: '2px',
-                  fontWeight: 500, color: draftText.length > 900 ? '#EF4444' : '#6B7280',
+                  display: 'flex', justifyContent: 'space-between',
+                  fontSize: '11px', marginTop: '2px', fontWeight: 500,
                 }}>
-                  {draftText.length}/1000
+                  <span style={{ color: '#9CA3AF' }}>
+                    {chat.draftReplyGeneratedAt && draftText
+                      ? `AI: ${new Date(chat.draftReplyGeneratedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
+                      : ''}
+                  </span>
+                  <span style={{ color: draftText.length > 900 ? '#EF4444' : '#6B7280' }}>
+                    {draftText.length}/1000
+                  </span>
                 </div>
               </div>
             )}
