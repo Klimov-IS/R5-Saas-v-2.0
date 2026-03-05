@@ -952,62 +952,61 @@ export default function TgChatPage() {
                 <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9CA3AF', marginBottom: '8px' }}>
                   Воронка
                 </div>
-                {/* Step indicator */}
-                <div style={{ padding: '0 8px', marginBottom: '4px' }}>
+                {/* Interactive step indicator — tap any step to change */}
+                <div style={{ padding: '0 4px', marginBottom: '20px' }}>
+                  {/* Dots + lines */}
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     {WORKFLOW_STEPS.map((step, i) => {
                       const isCompleted = i < currentStepIndex;
                       const isActive = i === currentStepIndex;
+                      const canTap = chat.status !== 'closed' && !tagLoading && i !== currentStepIndex;
                       return (
                         <div key={step} style={{ display: 'contents' }}>
-                          <div style={{
-                            width: '10px', height: '10px', borderRadius: '50%', flexShrink: 0,
-                            border: `2px solid ${isCompleted ? '#10B981' : isActive ? '#2563EB' : '#E6E8EC'}`,
-                            background: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#FFFFFF',
-                          }} />
+                          <div
+                            onClick={canTap ? () => handleTagChange(step) : undefined}
+                            style={{
+                              width: '14px', height: '14px', borderRadius: '50%', flexShrink: 0,
+                              border: `2px solid ${isCompleted ? '#10B981' : isActive ? '#2563EB' : '#D1D5DB'}`,
+                              background: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#FFFFFF',
+                              cursor: canTap ? 'pointer' : 'default',
+                              transition: 'all 0.2s ease-out',
+                            }}
+                          />
                           {i < WORKFLOW_STEPS.length - 1 && (
                             <div style={{
                               flex: 1, height: '2px',
-                              background: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#E6E8EC',
+                              background: isCompleted ? '#10B981' : '#E6E8EC',
                             }} />
                           )}
                         </div>
                       );
                     })}
                   </div>
+                  {/* Labels — also tappable */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
                     {WORKFLOW_STEPS.map((step, i) => {
                       const isCompleted = i < currentStepIndex;
                       const isActive = i === currentStepIndex;
+                      const canTap = chat.status !== 'closed' && !tagLoading && i !== currentStepIndex;
                       const labels = ['Кандидат', 'Оффер', 'Согласен', 'Удалён'];
                       return (
-                        <span key={step} style={{
-                          fontSize: '9px', fontWeight: isActive ? 700 : 600, textAlign: 'center', width: '60px',
-                          color: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#9CA3AF',
-                        }}>
+                        <span
+                          key={step}
+                          onClick={canTap ? () => handleTagChange(step) : undefined}
+                          style={{
+                            fontSize: '10px', fontWeight: isActive ? 700 : 600, textAlign: 'center',
+                            width: '60px', padding: '4px 0',
+                            color: isCompleted ? '#10B981' : isActive ? '#2563EB' : '#9CA3AF',
+                            cursor: canTap ? 'pointer' : 'default',
+                            transition: 'color 0.15s',
+                          }}
+                        >
                           {labels[i]}
                         </span>
                       );
                     })}
                   </div>
                 </div>
-                {/* Transition button */}
-                {chat.status !== 'closed' && TAG_NEXT[chat.tag || ''] && (
-                  <button
-                    onClick={() => handleTagChange(TAG_NEXT[chat.tag || ''].tag)}
-                    disabled={tagLoading}
-                    style={{
-                      width: '100%', marginTop: '12px', padding: '10px', borderRadius: '12px',
-                      border: '1.5px dashed #D1D5DB', background: 'none',
-                      fontSize: '13px', fontWeight: 600, color: '#6B7280',
-                      cursor: 'pointer', opacity: tagLoading ? 0.5 : 1,
-                      transition: 'all 0.15s', marginBottom: '20px',
-                    }}
-                  >
-                    Перевести → {TAG_NEXT[chat.tag || ''].label}
-                  </button>
-                )}
-                {!TAG_NEXT[chat.tag || ''] && <div style={{ marginBottom: '20px' }} />}
               </>
             )}
 
