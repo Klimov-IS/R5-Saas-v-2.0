@@ -34,7 +34,7 @@ function getPoolConfig() {
       min: 5,  // Reduced from 10
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
-      statement_timeout: 30000, // Kill queries after 30s to prevent pool exhaustion
+      statement_timeout: 60000, // Kill queries after 60s to prevent pool exhaustion
       ssl: {
         rejectUnauthorized: false // Required for Yandex Cloud self-signed certs
       },

@@ -392,21 +392,11 @@ export async function updateUserSettings(
 // ============================================================================
 
 export async function getStores(ownerId?: string): Promise<Store[]> {
-  // Pre-aggregate counts in CTEs to avoid N+1 correlated subqueries
+  // Use s.total_reviews and s.total_chats from stores table (updated by dialogue/review sync)
+  // Only compute product_count from products table (15K rows = fast)
   const selectQuery = `
     WITH product_counts AS (
       SELECT store_id, COUNT(*)::int AS cnt FROM products GROUP BY store_id
-    ),
-    review_counts AS (
-      SELECT store_id, COUNT(*)::int AS cnt FROM reviews GROUP BY store_id
-    ),
-    chat_counts AS (
-      SELECT store_id, COUNT(*)::int AS cnt FROM chats GROUP BY store_id
-    ),
-    chat_tags AS (
-      SELECT store_id, jsonb_object_agg(tag, cnt) AS tag_counts
-      FROM (SELECT store_id, tag, COUNT(*)::int AS cnt FROM chats GROUP BY store_id, tag) t
-      GROUP BY store_id
     )
     SELECT
       s.id, s.name, s.marketplace, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
@@ -418,14 +408,11 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
       s.last_question_update_status, s.last_question_update_date, s.last_question_update_error,
       s.created_at, s.updated_at,
       COALESCE(pc.cnt, 0) AS product_count,
-      COALESCE(rc.cnt, 0) AS total_reviews,
-      COALESCE(cc.cnt, 0) AS total_chats,
-      COALESCE(ct.tag_counts, '{}'::jsonb) AS chat_tag_counts
+      COALESCE(s.total_reviews, 0) AS total_reviews,
+      COALESCE(s.total_chats, 0) AS total_chats,
+      COALESCE(s.chat_tag_counts, '{}'::jsonb) AS chat_tag_counts
     FROM stores s
     LEFT JOIN product_counts pc ON pc.store_id = s.id
-    LEFT JOIN review_counts rc ON rc.store_id = s.id
-    LEFT JOIN chat_counts cc ON cc.store_id = s.id
-    LEFT JOIN chat_tags ct ON ct.store_id = s.id
   `;
 
   let result;
@@ -3039,7 +3026,16 @@ export interface DashboardStats {
   chats: { total: number; activeDeletion: number; breakdown: { deletion_candidate: number; deletion_offered: number; deletion_agreed: number; deletion_confirmed: number; refund_requested: number } };
 }
 
+// In-memory cache for dashboard stats (expensive query across 3.2M+ reviews)
+let dashboardStatsCache: { data: DashboardStats; timestamp: number } | null = null;
+const DASHBOARD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export async function getDashboardStats(): Promise<DashboardStats> {
+  // Return cached result if fresh
+  if (dashboardStatsCache && Date.now() - dashboardStatsCache.timestamp < DASHBOARD_CACHE_TTL) {
+    return dashboardStatsCache.data;
+  }
+
   const sql = `
     WITH
     store_stats AS (
@@ -3061,26 +3057,30 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       WHERE p.store_id IN (SELECT id FROM active_store_ids)
         AND p.is_active = TRUE
     ),
+    complaint_products AS (
+      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3
+      FROM products p
+      INNER JOIN product_rules pr ON pr.product_id = p.id
+      WHERE p.store_id IN (SELECT id FROM active_store_ids)
+        AND p.is_active = TRUE
+        AND pr.submit_complaints = TRUE
+    ),
     review_stats AS (
       SELECT
         COUNT(*) AS total_reviews_in_work,
-        COUNT(*) FILTER (WHERE rc.id IS NOT NULL) AS with_complaints
-      FROM reviews r
-      INNER JOIN products p ON r.product_id = p.id
-      INNER JOIN product_rules pr ON pr.product_id = p.id
-      LEFT JOIN review_complaints rc ON rc.review_id = r.id
-      WHERE r.store_id IN (SELECT id FROM active_store_ids)
+        COUNT(rc.id) AS with_complaints
+      FROM complaint_products cp
+      INNER JOIN reviews r ON r.product_id = cp.id
         AND r.marketplace = 'wb'
         AND r.rating BETWEEN 1 AND 3
         AND r.date >= '2023-10-01'
-        AND p.is_active = TRUE
-        AND pr.submit_complaints = TRUE
-        AND (
-          (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
-          (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
-          (r.rating = 3 AND pr.complaint_rating_3 = TRUE)
-        )
         AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
+        AND (
+          (r.rating = 1 AND cp.complaint_rating_1 = TRUE) OR
+          (r.rating = 2 AND cp.complaint_rating_2 = TRUE) OR
+          (r.rating = 3 AND cp.complaint_rating_3 = TRUE)
+        )
+      LEFT JOIN review_complaints rc ON rc.review_id = r.id
     ),
     chat_stats AS (
       SELECT
@@ -3111,7 +3111,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const reviewsInWork = toNum(row.total_reviews_in_work);
   const withComplaints = toNum(row.with_complaints);
 
-  return {
+  const stats: DashboardStats = {
     stores: {
       active: toNum(row.active_stores),
       newThisMonth: toNum(row.new_stores_this_month),
@@ -3140,4 +3140,8 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       },
     },
   };
+
+  // Cache the result
+  dashboardStatsCache = { data: stats, timestamp: Date.now() };
+  return stats;
 }
