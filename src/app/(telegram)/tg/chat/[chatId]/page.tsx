@@ -1045,7 +1045,7 @@ export default function TgChatPage() {
                     Стоп
                   </button>
                 </>
-              ) : sequence?.status === 'stopped' ? (
+              ) : sequence?.status === 'stopped' && sequence.stopReason === 'manual_reply' ? (
                 <>
                   <div style={{ fontSize: '13px', fontWeight: 500, color: '#92400E' }}>
                     Пауза ({sequence.currentStep}/{sequence.maxSteps})
