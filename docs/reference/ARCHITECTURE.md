@@ -77,7 +77,7 @@ R5/
 │   │   │   ├── generate-review-complaint-flow.ts
 │   │   │   ├── generate-chat-reply-flow.ts
 │   │   │   ├── classify-chat-tag-flow.ts      # DEPRECATED (migration 024, disabled)
-│   │   │   └── classify-chat-deletion-flow.ts # DEPRECATED (migration 024, disabled)
+│   │   │   └── classify-chat-deletion-flow.ts # DEPRECATED (replaced by tag-classifier.ts)
 │   │   ├── prompts/            # Prompt templates
 │   │   └── utils/              # AI utilities (templates, filters)
 │   │
@@ -87,6 +87,8 @@ R5/
 │   │   ├── wb-api.ts           # WB API client
 │   │   ├── sync-store.ts       # Sync orchestration
 │   │   ├── ai-context.ts       # AI context builder (FAQ + Guides + Instructions)
+│   │   ├── tag-classifier.ts   # Regex tag classifier (offered/agreed/confirmed)
+│   │   ├── chat-transitions.ts # Tag/status transition guards
 │   │   ├── faq-templates.ts    # 27 pre-built FAQ templates (9 categories)
 │   │   ├── guide-templates.ts  # 7 pre-built guide templates
 │   │   └── auto-sequence-templates.ts  # Auto-sequence message templates
@@ -173,7 +175,7 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 | `generate-review-complaint-flow.ts` | Генерация текста жалобы |
 | `generate-chat-reply-flow.ts` | Генерация ответа в чат |
 | `classify-chat-tag-flow.ts` | ~~Классификация чата по тегам~~ **DEPRECATED** (migration 024, отключено) |
-| `classify-chat-deletion-flow.ts` | ~~Классификация на удаление~~ **DEPRECATED** (migration 024, отключено) |
+| `classify-chat-deletion-flow.ts` | ~~Классификация на удаление~~ **DEPRECATED** → заменено на `src/lib/tag-classifier.ts` |
 | `generate-deletion-offer-flow.ts` | Генерация предложения удаления |
 | `generate-review-reply-flow.ts` | Генерация ответа на отзыв |
 | `generate-question-reply-flow.ts` | Генерация ответа на вопрос |

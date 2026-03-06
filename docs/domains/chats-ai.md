@@ -26,15 +26,16 @@ AI-ассистент в чатах помогает менеджерам быс
 ### ChatTag (4 тега + NULL) — этап воронки удаления
 
 > Source of truth: `src/types/chats.ts`
-> AI-классификация удалена (migration 024, 2026-03-06). Теги назначаются автоматически или вручную.
+> AI-классификация удалена (migration 024, 2026-03-06). Заменена на regex-классификатор (`src/lib/tag-classifier.ts`).
+> Подробная документация: [`docs/domains/TAG_CLASSIFICATION.md`](TAG_CLASSIFICATION.md)
 
 | Тег | Описание | Как назначается |
 |-----|----------|----------------|
 | `NULL` | Новый чат | По умолчанию, ещё не обработан |
 | `deletion_candidate` | Кандидат на удаление | **Автоматически** при привязке чата к отзыву (`review_chat_links`) |
-| `deletion_offered` | Оффер отправлен | **Вручную** из TG Mini App |
-| `deletion_agreed` | Клиент согласился | **Вручную** из TG Mini App |
-| `deletion_confirmed` | Отзыв удалён/изменён | **Вручную** из TG Mini App |
+| `deletion_offered` | Оффер отправлен | **Regex** (синк) + **Вручную** (TG) — продавец предлагает компенсацию |
+| `deletion_agreed` | Клиент согласился | **Regex** (синк) + **Вручную** (TG) — покупатель согласился удалить |
+| `deletion_confirmed` | Отзыв удалён/изменён | **Regex** (синк) + **Вручную** (TG) — факт удаления/изменения |
 
 Удалённые теги (migration 024): `active`, `successful`, `unsuccessful`, `no_reply`, `untagged`, `completed`, `refund_requested`, `spam`.
 
@@ -218,11 +219,13 @@ interface ClassifyChatTagOutput {
 
 ---
 
-### 3. Classify Chat Deletion
+### 3. Classify Chat Deletion (DEPRECATED — replaced by regex classifier)
 
-**Flow:** `src/ai/flows/classify-chat-deletion-flow.ts`
+**Flow:** `src/ai/flows/classify-chat-deletion-flow.ts` (DEPRECATED, migration 024)
 
-**Назначение:** Определение, подходит ли чат для сценария удаления отзыва. Двухэтапный подход: regex + AI.
+**Замена:** `src/lib/tag-classifier.ts` — regex-классификатор, интегрирован в sync flows. См. [`TAG_CLASSIFICATION.md`](TAG_CLASSIFICATION.md).
+
+**Бывшее назначение:** Определение, подходит ли чат для сценария удаления отзыва. Двухэтапный подход: regex + AI.
 
 **Входные данные:**
 ```typescript

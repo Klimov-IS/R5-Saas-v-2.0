@@ -150,31 +150,34 @@ Patterns that BLOCK classification to prevent false positives:
 
 Anti-patterns reduce confidence by 70% for `deletion_agreed` and 50% for `deletion_confirmed`.
 
-## Integration Points
+## Integration Points (deployed 2026-03-06)
 
-### Current: Manual from TG Mini App
+Tags are set both **manually** (TG Mini App progression buttons) and **automatically** (regex in sync flows).
 
-Tags are currently set **manually** from TG Mini App progression buttons. The regex classifier provides the RULES for how the operator decides.
+### 1. WB Dialogue Sync — Step 5-tag
 
-### Future: Auto-classification in dialogue sync
+**File:** `src/app/api/stores/[storeId]/dialogues/update/route.ts`
 
-When ready, the classifier can be integrated into dialogue sync to auto-set tags:
+After message processing + status transitions, classifies the LATEST message of each review-linked chat:
+- Seller message → check `isOfferMessage()` → `deletion_offered`
+- Client message → check `isConfirmationMessage()` → `deletion_confirmed`
+- Client message → check `isAgreementMessage()` → `deletion_agreed`
 
-```typescript
-import { classifyTagFromMessages } from '@/lib/tag-classifier';
+### 2. OZON Chat Sync — Step 3b
 
-// In dialogue sync, after fetching messages:
-const result = classifyTagFromMessages(messages, chat.tag);
-if (result.tag && result.confidence >= 0.90) {
-  await updateChatTag(chatId, result.tag);
-}
-```
+**File:** `src/lib/ozon-chat-sync.ts`
 
-### Confidence threshold recommendation
+Same logic as WB, but filters on `product_nm_id` instead of `review_chat_links` (OZON has no extension).
 
-- **>= 0.95**: Safe to auto-apply
-- **0.85-0.95**: Auto-apply with logging
-- **< 0.85**: Flag for manual review
+### 3. TG Send — after seller message
+
+**File:** `src/core/services/chat-service.ts` (`sendMessage()`)
+
+When operator sends a message from TG Mini App, checks if it matches `isOfferMessage()` → auto-tags `deletion_offered`.
+
+### Forward-only guard
+
+All integration points use `canAutoOverwriteTag()` from `chat-transitions.ts` to prevent tag regression.
 
 ## Testing
 

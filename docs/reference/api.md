@@ -436,7 +436,9 @@ HMAC-SHA256 валидация с BOT_TOKEN. initData содержит `user.id`
 
 ### POST /api/stores/:storeId/chats/classify-all
 
-Классифицировать все чаты через AI.
+> **DEPRECATED** (migration 024). AI-классификация отключена. Теги теперь назначаются regex-классификатором в sync flows + вручную из TG Mini App. См. [`TAG_CLASSIFICATION.md`](../domains/TAG_CLASSIFICATION.md).
+
+~~Классифицировать все чаты через AI.~~ Возвращает HTTP 410.
 
 ---
 
@@ -485,7 +487,9 @@ HMAC-SHA256 валидация с BOT_TOKEN. initData содержит `user.id`
 
 ### POST /api/stores/:storeId/chats/classify-deletion
 
-Классифицировать чаты на предмет удаления отзыва.
+> **DEPRECATED** (migration 024). Заменено regex-классификатором `src/lib/tag-classifier.ts`, интегрированным в sync flows. Возвращает HTTP 410.
+
+~~Классифицировать чаты на предмет удаления отзыва.~~
 
 ---
 
