@@ -5,6 +5,7 @@ import * as dbHelpers from '@/db/helpers';
 import { getOrgMemberByUserId } from '@/db/auth-helpers';
 import { createOzonClient, OzonApiError } from '@/lib/ozon-api';
 import { generateFirebaseId } from '@/lib/utils';
+import { triggerStoreOnboarding, isOnboardingConfigured } from '@/services/store-onboarding';
 
 /**
  * POST /api/stores/ozon/create
@@ -101,6 +102,11 @@ export async function POST(request: NextRequest) {
     console.log(
       `[OZON-CREATE] Store created: ${newStore.id} (${storeName}, subscription: ${subscription})`
     );
+
+    // Trigger Google Drive onboarding (fire-and-forget) — same as WB stores
+    if (isOnboardingConfigured()) {
+      triggerStoreOnboarding(newStore.id, storeName);
+    }
 
     return NextResponse.json(
       { data: newStore },

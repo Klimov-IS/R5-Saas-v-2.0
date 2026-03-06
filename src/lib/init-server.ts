@@ -3,7 +3,7 @@
  * This file runs once when the Next.js server starts (via instrumentation.ts)
  */
 
-import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker, startGoogleSheetsSync, startAutoSequenceProcessor, startRollingReviewFullSync, startMiddayReviewCatchup, startChatStatusTransition, startOzonHourlyFullSync, startResolvedReviewCloser } from './cron-jobs';
+import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker, startGoogleSheetsSync, startClientDirectorySync, startAutoSequenceProcessor, startRollingReviewFullSync, startMiddayReviewCatchup, startChatStatusTransition, startOzonHourlyFullSync, startResolvedReviewCloser } from './cron-jobs';
 
 let initialized = false;
 
@@ -25,6 +25,7 @@ export function initializeServer() {
     startDailyProductSync(); // Daily product sync (7:00 AM MSK)
     startBackfillWorker(); // Backfill worker (every 5 min)
     startGoogleSheetsSync(); // Google Sheets export (6:00 AM MSK daily)
+    startClientDirectorySync(); // Client Directory export (7:30 AM MSK daily)
     startAutoSequenceProcessor(); // Auto-sequence follow-up messages (every 30 min)
     startRollingReviewFullSync(); // Rolling full review sync (3:00 MSK daily, 90-day chunks)
     startMiddayReviewCatchup(); // Midday review catchup (13:00 MSK daily, chunk 0 only)

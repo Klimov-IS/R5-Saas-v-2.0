@@ -14,9 +14,12 @@
 
 import { query } from '@/db/client';
 import type { Store, Product, ProductRule } from '@/db/helpers';
-import { clearAndWriteRows } from './sheets-client';
+import { clearAndWriteRows, readSheetData, batchUpdateRows } from './sheets-client';
 import { TABLE_HEADERS, formatProductRow } from './row-formatter';
 import type { SyncResult, GoogleSheetsConfig } from './types';
+
+// Column index for comments (0-based). System uses cols A-T (0-19), comments are in col U (index 20).
+const COMMENTS_COL_INDEX = TABLE_HEADERS.length; // 20 → column U
 
 /**
  * Get primary Google Sheets config from environment variables
@@ -163,10 +166,63 @@ export async function syncProductRulesToSheets(): Promise<SyncResult> {
 
     console.log(`[GoogleSheetsSync] Total rows to write: ${allRows.length}`);
 
-    // 4. Write to primary Google Sheets
+    // 4. Read existing comments (column U) from primary sheet before clearing
+    let commentMap = new Map<string, string>(); // "storeName|article" → comment
+    try {
+      const existingData = await readSheetData(
+        primaryConfig,
+        primaryConfig.spreadsheetId,
+        `'${primaryConfig.sheetName}'!A:U`
+      );
+
+      // Build comment map using composite key (store name + article)
+      // Skip header row (index 0)
+      for (let i = 1; i < existingData.length; i++) {
+        const row = existingData[i];
+        const comment = row[COMMENTS_COL_INDEX];
+        if (comment) {
+          const storeName = row[0] || '';
+          const article = row[1] || '';
+          const key = `${storeName}|${article}`;
+          commentMap.set(key, comment);
+        }
+      }
+
+      if (commentMap.size > 0) {
+        console.log(`[GoogleSheetsSync] Preserved ${commentMap.size} comments from column U`);
+      }
+    } catch (error) {
+      console.warn('[GoogleSheetsSync] Could not read existing comments (sheet may be empty):', error instanceof Error ? error.message : error);
+    }
+
+    // 5. Write to primary Google Sheets
     const { updatedRows } = await clearAndWriteRows(primaryConfig, TABLE_HEADERS, allRows);
 
-    // 5. Write to all secondary sheets (same data)
+    // 6. Restore comments to primary sheet
+    if (commentMap.size > 0) {
+      const commentUpdates: Array<{ range: string; values: string[][] }> = [];
+
+      for (let i = 0; i < allRows.length; i++) {
+        const row = allRows[i];
+        const key = `${row[0]}|${row[1]}`; // storeName|article
+        const comment = commentMap.get(key);
+        if (comment) {
+          // Row i+2 because: +1 for header, +1 for 1-based sheets indexing
+          const rowNum = i + 2;
+          commentUpdates.push({
+            range: `'${primaryConfig.sheetName}'!U${rowNum}`,
+            values: [[comment]]
+          });
+        }
+      }
+
+      if (commentUpdates.length > 0) {
+        await batchUpdateRows(primaryConfig, commentUpdates);
+        console.log(`[GoogleSheetsSync] Restored ${commentUpdates.length} comments`);
+      }
+    }
+
+    // 7. Write to all secondary sheets (same data, no comments)
     for (const config of secondaryConfigs) {
       console.log(`[GoogleSheetsSync] Syncing to secondary sheet: "${config.sheetName}"...`);
       await clearAndWriteRows(config, TABLE_HEADERS, allRows);
@@ -203,22 +259,61 @@ export async function syncProductRulesToSheets(): Promise<SyncResult> {
 }
 
 /**
- * Trigger async sync (non-blocking)
- * Use this as a hook after rule/status updates
+ * Debounce state for triggerAsyncSync.
+ * Coalesces rapid-fire calls (e.g., 10 rule changes in 1 minute) into a single sync.
+ */
+let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let syncRunning = false;
+let syncPendingAfterCurrent = false;
+
+const SYNC_DEBOUNCE_MS = 5000; // 5 seconds
+
+/**
+ * Trigger async sync (non-blocking, debounced)
+ * Use this as a hook after rule/status updates.
+ * Multiple calls within 5 seconds are coalesced into a single sync.
  */
 export function triggerAsyncSync(): void {
-  // Run sync in background without blocking
-  syncProductRulesToSheets()
-    .then(result => {
-      if (result.success) {
-        console.log(`[GoogleSheetsSync] Background sync completed: ${result.rowsWritten} rows`);
-      } else {
-        console.error(`[GoogleSheetsSync] Background sync failed: ${result.error}`);
-      }
-    })
-    .catch(error => {
-      console.error('[GoogleSheetsSync] Background sync error:', error);
-    });
+  // If sync is currently running, schedule one more after it finishes
+  if (syncRunning) {
+    syncPendingAfterCurrent = true;
+    console.log('[GoogleSheetsSync] Sync already running, will re-sync after completion');
+    return;
+  }
+
+  // Clear existing debounce timer and set a new one
+  if (syncDebounceTimer) {
+    clearTimeout(syncDebounceTimer);
+  }
+
+  syncDebounceTimer = setTimeout(() => {
+    syncDebounceTimer = null;
+    syncRunning = true;
+
+    syncProductRulesToSheets()
+      .then(result => {
+        if (result.success) {
+          console.log(`[GoogleSheetsSync] Background sync completed: ${result.rowsWritten} rows`);
+        } else {
+          console.error(`[GoogleSheetsSync] Background sync failed: ${result.error}`);
+        }
+      })
+      .catch(error => {
+        console.error('[GoogleSheetsSync] Background sync error:', error);
+      })
+      .finally(() => {
+        syncRunning = false;
+
+        // If another change came in while we were syncing, trigger one more
+        if (syncPendingAfterCurrent) {
+          syncPendingAfterCurrent = false;
+          console.log('[GoogleSheetsSync] Running pending re-sync...');
+          triggerAsyncSync();
+        }
+      });
+  }, SYNC_DEBOUNCE_MS);
+
+  console.log('[GoogleSheetsSync] Sync scheduled (debounce 5s)');
 }
 
 /**

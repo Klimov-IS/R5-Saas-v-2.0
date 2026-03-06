@@ -13,6 +13,7 @@ import { query } from '@/db/client';
 import { runBackfillWorker } from '@/services/backfill-worker';
 
 import { syncProductRulesToSheets, isGoogleSheetsConfigured } from '@/services/google-sheets-sync';
+import { syncClientDirectory } from '@/services/google-sheets-sync/client-directory';
 import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MESSAGE, DEFAULT_OZON_STOP_MESSAGE_4STAR, getNextSlotTime, getDaysUntilNextMessage } from '@/lib/auto-sequence-templates';
 import type { SequenceMessage } from '@/lib/auto-sequence-templates';
 import { isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
@@ -559,6 +560,59 @@ export function startGoogleSheetsSync() {
 
   job.start();
   console.log('[CRON] ✅ Google Sheets sync job started successfully');
+
+  return job;
+}
+
+/**
+ * Daily Client Directory sync job
+ * Exports all stores to "Список клиентов" sheet with Drive folder links
+ * Runs daily at 7:30 AM MSK (4:30 AM UTC) — after Product Rules sync at 6:00
+ */
+export function startClientDirectorySync() {
+  if (!isGoogleSheetsConfigured()) {
+    console.log('[CRON] ⚠️ Client Directory sync not configured (missing env variables), skipping...');
+    return null;
+  }
+
+  // 7:30 AM MSK = 4:30 AM UTC
+  const cronSchedule = process.env.NODE_ENV === 'production'
+    ? '30 4 * * *'  // 7:30 AM MSK daily
+    : '*/30 * * * *'; // Every 30 minutes for testing
+
+  console.log(`[CRON] Scheduling Client Directory sync: ${cronSchedule}`);
+
+  const job = cron.schedule(cronSchedule, async () => {
+    const jobName = 'client-directory-sync';
+
+    if (runningJobs[jobName]) {
+      console.log(`[CRON] ⚠️ Job ${jobName} is already running, skipping this trigger`);
+      return;
+    }
+
+    runningJobs[jobName] = true;
+
+    try {
+      console.log(`[CRON] 📋 Starting Client Directory sync at ${new Date().toISOString()}`);
+
+      const result = await syncClientDirectory();
+
+      console.log(`[CRON] ${result.success ? '✅' : '❌'} Client Directory sync ${result.success ? 'completed' : 'failed'}`);
+      console.log(`[CRON] Stores: ${result.storesProcessed}, Updated: ${result.rowsUpdated}, Appended: ${result.rowsAppended}`);
+      if (result.error) {
+        console.log(`[CRON] Error: ${result.error}`);
+      }
+    } catch (error: any) {
+      console.error('[CRON] ❌ Fatal error in Client Directory sync:', error);
+    } finally {
+      runningJobs[jobName] = false;
+    }
+  }, {
+    timezone: 'UTC'
+  });
+
+  job.start();
+  console.log('[CRON] ✅ Client Directory sync job started successfully');
 
   return job;
 }

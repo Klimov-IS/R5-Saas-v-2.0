@@ -1,6 +1,6 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -720,17 +720,37 @@ pm2 show wb-reputation
 **What It Does:**
 1. Exports all active product rules from all active stores to Google Sheets
 2. Full sync strategy: clear and rewrite entire sheet on every sync
-3. Provides management visibility into active stores and their configurations
+3. **Preserves comments** in column U (last+1 column) — reads before clear, restores after write
+4. Provides management visibility into active stores and their configurations
 
-**Data Exported (per row):**
+**Data Exported (per row, 20 columns A-T):**
 | Магазин | Артикул WB | Название | Статус | Жалобы | ⭐1-4 | Чаты | ⭐1-4 | Стратегия | Компенсация | Тип | Макс ₽ | Кто платит | Обновлено |
+
+**Column U (index 20):** Ручные комментарии менеджеров — сохраняются между синками через composite key `storeName|article`.
 
 **Triggers:**
 1. **CRON** — ежедневно в 6:00 MSK
 2. **Manual API** — `POST /api/admin/google-sheets/sync`
-3. **Product rules change** — async hook (non-blocking)
-4. **Product status change** — async hook (non-blocking)
-5. **Store status change** — async hook (non-blocking)
+3. **Product rules change** — async hook (non-blocking, debounced 5 sec)
+4. **Product status change** — async hook (non-blocking, debounced 5 sec)
+5. **Store status change** — async hook (non-blocking, debounced 5 sec)
+
+**Debounce & Deduplication (async triggers):**
+- Triggers 3-5 используют `triggerAsyncSync()` с 5-секундным debounce
+- Если синк уже запущен, новый ставится в очередь (1 pending максимум)
+- 10 изменений за 1 минуту → 1-2 синка вместо 10
+
+**Retry (Google API):**
+- Все Google API вызовы обёрнуты в `withRetry()` (3 попытки, exponential backoff: 1/2/4 сек)
+- Не ретраит 4xx ошибки (кроме 429 rate limit)
+
+**Comment Preservation Flow:**
+```
+1. readSheetData('A:U') → read existing comments
+2. Build map: "storeName|article" → comment
+3. clearAndWriteRows() → clear + write data (columns A-T)
+4. batchUpdateRows() → restore comments to column U
+```
 
 **Configuration (Environment Variables):**
 ```bash
@@ -738,19 +758,23 @@ GOOGLE_SHEETS_SPREADSHEET_ID=1-mxbnv0qkicJMVUCtqDGJH82FhLlDKDvICb-PAVbxfI
 GOOGLE_SHEETS_SHEET_NAME=Артикулы ТЗ
 GOOGLE_SERVICE_ACCOUNT_EMAIL=r5-automation@r5-wb-bot.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+# Secondary sheets (optional, 1:1 copies for сотрудников)
+GOOGLE_SHEETS_SECONDARY_SPREADSHEET_ID=...
+GOOGLE_SHEETS_SECONDARY_SHEETS=Sheet1,Sheet2  # comma-separated
 ```
 
 **Important:** Share the Google Sheet with the Service Account email (role: Editor)
 
 **Source Files:**
 - [src/services/google-sheets-sync/](../src/services/google-sheets-sync/) — Sync service
-- [src/lib/cron-jobs.ts:518-579](../src/lib/cron-jobs.ts#L518-L579) — CRON job definition
+- [src/services/google-sheets-sync/sheets-client.ts](../src/services/google-sheets-sync/sheets-client.ts) — Google API client (JWT auth, retry)
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — CRON job definition
 - [src/app/api/admin/google-sheets/sync/route.ts](../src/app/api/admin/google-sheets/sync/route.ts) — Manual sync API
 
 **Example Output:**
 ```
 ========================================
-[CRON] 📊 Starting Google Sheets sync at 2026-02-08T03:00:00.000Z
+[CRON] Starting Google Sheets sync at 2026-02-08T03:00:00.000Z
 ========================================
 
 [GoogleSheetsSync] Starting full sync...
@@ -759,13 +783,15 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\
 [GoogleSheetsSync] Store "Тайди Центр": 42 active products
 [GoogleSheetsSync] Store "Test Store": 15 active products
 [GoogleSheetsSync] Total rows to write: 57
+[GoogleSheetsSync] Preserved 12 comments from column U
 [GoogleSheets] Clearing sheet "Артикулы ТЗ"...
 [GoogleSheets] Sheet cleared. Writing 58 rows...
-[GoogleSheets] ✅ Successfully wrote 58 rows
-[GoogleSheetsSync] ✅ Sync completed in 1250ms
+[GoogleSheets] Successfully wrote 58 rows
+[GoogleSheetsSync] Restored 12 comments
+[GoogleSheetsSync] Sync completed in 1250ms
 
 ========================================
-[CRON] ✅ Google Sheets sync completed
+[CRON] Google Sheets sync completed
 [CRON] Duration: 1250ms
 [CRON] Stores: 5, Products: 57
 [CRON] Rows written: 58
@@ -779,6 +805,42 @@ curl -X GET "http://localhost:9002/api/admin/google-sheets/sync"
 
 # Trigger sync
 curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
+```
+
+---
+
+## 7. Client Directory Sync (Список клиентов)
+
+**Job Name:** `client-directory-sync`
+**Schedule:**
+- **Production:** `30 4 * * *` (7:30 AM MSK / 4:30 AM UTC — after Product Rules sync at 6:00)
+- **Development:** `*/30 * * * *` (every 30 minutes)
+
+**What It Does:**
+1. Syncs all stores (active + inactive) to sheet "Список клиентов" via **upsert** strategy
+2. Updates existing rows (matched by store ID in column A)
+3. Appends new rows for newly created stores
+4. **Preserves INN** (ручной ввод, column C) — never overwritten
+5. Matches stores to Google Drive folders via fuzzy name matching
+6. Extracts links to report and screenshots folder from Drive
+
+**Data Exported (per row, 13 columns A-M):**
+| ID магазина | Название | ИНН (manual) | Дата подключения | Статус | API | Content API | Feedbacks API | Chat API | Папка клиента | Отчёт | Скриншоты | Обновлено |
+
+**Triggers:**
+1. **CRON** — ежедневно в 7:30 MSK
+2. **Manual API** — `POST /api/admin/google-sheets/sync-clients`
+3. **After store onboarding** — fire-and-forget (WB + OZON)
+
+**Source Files:**
+- [src/services/google-sheets-sync/client-directory/](../src/services/google-sheets-sync/client-directory/) — Sync service
+- [src/services/google-sheets-sync/client-directory/drive-matcher.ts](../src/services/google-sheets-sync/client-directory/drive-matcher.ts) — Fuzzy folder matching
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — CRON job definition
+- [src/app/api/admin/google-sheets/sync-clients/route.ts](../src/app/api/admin/google-sheets/sync-clients/route.ts) — Manual sync API
+
+**Manual Trigger:**
+```bash
+curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 ```
 
 ---
@@ -802,7 +864,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-06
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -813,8 +875,8 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 | Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues (WB + OZON) |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue (BATCH=200, DAILY_LIMIT=6000) |
-| Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets |
-| Client Directory Sync | 6:30 AM | 30 3 * * * | Sync client directory (upsert) |
+| Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets (clear+write, preserves column U comments) |
+| Client Directory Sync | 7:30 AM | 30 4 * * * | Sync client directory to "Список клиентов" (upsert, preserves INN) |
 | **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
 | **Resolved-Review Closer** | Every 30 min (:15/:45) | 15,45 * * * * | Auto-close chats with resolved reviews (200/batch) |
 | ~~Chat Status Transition~~ | ~~Every 30 min~~ | ~~*/30 * * * *~~ | **DISABLED (2026-02-28):** Was auto-moving `in_progress → awaiting_reply` after 2 days. Disabled — sequences are now manual only |

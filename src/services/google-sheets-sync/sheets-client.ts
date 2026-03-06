@@ -19,6 +19,38 @@ const SCOPES = [
 let cachedToken: { token: string; expires: number } | null = null;
 
 /**
+ * Retry wrapper with exponential backoff for Google API calls.
+ * Retries on 5xx errors, 429 rate limits, and network errors.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Don't retry on 4xx errors (except 429 rate limit)
+      const is4xx = lastError.message.includes(' 4') && !lastError.message.includes(' 429');
+      if (is4xx || attempt === maxRetries) {
+        throw lastError;
+      }
+
+      const delay = baseDelay * Math.pow(2, attempt - 1);
+      console.log(`[GoogleSheets] Retry ${attempt}/${maxRetries} after ${delay}ms: ${lastError.message.substring(0, 100)}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Generate JWT for Google Service Account authentication
  */
 function generateJWT(config: GoogleSheetsConfig): string {
@@ -102,44 +134,49 @@ export async function clearAndWriteRows(
 
   console.log(`[GoogleSheets] Clearing sheet "${sheetName}"...`);
 
-  // 1. Clear the sheet
-  const clearUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}:clear`;
-  const clearResponse = await fetch(clearUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
+  // 1. Clear the sheet (with retry)
+  await withRetry(async () => {
+    const clearUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}:clear`;
+    const clearResponse = await fetch(clearUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!clearResponse.ok) {
+      const error = await clearResponse.text();
+      throw new Error(`Failed to clear sheet: ${clearResponse.status} ${error}`);
     }
   });
 
-  if (!clearResponse.ok) {
-    const error = await clearResponse.text();
-    throw new Error(`Failed to clear sheet: ${clearResponse.status} ${error}`);
-  }
-
   console.log(`[GoogleSheets] Sheet cleared. Writing ${rows.length + 1} rows...`);
 
-  // 2. Write headers + data
+  // 2. Write headers + data (with retry)
   const allRows = [headers, ...rows];
-  const updateUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1?valueInputOption=USER_ENTERED`;
+  const result = await withRetry(async () => {
+    const updateUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1?valueInputOption=USER_ENTERED`;
 
-  const updateResponse = await fetch(updateUrl, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      values: allRows
-    })
+    const updateResponse = await fetch(updateUrl, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        values: allRows
+      })
+    });
+
+    if (!updateResponse.ok) {
+      const error = await updateResponse.text();
+      throw new Error(`Failed to write data: ${updateResponse.status} ${error}`);
+    }
+
+    return updateResponse.json();
   });
 
-  if (!updateResponse.ok) {
-    const error = await updateResponse.text();
-    throw new Error(`Failed to write data: ${updateResponse.status} ${error}`);
-  }
-
-  const result = await updateResponse.json();
   console.log(`[GoogleSheets] ✅ Successfully wrote ${result.updatedRows} rows`);
 
   return {
@@ -181,24 +218,26 @@ export async function listFilesInFolder(
 ): Promise<DriveFile[]> {
   const token = await getAccessToken(config);
 
-  const query = `'${folderId}' in parents and trashed = false`;
-  const fields = 'files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink)';
+  return withRetry(async () => {
+    const q = `'${folderId}' in parents and trashed = false`;
+    const fields = 'files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink)';
 
-  const url = `${GOOGLE_DRIVE_BASE_URL}/files?q=${encodeURIComponent(query)}&fields=${encodeURIComponent(fields)}&pageSize=${pageSize}&orderBy=name`;
+    const url = `${GOOGLE_DRIVE_BASE_URL}/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=${pageSize}&orderBy=name`;
 
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to list files: ${response.status} ${error}`);
     }
+
+    const data = await response.json();
+    return data.files || [];
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to list files: ${response.status} ${error}`);
-  }
-
-  const data = await response.json();
-  return data.files || [];
 }
 
 /**
@@ -240,21 +279,23 @@ export async function readSheetData(
 ): Promise<string[][]> {
   const token = await getAccessToken(config);
 
-  const url = `${GOOGLE_SHEETS_BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
+  return withRetry(async () => {
+    const url = `${GOOGLE_SHEETS_BASE_URL}/${spreadsheetId}/values/${encodeURIComponent(range)}`;
 
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to read sheet: ${response.status} ${error}`);
     }
+
+    const data = await response.json();
+    return data.values || [];
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to read sheet: ${response.status} ${error}`);
-  }
-
-  const data = await response.json();
-  return data.values || [];
 }
 
 /**
@@ -272,29 +313,31 @@ export async function batchUpdateRows(
 
   const token = await getAccessToken(config);
 
-  const url = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values:batchUpdate`;
+  return withRetry(async () => {
+    const url = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values:batchUpdate`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      valueInputOption: 'USER_ENTERED',
-      data: updates
-    })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        valueInputOption: 'USER_ENTERED',
+        data: updates
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to batch update: ${response.status} ${error}`);
+    }
+
+    const result = await response.json();
+    return {
+      updatedCells: result.totalUpdatedCells || 0
+    };
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to batch update: ${response.status} ${error}`);
-  }
-
-  const result = await response.json();
-  return {
-    updatedCells: result.totalUpdatedCells || 0
-  };
 }
 
 /**
@@ -313,28 +356,30 @@ export async function appendRows(
   const token = await getAccessToken(config);
   const sheetName = config.sheetName;
 
-  const url = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  return withRetry(async () => {
+    const url = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      values: rows
-    })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        values: rows
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to append rows: ${response.status} ${error}`);
+    }
+
+    const result = await response.json();
+    return {
+      appendedRows: result.updates?.updatedRows || rows.length
+    };
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to append rows: ${response.status} ${error}`);
-  }
-
-  const result = await response.json();
-  return {
-    appendedRows: result.updates?.updatedRows || rows.length
-  };
 }
 
 // ============================================
