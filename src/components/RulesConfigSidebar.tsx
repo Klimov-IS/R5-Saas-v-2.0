@@ -25,6 +25,8 @@ export type ProductRule = {
   max_compensation?: string | null;
   compensation_type?: string | null;
   compensation_by?: string | null;
+  work_from_date?: string | null;
+  comment?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -73,6 +75,9 @@ export function RulesConfigSidebar({
   const [compensationType, setCompensationType] = useState<'cashback' | 'refund'>('cashback');
   const [compensationBy, setCompensationBy] = useState<'r5' | 'seller'>('r5');
 
+  const [workFromDate, setWorkFromDate] = useState('2023-10-01');
+  const [comment, setComment] = useState('');
+
   // Load current rules when sidebar opens
   useEffect(() => {
     if (isOpen && currentRules) {
@@ -93,6 +98,9 @@ export function RulesConfigSidebar({
       setMaxCompensation(currentRules.max_compensation || '500');
       setCompensationType((currentRules.compensation_type as 'cashback' | 'refund') || 'cashback');
       setCompensationBy((currentRules.compensation_by as 'r5' | 'seller') || 'r5');
+
+      setWorkFromDate(currentRules.work_from_date || '2023-10-01');
+      setComment(currentRules.comment || '');
     }
   }, [isOpen, currentRules]);
 
@@ -137,6 +145,9 @@ export function RulesConfigSidebar({
       setCompensationType('cashback');
       setCompensationBy('r5');
 
+      setWorkFromDate('2023-10-01');
+      setComment('');
+
       toast({
         title: 'Успешно!',
         description: 'Применены стандартные правила',
@@ -173,6 +184,8 @@ export function RulesConfigSidebar({
         max_compensation: maxCompensation,
         compensation_type: compensationType,
         compensation_by: compensationBy,
+        work_from_date: workFromDate,
+        comment: comment || null,
       };
 
       const response = await fetch(
@@ -644,6 +657,83 @@ export function RulesConfigSidebar({
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Section 4: Work From Date */}
+          <div style={{ marginBottom: '32px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '16px',
+              paddingBottom: '12px',
+              borderBottom: '2px solid hsl(var(--border))'
+            }}>
+              <span style={{ fontSize: '24px' }}>📅</span>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '2px' }}>
+                  Работаем с отзывами от
+                </h3>
+                <p style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))' }}>
+                  Отзывы до этой даты не обрабатываются
+                </p>
+              </div>
+            </div>
+            <input
+              type="date"
+              value={workFromDate}
+              onChange={(e) => setWorkFromDate(e.target.value)}
+              style={{
+                width: '100%',
+                maxWidth: '200px',
+                padding: '8px 12px',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                fontSize: '14px',
+                backgroundColor: 'hsl(var(--card))',
+                color: 'hsl(var(--foreground))',
+                cursor: 'pointer'
+              }}
+            />
+          </div>
+
+          {/* Section 5: Comment */}
+          <div style={{ marginBottom: '32px' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '16px',
+              paddingBottom: '12px',
+              borderBottom: '2px solid hsl(var(--border))'
+            }}>
+              <span style={{ fontSize: '24px' }}>📝</span>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '2px' }}>
+                  Комментарий
+                </h3>
+                <p style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))' }}>
+                  Заметка для менеджера (отображается в Google Sheets)
+                </p>
+              </div>
+            </div>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Например: клиент просил паузу до конца месяца"
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                fontSize: '14px',
+                backgroundColor: 'hsl(var(--card))',
+                color: 'hsl(var(--foreground))',
+                resize: 'vertical',
+                fontFamily: 'inherit'
+              }}
+            />
           </div>
         </div>
 
