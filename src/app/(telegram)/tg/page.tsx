@@ -351,6 +351,7 @@ export default function TgQueuePage() {
     setSelectionMode(false);
     setSelectedIds(new Set());
     setBulkAction(null);
+    setShowBulkOverflow(false);
   }, []);
 
   // Bulk generate AI drafts
@@ -452,8 +453,9 @@ export default function TgQueuePage() {
     setSelectedRatings([]);
   }, []);
 
-  // Bulk close modal
+  // Bulk close modal + overflow menu
   const [showCloseReasonModal, setShowCloseReasonModal] = useState(false);
+  const [showBulkOverflow, setShowBulkOverflow] = useState(false);
 
   // Bulk close with reason
   const bulkClose = useCallback(async (reason: string) => {
@@ -1002,6 +1004,7 @@ export default function TgQueuePage() {
           zIndex: 50,
           boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
         }}>
+          {/* AI Button */}
           <button
             onClick={bulkGenerate}
             style={{
@@ -1009,16 +1012,19 @@ export default function TgQueuePage() {
               padding: '12px 8px',
               borderRadius: '12px',
               border: 'none',
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 700,
               cursor: 'pointer',
               background: 'linear-gradient(135deg, #2563EB, #3B82F6)',
               color: '#FFFFFF',
               transition: 'all 0.15s ease-out',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             }}
           >
             AI ({selectedIds.size})
           </button>
+
+          {/* Send Button */}
           <button
             onClick={bulkSend}
             disabled={selectedWithDrafts === 0}
@@ -1027,74 +1033,149 @@ export default function TgQueuePage() {
               padding: '12px 8px',
               borderRadius: '12px',
               border: 'none',
-              fontSize: '13px',
+              fontSize: '14px',
               fontWeight: 700,
               cursor: 'pointer',
               backgroundColor: selectedWithDrafts > 0 ? '#10B981' : '#D1D5DB',
               color: '#fff',
               transition: 'all 0.15s ease-out',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
             }}
           >
             Отправить ({selectedWithDrafts})
           </button>
-          <button
-            onClick={() => setShowCloseReasonModal(true)}
-            style={{
-              padding: '12px 14px',
-              borderRadius: '12px',
-              border: 'none',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: '#EF4444',
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.15s ease-out',
-            }}
-          >
-            ✕
-          </button>
-          <button
-            onClick={bulkSequenceStart}
-            style={{
-              padding: '12px 14px',
-              borderRadius: '12px',
-              border: 'none',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: '#F59E0B',
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.15s ease-out',
-            }}
-          >
-            📨
-          </button>
-          <button
-            onClick={async () => {
-              await fetchQueue();
-              exitSelectionMode();
-            }}
-            style={{
-              padding: '12px 14px',
-              borderRadius: '12px',
-              border: '2px solid #E6E8EC',
-              fontSize: '13px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: '#FFFFFF',
-              color: '#6B7280',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.15s ease-out',
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          </button>
+
+          {/* Overflow menu wrapper */}
+          <div style={{ position: 'relative' }}>
+            {/* ⋮ button */}
+            <button
+              onClick={() => setShowBulkOverflow(!showBulkOverflow)}
+              style={{
+                width: '44px',
+                height: '100%',
+                borderRadius: '12px',
+                border: '2px solid #E6E8EC',
+                fontSize: '16px',
+                cursor: 'pointer',
+                backgroundColor: '#FFFFFF',
+                color: '#6B7280',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s ease-out',
+              }}
+            >
+              ⋮
+            </button>
+
+            {/* Overflow dropdown menu */}
+            {showBulkOverflow && (<>
+              {/* Backdrop to close menu on outside click */}
+              <div
+                onClick={() => setShowBulkOverflow(false)}
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 50,
+                }}
+              />
+              <div style={{
+                position: 'absolute',
+                bottom: '100%',
+                right: 0,
+                marginBottom: '8px',
+                background: '#FFFFFF',
+                borderRadius: '16px',
+                border: '1px solid #E6E8EC',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                minWidth: '220px',
+                padding: '6px',
+                zIndex: 51,
+              }}>
+                {/* Sequence */}
+                <button
+                  onClick={() => { setShowBulkOverflow(false); bulkSequenceStart(); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'none',
+                    width: '100%',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#111827',
+                    cursor: 'pointer',
+                    textAlign: 'left' as const,
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>📨</span>
+                  <span>Запустить рассылку</span>
+                </button>
+
+                {/* Refresh */}
+                <button
+                  onClick={async () => {
+                    setShowBulkOverflow(false);
+                    await fetchQueue();
+                    exitSelectionMode();
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'none',
+                    width: '100%',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#111827',
+                    cursor: 'pointer',
+                    textAlign: 'left' as const,
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>↻</span>
+                  <span>Обновить</span>
+                </button>
+
+                {/* Divider */}
+                <div style={{ height: '1px', background: '#E6E8EC', margin: '4px 8px' }} />
+
+                {/* Close */}
+                <button
+                  onClick={() => { setShowBulkOverflow(false); setShowCloseReasonModal(true); }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'none',
+                    width: '100%',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: '#EF4444',
+                    cursor: 'pointer',
+                    textAlign: 'left' as const,
+                    transition: 'background 0.1s',
+                  }}
+                >
+                  <span style={{ fontSize: '16px', width: '20px', textAlign: 'center' }}>✕</span>
+                  <span>Закрыть чаты</span>
+                </button>
+              </div>
+            </>)}
+          </div>
         </div>
       )}
 

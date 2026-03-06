@@ -80,6 +80,7 @@ export async function runChatCompletion({
     entityType,
     entityId,
     maxTokens,
+    temperature,
 }: {
     systemPrompt: string;
     userContent: string;
@@ -90,8 +91,12 @@ export async function runChatCompletion({
     entityType: string;
     entityId: string;
     maxTokens?: number;
+    temperature?: number;
 }): Promise<string> {
     let logId = '';
+    const startTime = Date.now();
+    const effectiveTemperature = temperature ?? 0.7;
+    const effectiveMaxTokens = maxTokens || 2048;
 
     try {
         // Create initial log entry
@@ -108,6 +113,8 @@ export async function runChatCompletion({
         console.error("Critical error: Could not create initial AI log. Aborting operation.", error);
         throw new Error("Failed to initiate AI operation due to logging failure.");
     }
+
+    console.log(`[AI] ${operation} start | entity=${entityId} | systemLen=${systemPrompt.length} contextLen=${userContent.length} temp=${effectiveTemperature} maxTok=${effectiveMaxTokens}`);
 
     try {
         // Get user settings from PostgreSQL
@@ -130,8 +137,8 @@ export async function runChatCompletion({
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent }
             ],
-            temperature: 0.7,
-            max_tokens: maxTokens || 2048,
+            temperature: effectiveTemperature,
+            max_tokens: effectiveMaxTokens,
         };
 
         if (isJsonMode) {
@@ -159,25 +166,50 @@ export async function runChatCompletion({
             throw new Error("Deepseek API не вернул текст в ответе.");
         }
 
-        // Extract token usage and calculate cost (optional)
+        // Extract token usage and calculate cost
+        const promptTokens = result.usage?.prompt_tokens || null;
+        const completionTokens = result.usage?.completion_tokens || null;
         const tokensUsed = result.usage?.total_tokens || null;
-        const cost = tokensUsed ? (tokensUsed * 0.00014 / 1000) : null; // Example pricing
+        const cost = tokensUsed ? (tokensUsed * 0.00014 / 1000) : null;
+        const latencyMs = Date.now() - startTime;
 
-        // Update log with success
+        console.log(`[AI] ${operation} done | entity=${entityId} | ${latencyMs}ms | tokens=${tokensUsed} (in=${promptTokens} out=${completionTokens}) | responseLen=${text.length}`);
+
+        // Update log with success + structured metadata
         await updateAiLog(logId, {
             response: text,
             tokens_used: tokensUsed,
             cost: cost,
+            metadata: {
+                operation,
+                latency_ms: latencyMs,
+                prompt_tokens: promptTokens,
+                completion_tokens: completionTokens,
+                system_prompt_length: systemPrompt.length,
+                context_length: userContent.length,
+                response_length: text.length,
+                temperature: effectiveTemperature,
+                max_tokens: effectiveMaxTokens,
+                json_mode: isJsonMode,
+            },
         });
 
         return text;
 
     } catch (error: any) {
-        console.error(`Error in runChatCompletion for operation '${operation}':`, error);
+        const latencyMs = Date.now() - startTime;
+        console.error(`[AI] ${operation} ERROR | entity=${entityId} | ${latencyMs}ms | ${error.message}`);
 
         // Update log with error
         await updateAiLog(logId, {
             error: error.message,
+            metadata: {
+                operation,
+                latency_ms: latencyMs,
+                system_prompt_length: systemPrompt.length,
+                context_length: userContent.length,
+                temperature: effectiveTemperature,
+            },
         });
 
         throw error;

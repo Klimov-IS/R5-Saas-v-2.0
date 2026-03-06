@@ -83,9 +83,40 @@ export async function findChatWithAiInstructions(chatId: string, accessibleStore
 }
 
 /**
- * Get all messages for a chat in chronological order (for AI context building).
+ * Get messages for AI context building with optional windowing.
+ *
+ * When limit is specified, returns the last N messages in chronological order
+ * (subquery DESC → outer ASC). Also returns totalCount for summary header.
+ *
+ * When limit is 0 or undefined, returns ALL messages (legacy behavior).
  */
-export async function findMessagesForAi(chatId: string) {
+export async function findMessagesForAi(
+  chatId: string,
+  limit?: number
+): Promise<{ rows: any[]; totalCount: number }> {
+  // Get total count
+  const countResult = await query(
+    'SELECT COUNT(*)::int as cnt FROM chat_messages WHERE chat_id = $1',
+    [chatId]
+  );
+  const totalCount = countResult.rows[0]?.cnt || 0;
+
+  // Fetch messages (windowed or all)
+  if (limit && limit > 0 && totalCount > limit) {
+    const result = await query(
+      `SELECT text, sender, timestamp FROM (
+         SELECT text, sender, timestamp
+         FROM chat_messages
+         WHERE chat_id = $1
+         ORDER BY timestamp DESC
+         LIMIT $2
+       ) sub ORDER BY timestamp ASC`,
+      [chatId, limit]
+    );
+    return { rows: result.rows, totalCount };
+  }
+
+  // No windowing needed
   const result = await query(
     `SELECT text, sender, timestamp
      FROM chat_messages
@@ -93,7 +124,7 @@ export async function findMessagesForAi(chatId: string) {
      ORDER BY timestamp ASC`,
     [chatId]
   );
-  return result.rows;
+  return { rows: result.rows, totalCount };
 }
 
 /**

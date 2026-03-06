@@ -12,8 +12,9 @@ import type { ChatDetailDTO, ChatMessageDTO, ChatDetailResponse } from '@/core/c
 import type { SendMessageResponse, GenerateAiResponse } from '@/core/contracts/tma-chat';
 import { sendMessageToMarketplace } from '@/core/services/message-sender';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
-import { buildStoreInstructions, detectConversationPhase, formatTimestampMSK, getTagLabel, getStatusLabel } from '@/lib/ai-context';
+import { buildStoreInstructions, detectConversationPhase, formatTimestampMSK, getRecencyLabel, getTagLabel, getStatusLabel } from '@/lib/ai-context';
 import { findLinkWithReviewByChatId } from '@/db/review-chat-link-helpers';
+import { runValidator } from '@/ai/output-validator';
 
 /**
  * Get enriched chat detail with messages.
@@ -193,12 +194,17 @@ export async function generateReply(
     throw new ChatNotFoundError(chatId);
   }
 
-  // Get messages
-  const messagesRows = await chatRepo.findMessagesForAi(chatId);
+  // Get messages (windowed: last N messages + total count)
+  const windowSize = parseInt(process.env.AI_HISTORY_WINDOW_SIZE || '20', 10);
+  const { rows: messagesRows, totalCount } = await chatRepo.findMessagesForAi(chatId, windowSize);
 
   // Build chat history with timestamps (filter out null/empty messages)
   const filteredMessages = messagesRows.filter((m: any) => m.text && m.text.trim());
-  const chatHistory = filteredMessages
+  const skippedCount = totalCount - messagesRows.length;
+  const historyHeader = skippedCount > 0
+    ? `[... ранее ещё ${skippedCount} сообщений ...]\n`
+    : '';
+  const chatHistory = historyHeader + filteredMessages
     .map((m: any) => {
       const ts = m.timestamp ? formatTimestampMSK(m.timestamp) : '';
       const prefix = ts ? `${ts} | ` : '';
@@ -253,7 +259,7 @@ export async function generateReply(
     const reviewDate = rcl.review_date ? formatTimestampMSK(rcl.review_date) : 'неизвестна';
     reviewContext = `\n**Отзыв покупателя:**\nОценка: ${rcl.review_rating}★\nДата отзыва: ${reviewDate}`;
     if (rcl.review_text) {
-      const trimmedText = rcl.review_text.length > 500 ? rcl.review_text.slice(0, 500) + '...' : rcl.review_text;
+      const trimmedText = rcl.review_text.length > 300 ? rcl.review_text.slice(0, 300) + '...' : rcl.review_text;
       reviewContext += `\nТекст отзыва: ${trimmedText}`;
     }
   }
@@ -263,6 +269,8 @@ export async function generateReply(
   const sellerMessageCount = filteredMessages.filter((m: any) => m.sender === 'seller').length;
   const lastSellerMsg = [...filteredMessages].reverse().find((m: any) => m.sender === 'seller');
   const lastSellerText = lastSellerMsg ? lastSellerMsg.text.slice(0, 200) : 'нет';
+  const lastMsgTimestamp = filteredMessages[filteredMessages.length - 1]?.timestamp;
+  const recencyLabel = lastMsgTimestamp ? getRecencyLabel(lastMsgTimestamp) : '';
 
   // Build context string (matching web API format, marketplace-aware labels)
   const context = `
@@ -283,7 +291,7 @@ ${reviewContext}
 **Фаза диалога:** ${phase.phaseLabel}
 **Сообщений от клиента:** ${phase.clientMessageCount}
 **Сообщений от продавца:** ${sellerMessageCount}
-**Последнее сообщение продавца:** ${lastSellerText}
+**Последнее сообщение продавца:** ${lastSellerText}${recencyLabel ? `\n**Давность последнего сообщения:** ${recencyLabel}` : ''}
 
 **История переписки:**
 ${chatHistory}
@@ -291,6 +299,8 @@ ${chatHistory}
 
   // Build store instructions (pass ai_instructions, not product_nm_id)
   const storeInstructions = await buildStoreInstructions(chat.store_id, chat.ai_instructions, chat.marketplace);
+
+  console.log(`[AI-CTX] generateReply | chat=${chatId} | msgs=${filteredMessages.length}/${totalCount} (window=${windowSize}) | marketplace=${chat.marketplace} | phase=${phase.phase} | rating=${reviewRating ?? 'none'} | hasRules=${!!productRulesContext} | hasReview=${!!rcl} | hasCustomInstr=${!!chat.ai_instructions} | contextLen=${context.length} | instrLen=${storeInstructions?.length ?? 0}`);
 
   // Generate AI reply
   const result = await generateChatReply({
@@ -314,6 +324,23 @@ ${chatHistory}
     draftText = lastSentenceEnd > 800
       ? trimmed.slice(0, lastSentenceEnd + 1).trim()
       : trimmed.trim();
+  }
+
+  // Post-generation validation (feature-flagged)
+  const validation = runValidator(draftText, {
+    marketplace: chat.marketplace,
+    reviewRating: reviewRating ?? null,
+    phase: phase.phase,
+    sellerMessageCount,
+    chatId,
+  });
+
+  if (validation?.shouldReject) {
+    // Enforce mode: don't save invalid draft, return error
+    const errorMessages = validation.result.violations
+      .filter(v => v.severity === 'error')
+      .map(v => v.message);
+    throw new Error(`AI draft rejected by validator: ${errorMessages.join('; ')}`);
   }
 
   // Save draft

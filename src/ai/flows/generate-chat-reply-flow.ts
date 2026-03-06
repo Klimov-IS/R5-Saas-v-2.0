@@ -51,6 +51,7 @@ export async function generateChatReply(input: GenerateChatReplyInput): Promise<
     operation: 'generate-chat-reply',
     systemPrompt: systemPrompt,
     userContent: context,
+    temperature: 0.4,
     storeId,
     ownerId,
     entityType: 'chat',
