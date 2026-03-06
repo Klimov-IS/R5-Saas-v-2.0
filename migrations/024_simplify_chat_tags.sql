@@ -9,11 +9,15 @@
 -- Kept tags: deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed
 -- Default: NULL (new chat, not yet processed)
 
--- 1. Convert all removed tags to NULL
+-- 1. Remove NOT NULL constraint and DEFAULT 'untagged' from tag column
+ALTER TABLE chats ALTER COLUMN tag DROP NOT NULL;
+ALTER TABLE chats ALTER COLUMN tag DROP DEFAULT;
+
+-- 2. Convert all removed tags to NULL
 UPDATE chats SET tag = NULL
 WHERE tag IN ('active', 'untagged', 'successful', 'unsuccessful', 'no_reply', 'completed', 'refund_requested', 'spam');
 
--- 2. Drop old CHECK constraint and add new one
+-- 3. Drop old CHECK constraint and add new one
 ALTER TABLE chats DROP CONSTRAINT IF EXISTS chats_tag_check;
 ALTER TABLE chats ADD CONSTRAINT chats_tag_check
   CHECK (tag IS NULL OR tag IN ('deletion_candidate', 'deletion_offered', 'deletion_agreed', 'deletion_confirmed'));
