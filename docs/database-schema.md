@@ -756,7 +756,7 @@ CREATE TABLE chats (
 
 **Key Fields:**
 - `marketplace` - 'wb' | 'ozon' (migration 013)
-- `tag` - AI classification (12 тегов): `active`, `successful`, `unsuccessful`, `no_reply`, `untagged`, `completed`, `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`, `refund_requested`, `spam`
+- `tag` - Deletion workflow stage (4 тега + NULL): `deletion_candidate` (auto on link creation), `deletion_offered`, `deletion_agreed`, `deletion_confirmed` (manual from TG), NULL = new/unprocessed. AI classification removed (migration 024).
 - `status` - Kanban position (4 статуса): `inbox`, `awaiting_reply`, `in_progress`, `closed` (resolved removed in migration 008)
 - `completion_reason` - причина закрытия: `review_deleted`, `review_upgraded`, `no_reply`, `old_dialog`, `not_our_issue`, `spam`, `negative`, `other`
 - `sent_no_reply_messages` - история отправленных авто-сообщений (набор 1)

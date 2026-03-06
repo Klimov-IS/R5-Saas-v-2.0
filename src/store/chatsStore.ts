@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatStatus, CompletionReason } from '@/db/helpers';
+import type { ChatStatus, ChatTag, CompletionReason } from '@/db/helpers';
 
 export type ViewMode = 'table' | 'messenger' | 'kanban';
 
@@ -44,6 +44,8 @@ interface ChatsState {
   setCompletionReasonFilter: (reason: CompletionReasonFilter) => void;
   reviewLinkedOnly: boolean;
   setReviewLinkedOnly: (value: boolean) => void;
+  tagFilter: ChatTag | 'all';
+  setTagFilter: (tag: ChatTag | 'all') => void;
 
   // Reset temporary state only (selection, active chat)
   resetTemporaryState: () => void;
@@ -100,6 +102,8 @@ export const useChatsStore = create<ChatsState>()((set, get) => ({
   setCompletionReasonFilter: (reason) => set({ completionReasonFilter: reason }),
   reviewLinkedOnly: true, // Default ON — show only review-linked chats
   setReviewLinkedOnly: (value) => set({ reviewLinkedOnly: value }),
+  tagFilter: 'all',
+  setTagFilter: (tag) => set({ tagFilter: tag }),
 
   // Reset only temporary state (selection, active chat)
   resetTemporaryState: () => set({

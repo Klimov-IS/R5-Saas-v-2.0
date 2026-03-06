@@ -239,7 +239,7 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
   // Metrics
   const pr = productResult.rows[0];
   const tagCounts = s.chat_tag_counts || {};
-  const activeChatTags = ['active', 'deletion_candidate', 'deletion_offered', 'deletion_agreed', 'refund_requested'];
+  const activeChatTags = ['deletion_candidate', 'deletion_offered', 'deletion_agreed'];
   const activeChats = activeChatTags.reduce((sum, tag) => sum + (toNum(tagCounts[tag]) || 0), 0);
 
   const metrics: CabinetMetrics = {

@@ -16,14 +16,13 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useChatMessages, useGenerateAI, useSendMessage } from '@/hooks/useChats';
 
-type ChatTag = 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'untagged';
+type ChatTag = 'deletion_candidate' | 'deletion_offered' | 'deletion_agreed' | 'deletion_confirmed';
 
-const tagConfig: Record<ChatTag, { label: string; variant: any }> = {
-  active: { label: 'Активный', variant: 'default' },
-  successful: { label: 'Успешный', variant: 'secondary' },
-  unsuccessful: { label: 'Неуспешный', variant: 'destructive' },
-  no_reply: { label: 'Без ответа', variant: 'outline' },
-  untagged: { label: 'Без тега', variant: 'outline' },
+const tagConfig: Record<string, { label: string; variant: any }> = {
+  deletion_candidate: { label: 'Кандидат', variant: 'default' },
+  deletion_offered: { label: 'Предложено', variant: 'secondary' },
+  deletion_agreed: { label: 'Согласен', variant: 'outline' },
+  deletion_confirmed: { label: 'Подтверждено', variant: 'secondary' },
 };
 
 export default function ChatDetailPage() {
@@ -39,7 +38,7 @@ export default function ChatDetailPage() {
   const messages = data?.messages || [];
 
   const [newMessage, setNewMessage] = useState('');
-  const [selectedTag, setSelectedTag] = useState<ChatTag>('untagged');
+  const [selectedTag, setSelectedTag] = useState<ChatTag | null>(null);
   const [isUpdatingTag, setIsUpdatingTag] = useState(false);
 
   const generateAI = useGenerateAI(storeId, chatId);
@@ -83,9 +82,7 @@ export default function ChatDetailPage() {
 
   // Set initial tag when chat loads
   useEffect(() => {
-    if (chat?.tag) {
-      setSelectedTag(chat.tag);
-    }
+    setSelectedTag(chat?.tag as ChatTag | null ?? null);
   }, [chat?.tag]);
 
   async function handleSendMessage() {
@@ -192,7 +189,7 @@ export default function ChatDetailPage() {
     );
   }
 
-  const currentTagConfig = tagConfig[selectedTag] || tagConfig.untagged;
+  const currentTagConfig = selectedTag ? tagConfig[selectedTag] : { label: 'Без тега', variant: 'outline' };
 
   return (
     <div className="space-y-4">
@@ -217,7 +214,7 @@ export default function ChatDetailPage() {
             </div>
             <div className="flex items-center gap-2">
               <Select
-                value={selectedTag}
+                value={selectedTag ?? undefined}
                 onValueChange={(value) => handleUpdateTag(value as ChatTag)}
                 disabled={isUpdatingTag}
               >
@@ -225,11 +222,10 @@ export default function ChatDetailPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Активный</SelectItem>
-                  <SelectItem value="successful">Успешный</SelectItem>
-                  <SelectItem value="unsuccessful">Неуспешный</SelectItem>
-                  <SelectItem value="no_reply">Без ответа</SelectItem>
-                  <SelectItem value="untagged">Без тега</SelectItem>
+                  <SelectItem value="deletion_candidate">Кандидат</SelectItem>
+                  <SelectItem value="deletion_offered">Предложено</SelectItem>
+                  <SelectItem value="deletion_agreed">Согласен</SelectItem>
+                  <SelectItem value="deletion_confirmed">Подтверждено</SelectItem>
                 </SelectContent>
               </Select>
               <Badge variant={currentTagConfig.variant}>{currentTagConfig.label}</Badge>

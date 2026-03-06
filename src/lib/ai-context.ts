@@ -1,4 +1,5 @@
 import { getStoreFaq, getStoreGuides } from '@/db/helpers';
+import { BASE_RULES, CONVERSATION_MODEL } from '@/ai/prompts/chat-reply-prompt-v2';
 
 // ============================================================================
 // Conversation Phase Detection
@@ -52,18 +53,10 @@ export function formatTimestampMSK(ts: string): string {
 }
 
 const TAG_LABELS: Record<string, string> = {
-  active: 'Активный',
-  successful: 'Успешный',
-  unsuccessful: 'Неуспешный',
-  no_reply: 'Без ответа',
-  untagged: 'Не классифицирован',
-  completed: 'Завершён',
   deletion_candidate: 'Кандидат на удаление',
   deletion_offered: 'Предложена компенсация',
   deletion_agreed: 'Согласен на удаление',
   deletion_confirmed: 'Удаление подтверждено',
-  refund_requested: 'Запрошен возврат',
-  deleted_review: 'Отзыв удалён',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,6 +65,24 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: 'В работе (продавец ответил)',
   closed: 'Закрытый',
 };
+
+/**
+ * Compute a recency marker relative to "now" in MSK timezone.
+ * Returns: "сегодня", "вчера", "N дн. назад".
+ * Used to give AI temporal awareness of the last message.
+ */
+export function getRecencyLabel(timestamp: string | Date): string {
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return '';
+  const nowMSK = new Date(Date.now() + 3 * 3600_000);
+  const tsMSK = new Date(d.getTime() + 3 * 3600_000);
+  const nowDay = Math.floor(nowMSK.getTime() / 86400_000);
+  const tsDay = Math.floor(tsMSK.getTime() / 86400_000);
+  const diff = nowDay - tsDay;
+  if (diff === 0) return 'сегодня';
+  if (diff === 1) return 'вчера';
+  return `${diff} дн. назад`;
+}
 
 /** Human-readable tag label for AI context. */
 export function getTagLabel(tag: string | null | undefined): string {
@@ -217,15 +228,26 @@ const OZON_MARKETPLACE_ADDENDUM = `
 
 /**
  * Build combined store instructions for AI flows.
- * Merges ai_instructions + active FAQ entries + active guides into a single string.
- * Falls back to DEFAULT_AI_INSTRUCTIONS when no custom instructions are set.
- * Appends marketplace-specific addendum for OZON stores.
+ *
+ * V1 (AI_PROMPT_VERSION=1, default): Legacy replace mode.
+ *   - If store has ai_instructions → replaces DEFAULT_AI_INSTRUCTIONS entirely
+ *   - If no ai_instructions → uses DEFAULT_AI_INSTRUCTIONS
+ *
+ * V2 (AI_PROMPT_VERSION=2): Merge mode — guardrails always present.
+ *   - BASE_RULES (non-overridable guardrails) always prepended
+ *   - Store ai_instructions injected as "Специфика магазина" section
+ *   - CONVERSATION_MODEL (phase guidance) always appended
+ *   - This prevents stores from accidentally dropping guardrails
+ *
+ * Both versions append FAQ, guides, and OZON addendum.
  */
 export async function buildStoreInstructions(
   storeId: string,
   aiInstructions?: string | null,
   marketplace?: 'wb' | 'ozon'
 ): Promise<string | undefined> {
+  const promptVersion = parseInt(process.env.AI_PROMPT_VERSION || '1', 10);
+
   const [faqEntries, guideEntries] = await Promise.all([
     getStoreFaq(storeId),
     getStoreGuides(storeId),
@@ -244,7 +266,19 @@ export async function buildStoreInstructions(
 
   const marketplaceText = marketplace === 'ozon' ? OZON_MARKETPLACE_ADDENDUM : '';
 
-  const effectiveInstructions = aiInstructions?.trim() || DEFAULT_AI_INSTRUCTIONS;
-  const combined = [effectiveInstructions, faqText, guidesText, marketplaceText].join('').trim();
+  let coreInstructions: string;
+
+  if (promptVersion >= 2) {
+    // V2: Always include base rules + conversation model, layer custom instructions between them
+    const customSection = aiInstructions?.trim()
+      ? `\n\n## Специфика магазина\n${aiInstructions.trim()}`
+      : '';
+    coreInstructions = BASE_RULES + customSection + '\n\n' + CONVERSATION_MODEL;
+  } else {
+    // V1: Legacy replace mode (custom instructions replace everything)
+    coreInstructions = aiInstructions?.trim() || DEFAULT_AI_INSTRUCTIONS;
+  }
+
+  const combined = [coreInstructions, faqText, guidesText, marketplaceText].join('').trim();
   return combined || undefined;
 }

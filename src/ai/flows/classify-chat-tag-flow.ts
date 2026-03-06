@@ -1,11 +1,11 @@
 'use server';
 /**
  * @fileOverview Flow for classifying a chat into a specific tag based on its content.
- * Migrated from Firebase to PostgreSQL.
  *
- * - classifyChatTag - A function that handles the chat classification.
- * - ClassifyChatTagInput - The input type for the classifyChatTag function.
- * - ClassifyChatTagOutput - The return type for the classifyChatTag function.
+ * @deprecated DISABLED (migration 024, 2026-03-06): AI classification removed.
+ * Tags are now: deletion_candidate (auto on link creation),
+ * deletion_offered/agreed/confirmed (manual from TG Mini App).
+ * This flow is no longer called from any active code.
  */
 
 import { runChatCompletion } from '../assistant-utils';

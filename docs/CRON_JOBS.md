@@ -912,7 +912,6 @@ Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decision
 | `no_reply_followup_4star_30d` | 10 | ~30 дней | `deletion_candidate` | Базовая рассылка (4★) |
 | `offer_reminder` | 5 | ~14 дней | `deletion_offered` | Напоминание об оффере |
 | `agreement_followup` | 4 | ~10 дней | `deletion_agreed` | Напоминание об инструкции |
-| `refund_followup` | 3 | ~7 дней | `refund_requested` | Follow-up по возврату |
 
 **Database Table:** `chat_auto_sequences`
 - See `migrations/005_create_chat_auto_sequences.sql`

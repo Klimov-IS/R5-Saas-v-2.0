@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useChatsStore } from '@/store/chatsStore';
 import { Button } from '@/components/ui/button';
 import { FilterChip } from './FilterChip';
-import { Bot, RefreshCw, Send, Tag, ChevronDown, ChevronUp } from 'lucide-react';
-import { useBulkGenerateAI, useBulkSendMessages, useBulkClassify, useRefreshChats } from '@/hooks/useChats';
+import { Bot, RefreshCw, Send, ChevronDown, ChevronUp } from 'lucide-react';
+import { useBulkGenerateAI, useBulkSendMessages, useRefreshChats } from '@/hooks/useChats';
 import { toast } from 'react-hot-toast';
 import {
   Collapsible,
@@ -27,19 +27,17 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
   } = useChatsStore();
 
   const [isFiltersOpen, setIsFiltersOpen] = useState(true);
-  const [isDeletionFiltersOpen, setIsDeletionFiltersOpen] = useState(true);
   const [isActionsOpen, setIsActionsOpen] = useState(true);
 
   const bulkGenerateAI = useBulkGenerateAI(storeId);
   const bulkSend = useBulkSendMessages(storeId);
-  const bulkClassify = useBulkClassify(storeId);
   const refreshChats = useRefreshChats(storeId);
 
   const selectedCount = selectedChatIds.size;
-  const isAnyAction = bulkGenerateAI.isPending || bulkSend.isPending || bulkClassify.isPending || refreshChats.isPending;
+  const isAnyAction = bulkGenerateAI.isPending || bulkSend.isPending || refreshChats.isPending;
 
   // Handle bulk action
-  const handleBulkAction = async (action: 'generate' | 'send' | 'classify' | 'refresh') => {
+  const handleBulkAction = async (action: 'generate' | 'send' | 'refresh') => {
     const chatIds = Array.from(selectedChatIds);
 
     try {
@@ -66,15 +64,6 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
           );
           break;
 
-        case 'classify':
-          await bulkClassify.mutateAsync(chatIds);
-          toast.success(
-            selectedCount > 0
-              ? `Классифицировано ${selectedCount} чатов`
-              : 'Классифицированы все чаты'
-          );
-          break;
-
         case 'refresh':
           await refreshChats.mutateAsync();
           toast.success('Чаты обновлены с WB');
@@ -95,52 +84,6 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
             Фильтры по тегам
           </h3>
           {isFiltersOpen ? (
-            <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-          )}
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-2">
-          <div className="flex flex-wrap gap-1.5">
-            <FilterChip
-              icon="🟢"
-              label="Активные"
-              count={tagStats?.active || 0}
-              checked={tagFilter === 'active'}
-              onChange={() => setTagFilter(tagFilter === 'active' ? 'all' : 'active')}
-            />
-            <FilterChip
-              icon="🟡"
-              label="Нет ответа"
-              count={tagStats?.no_reply || 0}
-              checked={tagFilter === 'no_reply'}
-              onChange={() => setTagFilter(tagFilter === 'no_reply' ? 'all' : 'no_reply')}
-            />
-            <FilterChip
-              icon="🔵"
-              label="Успешные"
-              count={tagStats?.successful || 0}
-              checked={tagFilter === 'successful'}
-              onChange={() => setTagFilter(tagFilter === 'successful' ? 'all' : 'successful')}
-            />
-            <FilterChip
-              icon="🔴"
-              label="Неуспешные"
-              count={tagStats?.unsuccessful || 0}
-              checked={tagFilter === 'unsuccessful'}
-              onChange={() => setTagFilter(tagFilter === 'unsuccessful' ? 'all' : 'unsuccessful')}
-            />
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* Deletion Workflow Filters - Collapsible */}
-      <Collapsible open={isDeletionFiltersOpen} onOpenChange={setIsDeletionFiltersOpen} className="mb-3">
-        <CollapsibleTrigger className="flex items-center justify-between w-full px-1 py-1.5 hover:bg-slate-50 rounded-md transition-colors">
-          <h3 className="text-xs font-semibold text-slate-700">
-            🎯 Удаление отзывов
-          </h3>
-          {isDeletionFiltersOpen ? (
             <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
           ) : (
             <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
@@ -175,20 +118,6 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
               count={tagStats?.deletion_confirmed || 0}
               checked={tagFilter === 'deletion_confirmed'}
               onChange={() => setTagFilter(tagFilter === 'deletion_confirmed' ? 'all' : 'deletion_confirmed')}
-            />
-            <FilterChip
-              icon="💸"
-              label="Возврат"
-              count={tagStats?.refund_requested || 0}
-              checked={tagFilter === 'refund_requested'}
-              onChange={() => setTagFilter(tagFilter === 'refund_requested' ? 'all' : 'refund_requested')}
-            />
-            <FilterChip
-              icon="🚫"
-              label="Спам"
-              count={tagStats?.spam || 0}
-              checked={tagFilter === 'spam'}
-              onChange={() => setTagFilter(tagFilter === 'spam' ? 'all' : 'spam')}
             />
           </div>
         </CollapsibleContent>
@@ -242,22 +171,7 @@ export function FilterPanel({ storeId, tagStats }: FilterPanelProps) {
             )}
           </Button>
 
-          {/* Classify */}
-          <Button
-            variant="outline"
-            size="sm"
-            className="justify-start w-full text-xs h-8"
-            onClick={() => handleBulkAction('classify')}
-            disabled={isAnyAction || selectedCount === 0}
-          >
-            <Tag className="w-3.5 h-3.5 mr-1.5" />
-            Классифицировать AI
-            {selectedCount > 0 && (
-              <span className="ml-auto text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">
-                {selectedCount}
-              </span>
-            )}
-          </Button>
+          {/* AI Classification removed — tags set manually from TG Mini App */}
 
           {/* Refresh */}
           <Button

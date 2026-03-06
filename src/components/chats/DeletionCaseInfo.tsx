@@ -40,7 +40,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; icon: string
 
 export function DeletionCaseInfo({ storeId, chatId, chatTag }: DeletionCaseInfoProps) {
   // Only show for deletion-related tags
-  const deletionTags = ['deletion_candidate', 'deletion_offered', 'deletion_agreed', 'deletion_confirmed', 'refund_requested'];
+  const deletionTags = ['deletion_candidate', 'deletion_offered', 'deletion_agreed', 'deletion_confirmed'];
   if (!deletionTags.includes(chatTag)) {
     return null;
   }

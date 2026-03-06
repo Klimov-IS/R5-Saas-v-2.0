@@ -17,19 +17,10 @@ interface ConversationPanelProps {
 }
 
 const TAG_LABELS: Record<ChatTag, string> = {
-  active: '🟢 Активный',
-  successful: '🔵 Успешный',
-  unsuccessful: '🔴 Неуспешный',
-  no_reply: '🟡 Нет ответа',
-  untagged: '⚪ Не размечено',
-  completed: '✅ Завершён',
-  // Deletion workflow tags
-  deletion_candidate: '🎯 Кандидат на удаление',
-  deletion_offered: '💰 Предложена компенсация',
-  deletion_agreed: '🤝 Клиент согласился',
-  deletion_confirmed: '✔️ Отзыв удалён',
-  refund_requested: '💸 Запрос возврата',
-  spam: '🚫 Спам',
+  deletion_candidate: 'Кандидат на удаление',
+  deletion_offered: 'Предложена компенсация',
+  deletion_agreed: 'Клиент согласился',
+  deletion_confirmed: 'Отзыв удалён',
 };
 
 const STATUS_LABELS: Record<ChatStatus, string> = {

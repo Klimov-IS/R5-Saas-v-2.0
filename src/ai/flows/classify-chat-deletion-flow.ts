@@ -2,11 +2,15 @@
 /**
  * @fileOverview Advanced chat classification for deletion workflow
  *
- * Classifies chats into expanded tag taxonomy including deletion opportunity detection.
- * Integrates regex-based trigger phrase detection with AI-powered context analysis.
+ * @deprecated DISABLED (migration 024, 2026-03-06): AI classification removed.
+ * Tags are now: deletion_candidate (auto on link creation),
+ * deletion_offered/agreed/confirmed (manual from TG Mini App).
  *
- * Business Goal: 600₽ ROI per successfully deleted review
- * Created: 2026-01-16 (Stage 2)
+ * The regex utility `detectDeletionIntent` is still used by other modules.
+ * The AI functions `classifyChatDeletion` and `bulkClassifyChatsForDeletion`
+ * are no longer called from any sync flow.
+ *
+ * Original: Created 2026-01-16 (Stage 2)
  */
 
 import { runChatCompletion } from '../assistant-utils';
@@ -318,6 +322,7 @@ export async function bulkClassifyChatsForDeletion(
       });
 
       // Update chat tag in database
+      // @ts-expect-error — deprecated flow, Zod enum has old tags not in ChatTag
       await dbHelpers.updateChatTag(chatId, result.tag);
 
       results.push({

@@ -115,6 +115,18 @@ export async function createReviewChatLink(
     new Date(link.created_at).getTime() - new Date(link.updated_at).getTime()
   ) < 1000;
 
+  // Auto-tag as deletion_candidate when a new link is created with a chat_id
+  if (created && link.chat_id) {
+    try {
+      await query(
+        `UPDATE chats SET tag = 'deletion_candidate' WHERE id = $1 AND tag IS NULL`,
+        [link.chat_id]
+      );
+    } catch (err: any) {
+      console.warn('[RCL] Failed to auto-tag deletion_candidate:', err.message);
+    }
+  }
+
   return { link, created };
 }
 
@@ -603,6 +615,18 @@ export async function reconcileChatWithLink(
      RETURNING id`,
     [chatId, storeId, uuidPart]
   );
+
+  // Auto-tag as deletion_candidate when link is reconciled with a chat
+  if (result.rows.length > 0) {
+    try {
+      await query(
+        `UPDATE chats SET tag = 'deletion_candidate' WHERE id = $1 AND tag IS NULL`,
+        [chatId]
+      );
+    } catch (err: any) {
+      console.warn('[RCL] Failed to auto-tag on reconcile:', err.message);
+    }
+  }
 
   return result.rows.length > 0;
 }

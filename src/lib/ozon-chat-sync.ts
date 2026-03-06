@@ -15,13 +15,10 @@
 import { createOzonClient, OzonChatMessage } from '@/lib/ozon-api';
 import * as dbHelpers from '@/db/helpers';
 import { query } from '@/db/client';
-import type { ChatTag, ChatStatus } from '@/db/helpers';
-import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
-import { buildStoreInstructions } from '@/lib/ai-context';
-// Auto-sequence templates removed: sequences are now started manually from TG mini app
+import type { ChatStatus } from '@/db/helpers';
+// AI classification removed (migration 024): tags set manually or auto on link creation
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
-import { canAutoOverwriteTag } from '@/lib/chat-transitions';
 
 /** Map OZON user.type to our sender format */
 function mapSender(userType: string): 'client' | 'seller' | null {
@@ -128,7 +125,6 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
     let chatsSkipped = 0;
     let chatsSeeded = 0;
     let chatErrors = 0;
-    const chatsToClassify: { chatId: string; productName?: string }[] = [];
     const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
     let statusTransitions = 0;
     const seedBatch: Array<{ id: string; lastMsgId: string }> = [];
@@ -360,10 +356,6 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
           }
         }
 
-        // Collect chats needing AI classification (last message from client, limit 20)
-        if (newForThisChat > 0 && latestSender === 'client' && chatsToClassify.length < 20) {
-          chatsToClassify.push({ chatId, productName: productName || undefined });
-        }
       } catch (err: any) {
         console.error(`[OZON-CHATS] Error processing chat ${chatId}: ${err.message}`);
         chatErrors++;
@@ -389,49 +381,10 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
       }
     }
 
-    // Step 4: AI classification for chats with new client messages
-    let classified = 0;
-    if (chatsToClassify.length > 0) {
-      const storeInstructions = await buildStoreInstructions(storeId, store.ai_instructions, 'ozon');
-      for (const item of chatsToClassify) {
-        try {
-          const chatMessages = await dbHelpers.getChatMessages(item.chatId);
-          const chatHistory = chatMessages
-            .filter(m => m.text?.trim())
-            .map(m => `[${m.sender === 'client' ? 'Клиент' : 'Продавец'}]: ${m.text}`)
-            .join('\n');
-
-          if (chatHistory.length < 10) continue;
-
-          const lastMsg = chatMessages[chatMessages.length - 1];
-          const result = await classifyChatDeletion({
-            chatHistory,
-            lastMessageText: lastMsg?.text || '',
-            storeId,
-            ownerId,
-            chatId: item.chatId,
-            productName: item.productName,
-            storeInstructions,
-          });
-
-          // Protect deletion workflow tags from AI overwrite
-          const currentChat = await dbHelpers.getChatById(item.chatId);
-          const currentTag = (currentChat?.tag || null) as ChatTag | null;
-          if (!canAutoOverwriteTag(currentTag, result.tag as ChatTag)) {
-            console.log(`[OZON-CHATS] Chat ${item.chatId}: Tag '${currentTag}' protected from AI overwrite to '${result.tag}'. Skipping.`);
-            continue;
-          }
-
-          await dbHelpers.updateChat(item.chatId, { tag: result.tag });
-          classified++;
-        } catch (classifyErr: any) {
-          console.warn(`[OZON-CHATS] Classification failed for chat ${item.chatId}: ${classifyErr.message}`);
-        }
-      }
-      if (classified > 0) {
-        console.log(`[OZON-CHATS] AI classified ${classified}/${chatsToClassify.length} chats`);
-      }
-    }
+    // Step 4 REMOVED: AI tag classification disabled (migration 024).
+    // Tags are now set: deletion_candidate (auto on link creation),
+    // deletion_offered/agreed/confirmed (manual from TG Mini App).
+    const classified = 0;
 
     // Step 4.5: Batch seed ozon_last_message_id for existing chats
     if (seedBatch.length > 0) {

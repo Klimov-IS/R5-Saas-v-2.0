@@ -66,18 +66,14 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
   // Get tag badge style
   const getTagBadgeStyle = (tag: string) => {
     switch (tag) {
-      case 'active':
-        return 'bg-green-100 text-green-700';
-      case 'successful':
-        return 'bg-blue-100 text-blue-700';
-      case 'unsuccessful':
-        return 'bg-red-100 text-red-700';
-      case 'no_reply':
-        return 'bg-yellow-100 text-yellow-700';
       case 'deletion_candidate':
         return 'bg-purple-100 text-purple-700';
       case 'deletion_offered':
         return 'bg-orange-100 text-orange-700';
+      case 'deletion_agreed':
+        return 'bg-blue-100 text-blue-700';
+      case 'deletion_confirmed':
+        return 'bg-green-100 text-green-700';
       default:
         return 'bg-slate-100 text-slate-600';
     }
@@ -86,32 +82,16 @@ export function ChatsTableView({ storeId }: ChatsTableViewProps) {
   // Get tag label
   const getTagLabel = (tag: string): string => {
     switch (tag) {
-      case 'active':
-        return '🟢 Активный';
-      case 'successful':
-        return '🔵 Успешный';
-      case 'unsuccessful':
-        return '🔴 Неуспешный';
-      case 'no_reply':
-        return '🟡 Нет ответа';
-      case 'untagged':
-        return 'Не размечено';
-      case 'completed':
-        return '✅ Завершён';
       case 'deletion_candidate':
-        return '🎯 Кандидат';
+        return 'Кандидат';
       case 'deletion_offered':
-        return '💰 Компенсация';
+        return 'Компенсация';
       case 'deletion_agreed':
-        return '🤝 Согласились';
+        return 'Согласились';
       case 'deletion_confirmed':
-        return '✔️ Подтверждено';
-      case 'refund_requested':
-        return '💸 Возврат';
-      case 'spam':
-        return '🚫 Спам';
+        return 'Подтверждено';
       default:
-        return tag;
+        return tag || 'Без тега';
     }
   };
 

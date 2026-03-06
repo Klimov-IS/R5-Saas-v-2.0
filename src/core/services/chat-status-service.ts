@@ -19,7 +19,7 @@ const VALID_REASONS: CompletionReason[] = [
 ];
 const MANUALLY_SETTABLE_TAGS: ChatTag[] = [
   'deletion_candidate', 'deletion_offered', 'deletion_agreed',
-  'deletion_confirmed', 'refund_requested',
+  'deletion_confirmed',
 ];
 
 /**

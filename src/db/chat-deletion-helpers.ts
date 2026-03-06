@@ -184,7 +184,6 @@ export async function getDeletionWorkflowStats(storeId: string): Promise<{
   offered: number;
   agreed: number;
   confirmed: number;
-  refundRequested: number;
   totalRevenue: number; // confirmed × 600₽
 }> {
   const sql = `
@@ -192,8 +191,7 @@ export async function getDeletionWorkflowStats(storeId: string): Promise<{
       COUNT(*) FILTER (WHERE tag = 'deletion_candidate') as candidates,
       COUNT(*) FILTER (WHERE tag = 'deletion_offered') as offered,
       COUNT(*) FILTER (WHERE tag = 'deletion_agreed') as agreed,
-      COUNT(*) FILTER (WHERE tag = 'deletion_confirmed') as confirmed,
-      COUNT(*) FILTER (WHERE tag = 'refund_requested') as refund_requested
+      COUNT(*) FILTER (WHERE tag = 'deletion_confirmed') as confirmed
     FROM chats
     WHERE store_id = $1
   `;
@@ -203,7 +201,6 @@ export async function getDeletionWorkflowStats(storeId: string): Promise<{
     offered: string;
     agreed: string;
     confirmed: string;
-    refund_requested: string;
   }>(sql, [storeId]);
 
   const stats = result.rows[0];
@@ -214,7 +211,6 @@ export async function getDeletionWorkflowStats(storeId: string): Promise<{
     offered: parseInt(stats.offered, 10),
     agreed: parseInt(stats.agreed, 10),
     confirmed,
-    refundRequested: parseInt(stats.refund_requested, 10),
     totalRevenue: confirmed * 600, // 600₽ per deletion
   };
 }

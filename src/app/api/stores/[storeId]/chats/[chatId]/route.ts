@@ -146,7 +146,7 @@ export async function PUT(
       );
     }
 
-    const validTags: ChatTag[] = ['active', 'successful', 'unsuccessful', 'no_reply', 'untagged'];
+    const validTags: ChatTag[] = ['deletion_candidate', 'deletion_offered', 'deletion_agreed', 'deletion_confirmed'];
     if (!validTags.includes(tag as ChatTag)) {
       return NextResponse.json(
         { error: `Invalid tag. Must be one of: ${validTags.join(', ')}` },

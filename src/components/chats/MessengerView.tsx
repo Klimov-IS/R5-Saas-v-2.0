@@ -44,18 +44,11 @@ export function MessengerView({ storeId, tagStats: propTagStats }: MessengerView
 
   // Calculate tag stats (use props if available, otherwise calculate)
   const tagStats: TagStats = propTagStats || {
-    active: chats.filter((c) => c.tag === 'active').length,
-    successful: chats.filter((c) => c.tag === 'successful').length,
-    unsuccessful: chats.filter((c) => c.tag === 'unsuccessful').length,
-    no_reply: chats.filter((c) => c.tag === 'no_reply').length,
-    untagged: chats.filter((c) => c.tag === 'untagged').length,
-    completed: chats.filter((c) => c.tag === 'completed').length,
+    untagged: chats.filter((c) => !c.tag).length,
     deletion_candidate: chats.filter((c) => c.tag === 'deletion_candidate').length,
     deletion_offered: chats.filter((c) => c.tag === 'deletion_offered').length,
     deletion_agreed: chats.filter((c) => c.tag === 'deletion_agreed').length,
     deletion_confirmed: chats.filter((c) => c.tag === 'deletion_confirmed').length,
-    refund_requested: chats.filter((c) => c.tag === 'refund_requested').length,
-    spam: chats.filter((c) => c.tag === 'spam').length,
   };
 
   // Error state

@@ -17,8 +17,7 @@ export * from './complaint-helpers';
 // ============================================================================
 
 export type UpdateStatus = "idle" | "pending" | "success" | "error";
-export type ChatTag = 'untagged' | 'active' | 'successful' | 'unsuccessful' | 'no_reply' | 'completed'
-  | 'deletion_candidate' | 'deletion_offered' | 'deletion_agreed' | 'deletion_confirmed' | 'refund_requested' | 'spam';
+export type ChatTag = 'deletion_candidate' | 'deletion_offered' | 'deletion_agreed' | 'deletion_confirmed';
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other' | 'review_resolved' | 'refusal' | 'temporarily_hidden';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
@@ -3023,7 +3022,7 @@ export interface DashboardStats {
   stores: { active: number; newThisMonth: number; total: number };
   products: { active: number; total: number; activePercent: number };
   reviews: { total: number; negative: number; withComplaints: number; complaintPercent: number };
-  chats: { total: number; activeDeletion: number; breakdown: { deletion_candidate: number; deletion_offered: number; deletion_agreed: number; deletion_confirmed: number; refund_requested: number } };
+  chats: { total: number; activeDeletion: number; breakdown: { deletion_candidate: number; deletion_offered: number; deletion_agreed: number; deletion_confirmed: number } };
 }
 
 // In-memory cache for dashboard stats (expensive review query across 3.2M+ reviews)
@@ -3117,14 +3116,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       SELECT
         COUNT(DISTINCT rcl.chat_id) AS total_our_chats,
         COUNT(DISTINCT rcl.chat_id) FILTER (
-          WHERE c.tag IN ('deletion_candidate','deletion_offered','deletion_agreed','deletion_confirmed','refund_requested')
+          WHERE c.tag IN ('deletion_candidate','deletion_offered','deletion_agreed','deletion_confirmed')
           AND c.status != 'closed'
         ) AS active_deletion_chats,
         COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_candidate' AND c.status != 'closed') AS deletion_candidates,
         COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_offered' AND c.status != 'closed') AS deletion_offered,
         COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_agreed' AND c.status != 'closed') AS deletion_agreed,
-        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_confirmed' AND c.status != 'closed') AS deletion_confirmed,
-        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'refund_requested' AND c.status != 'closed') AS refund_requested
+        COUNT(DISTINCT rcl.chat_id) FILTER (WHERE c.tag = 'deletion_confirmed' AND c.status != 'closed') AS deletion_confirmed
       FROM review_chat_links rcl
       INNER JOIN chats c ON c.id = rcl.chat_id AND c.store_id = rcl.store_id
       WHERE rcl.store_id IN (SELECT id FROM active_store_ids)
@@ -3172,7 +3170,6 @@ export async function getDashboardStats(): Promise<DashboardStats> {
         deletion_offered: toNum(row.deletion_offered),
         deletion_agreed: toNum(row.deletion_agreed),
         deletion_confirmed: toNum(row.deletion_confirmed),
-        refund_requested: toNum(row.refund_requested),
       },
     },
   };

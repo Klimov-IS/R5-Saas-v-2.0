@@ -472,12 +472,6 @@ export const TAG_SEQUENCE_CONFIG: Record<string, {
     familyPrefix: 'agreement_followup',
     label: 'Напомнить об инструкции',
   },
-  refund_requested: {
-    sequenceType: 'refund_followup',
-    templates: DEFAULT_REFUND_FOLLOWUP_TEMPLATES,
-    familyPrefix: 'refund_followup',
-    label: 'Follow-up по возврату',
-  },
 };
 
 export const DEFAULT_OZON_FOLLOWUP_TEMPLATES_30D: SequenceMessage[] = [

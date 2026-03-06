@@ -1,17 +1,8 @@
 export type ChatTag =
-  | 'active'
-  | 'successful'
-  | 'unsuccessful'
-  | 'no_reply'
-  | 'untagged'
-  | 'completed'
-  // Deletion workflow tags (added 2026-01-16)
-  | 'deletion_candidate'  // AI identified deletion opportunity
-  | 'deletion_offered'    // Compensation offer sent
-  | 'deletion_agreed'     // Client agreed to delete
-  | 'deletion_confirmed'  // Review deleted/modified
-  | 'refund_requested'    // Client wants refund
-  | 'spam';               // Spam or competitor messages
+  | 'deletion_candidate'  // Auto-set when review-chat link created
+  | 'deletion_offered'    // Manual (TG): compensation offer sent
+  | 'deletion_agreed'     // Manual (TG): client agreed to delete
+  | 'deletion_confirmed'; // Manual (TG): review deleted/modified
 
 // NEW: Kanban Board Status (2026-01-22)
 export type ChatStatus =
@@ -80,16 +71,9 @@ export interface ChatWithMessages {
 }
 
 export interface TagStats {
-  active: number;
-  successful: number;
-  unsuccessful: number;
-  no_reply: number;
   untagged: number;
-  completed: number;
   deletion_candidate: number;
   deletion_offered: number;
   deletion_agreed: number;
   deletion_confirmed: number;
-  refund_requested: number;
-  spam: number;
 }

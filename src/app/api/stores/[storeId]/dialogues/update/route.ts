@@ -3,16 +3,12 @@ import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { query } from '@/db/client';
 import { verifyApiKey } from '@/lib/server-utils';
-import type { ChatTag, ChatStatus } from '@/db/helpers';
-import { classifyChatDeletion } from '@/ai/flows/classify-chat-deletion-flow';
-// Auto-sequence templates removed: sequences are now started manually from TG mini app
-import { buildStoreInstructions } from '@/lib/ai-context';
+import type { ChatStatus } from '@/db/helpers';
+// AI classification removed (migration 024): tags are now set manually or auto-assigned on link creation
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
 import { reconcileChatWithLink, isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
-import { canAutoOverwriteTag } from '@/lib/chat-transitions';
-// Auto-launch removed: sequences are started manually from TG mini app
 
 /**
  * Update dialogues (chats) and messages for a store from WB Chat API
@@ -198,8 +194,6 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
         console.log(`[DIALOGUES] Fetched ${allEvents.length} new message events.`);
 
         // --- Step 5: Process and save new messages ---
-        const chatsToClassify = new Set<string>();
-
         if (allEvents.length > 0) {
             // Track latest message per chat for updating last_message fields
             const latestMessagesPerChat: { [chatId: string]: any } = {};
@@ -212,8 +206,6 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                     if (!knownChatIds.has(chatId)) {
                         continue;
                     }
-
-                    chatsToClassify.add(chatId); // Mark chat for re-classification (Sprint 3)
 
                     // Save message (skip if auto-sequence already recorded it)
                     const msgText = event.message?.text || '';
@@ -371,68 +363,9 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
             // Old logic: detected trigger phrases in seller messages → auto-created sequences.
             // New logic: user starts sequences manually via "Запустить рассылку" button.
 
-            // --- Step 6: Re-classify tags for updated chats using AI ---
-            console.log(`[DIALOGUES] Starting AI tag classification for ${chatsToClassify.size} updated chats...`);
-
-            let classifiedCount = 0;
-            let errorCount = 0;
-
-            for (const chatId of Array.from(chatsToClassify)) {
-                try {
-                    // Get chat messages to build history
-                    const messages = await dbHelpers.getChatMessages(chatId);
-
-                    if (messages.length === 0) {
-                        console.log(`[DIALOGUES] Chat ${chatId}: No messages, skipping classification.`);
-                        continue;
-                    }
-
-                    // Build chat history string
-                    const chatHistory = messages.map(m =>
-                        `${m.sender === 'client' ? 'Клиент' : 'Продавец'}: ${m.text || '[Вложение]'}`
-                    ).join('\n');
-
-                    // Get chat for full context
-                    const chat = await dbHelpers.getChatById(chatId);
-
-                    // Classify using AI deletion flow (hybrid regex + AI)
-                    const result = await classifyChatDeletion({
-                        chatHistory,
-                        lastMessageText: chat?.last_message_text || '',
-                        storeId,
-                        ownerId,
-                        chatId,
-                        productName: chat?.product_name || undefined,
-                        storeInstructions: await buildStoreInstructions(storeId, store.ai_instructions, store.marketplace),
-                    });
-
-                    const tag = result.tag;
-
-                    // Protect deletion workflow tags from being overwritten by AI classification
-                    const currentChat = await dbHelpers.getChatById(chatId);
-                    const currentTag = (currentChat?.tag || null) as ChatTag | null;
-
-                    if (!canAutoOverwriteTag(currentTag, tag as ChatTag)) {
-                        console.log(`[DIALOGUES] Chat ${chatId}: Tag '${currentTag}' protected from AI overwrite to '${tag}'. Skipping.`);
-                        continue;
-                    }
-
-                    // Update chat tag (AI classification), status remains unchanged
-                    await dbHelpers.updateChat(chatId, {
-                        tag,
-                    });
-
-                    classifiedCount++;
-                    console.log(`[DIALOGUES] Chat ${chatId}: Classified as '${tag}'.`);
-
-                } catch (error: any) {
-                    errorCount++;
-                    console.error(`[DIALOGUES] Chat ${chatId}: Classification failed - ${error.message}`);
-                    // Continue processing other chats even if one fails
-                }
-            }
-
-            console.log(`[DIALOGUES] AI classification complete: ${classifiedCount} successful, ${errorCount} errors.`);
+            // Step 6 REMOVED: AI tag classification disabled (migration 024).
+            // Tags are now set: deletion_candidate (auto on link creation),
+            // deletion_offered/agreed/confirmed (manual from TG Mini App).
         }
 
         // --- Step 7: Recalculate stats for the store ---
@@ -440,21 +373,13 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
         const allStoreChats = await dbHelpers.getChats(storeId);
         const totalChats = allStoreChats.length;
 
-        // Initialize all possible tag counts (including new deletion workflow tags)
+        // Tag counts (simplified: 4 deletion workflow tags + untagged)
         const chatTagCounts: Record<string, number> = {
-            active: 0,
-            no_reply: 0,
-            successful: 0,
-            unsuccessful: 0,
             untagged: 0,
-            completed: 0,
-            // Deletion workflow tags
             deletion_candidate: 0,
             deletion_offered: 0,
             deletion_agreed: 0,
             deletion_confirmed: 0,
-            refund_requested: 0,
-            spam: 0,
         };
 
         allStoreChats.forEach(chat => {
@@ -462,7 +387,6 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
             if (chatTagCounts.hasOwnProperty(tag)) {
                 chatTagCounts[tag]++;
             } else {
-                // Unknown tag, count as untagged
                 chatTagCounts['untagged']++;
             }
         });
