@@ -205,14 +205,16 @@ interface ClassifyChatTagInput {
 **Выходные данные:**
 ```typescript
 interface ClassifyChatTagOutput {
-  tag: ChatTag;              // Один из 12 тегов
+  tag: ChatTag | null;       // Один из 4 тегов или NULL (migration 024: было 12 → стало 4 + NULL)
   confidence: number;        // 0-1
   reasoning?: string;        // Обоснование AI
   triggers?: string[];       // Обнаруженные триггерные фразы
 }
 ```
 
-**Промпт:** `user_settings.prompt_chat_tag`
+**Промпт:** `user_settings.prompt_chat_tag` *(deprecated, migration 024 — flow отключён)*
+
+> **DEPRECATED (migration 024, 2026-03-06):** Flow classify-chat-tag отключён. Теги теперь выставляются вручную из TG Mini App или автоматически при создании review_chat_link (deletion_candidate). AI-классификация больше не используется.
 
 ---
 
@@ -243,7 +245,7 @@ interface ClassifyChatDeletionInput {
 **Выходные данные:**
 ```typescript
 interface ClassifyChatDeletionOutput {
-  tag: ChatTag;              // Один из 12 тегов
+  tag: ChatTag | null;       // Один из 4 тегов или NULL (migration 024: было 12 → стало 4 + NULL)
   confidence: number;        // 0-1
   reasoning?: string;        // Обоснование (regex или AI)
   triggers?: string[];       // Обнаруженные триггерные фразы
@@ -482,7 +484,7 @@ async function runChatCompletion({
        ↓
 [POST /api/stores/:id/chats/classify-all]
        ↓
-[AI классифицирует каждый чат (12 тегов)]
+[AI классифицирует каждый чат] ← DEPRECATED (migration 024: flow отключён, 4 тега + NULL)
        ↓
 [Обновляются теги в БД]
 ```
@@ -719,8 +721,8 @@ async function buildStoreInstructions(
 
 **Используется в 6 customer-facing flows:**
 - generate-chat-reply
-- classify-chat-tag
-- classify-chat-deletion
+- ~~classify-chat-tag~~ *(deprecated, migration 024)*
+- ~~classify-chat-deletion~~ *(deprecated, migration 024)*
 - generate-deletion-offer
 - generate-review-reply
 - generate-question-reply
@@ -886,7 +888,7 @@ INSERT INTO ai_logs (
 |-----|---------------|-----|-----------|----------|-------------|-------------|
 | Напоминание об оффере | `offer_reminder` | `deletion_offered` | 5 | каждые 3 дня | ~14 дней | "Напомнить об оффере" |
 | Напоминание об инструкции | `agreement_followup` | `deletion_agreed` | 4 | каждые 2-3 дня | ~10 дней | "Напомнить об инструкции" |
-| Follow-up по возврату | `refund_followup` | `refund_requested` | 3 | каждые 2-3 дня | ~7 дней | "Follow-up по возврату" |
+| ~~Follow-up по возврату~~ | ~~`refund_followup`~~ | ~~`refund_requested`~~ | ~~3~~ | ~~каждые 2-3 дня~~ | ~~~7 дней~~ | **Удалён** (migration 024) |
 
 **Логика:** Базовая 30-дневная рассылка запускается для `deletion_candidate`. Если покупатель ответил и диалог продвинулся (тег сменился), но потом замолчал — менеджер запускает короткую рассылку, актуальную для нового этапа.
 
@@ -936,7 +938,7 @@ INSERT INTO ai_logs (
 
 2. **Tag-based рассылка** (`sequenceType` = имя тега или sequence_type):
    - Маппинг из `TAG_SEQUENCE_CONFIG` в `auto-sequence-templates.ts`
-   - Family dedup по `offer_reminder` / `agreement_followup` / `refund_followup`
+   - Family dedup по `offer_reminder` / `agreement_followup` (~~`refund_followup`~~ удалён, migration 024)
 
 **Проверки при ручном запуске:**
 1. Отзыв не resolved (`isReviewResolvedForChat`) — если resolved, возвращает 400
@@ -948,14 +950,14 @@ INSERT INTO ai_logs (
 Менеджер может вручную продвигать чат по воронке удаления через кнопки в TG Mini App:
 
 ```
-deletion_candidate → deletion_offered | refund_requested
-deletion_offered   → deletion_agreed  | refund_requested
+deletion_candidate → deletion_offered
+deletion_offered   → deletion_agreed
 deletion_agreed    → deletion_confirmed
 ```
 
 **API:** `PATCH /api/telegram/chats/[chatId]/status` с полем `tag` в body.
 
-**Допустимые теги для ручной смены:** `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`, `refund_requested`.
+**Допустимые теги для ручной смены:** `deletion_candidate`, `deletion_offered`, `deletion_agreed`, `deletion_confirmed`. *(migration 024: `refund_requested` удалён)*
 
 > **Удалено:** `maybeStartAutoSequence()` из `auto-sequence-launcher.ts` — dead code, не вызывается. Trigger phrase detection из dialogue sync (Step 5b) и OZON sync (Step 3.5) — удалены. Auto-create при смене статуса на `awaiting_reply` — удалён.
 

@@ -21,7 +21,7 @@ PGPASSWORD="$POSTGRES_PASSWORD" psql \
 
 # Проверить что всё прошло успешно
 SELECT enum_range(NULL::chat_tag);
--- Должно быть 12 тегов
+-- Должно быть 4 тега + NULL (migration 024: deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed)
 
 SELECT prompt_chat_deletion_tag IS NOT NULL FROM user_settings LIMIT 1;
 -- Должно быть TRUE

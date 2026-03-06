@@ -583,10 +583,13 @@ for (const chat of chats) {
   const classification = await classifyChat(chat);
 
   // Update chat tag
+  // NOTE (migration 024): classify-chat-tag flow is DEPRECATED.
+  // Tags are now: NULL, deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed.
+  // Old tags (active, unsuccessful, etc.) no longer exist.
   await dbHelpers.updateChat(chat.id, { tag: classification.tag });
 
-  // NEW: Create task if chat needs reply
-  if (classification.tag === 'active' || classification.tag === 'unsuccessful') {
+  // DEPRECATED: Old tag-based task creation (active/unsuccessful tags removed in migration 024)
+  if (false /* classification.tag === 'active' || classification.tag === 'unsuccessful' */) {
     await dbHelpers.createManagerTask({
       user_id: settings.id,
       store_id: storeId,

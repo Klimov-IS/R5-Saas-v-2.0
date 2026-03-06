@@ -76,7 +76,7 @@
 | `no_reply_followup_4star_30d` | 4★ отзывы | 10 | Каждые 3 дня, 30 дней |
 | `offer_reminder` | tag: deletion_offered | 5 | ~14 дней |
 | `agreement_followup` | tag: deletion_agreed | 4 | ~10 дней |
-| `refund_followup` | tag: refund_requested | 3 | ~7 дней |
+| ~~`refund_followup`~~ | ~~tag: refund_requested~~ | ~~3~~ | ~~~7 дней~~ | **Удалён** (migration 024, тег `refund_requested` удалён) |
 
 ### Правила запуска
 - **Ручной старт** из TG Mini App (кнопка "Запустить рассылку")

@@ -415,11 +415,12 @@ node -e "
 "
 ```
 
-Migration files are in `migrations/` folder (001-010).
+Migration files are in `migrations/` folder (001-024).
 
 **Latest migrations:**
 - `009_telegram_integration.sql` — Telegram Mini App tables
 - `010_auth_and_roles.sql` — Auth system (organizations, members, invites)
+- `024_update_completion_reason_check.sql` — Chat tag refactoring: 12 tags reduced to 4 + NULL (deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed). Removed tags: active, untagged, successful, unsuccessful, no_reply, completed, refund_requested, spam. Disabled AI flows: classify-chat-tag, classify-chat-deletion. Removed sequence type: refund_followup. Deployed 2026-03-06.
 
 ---
 

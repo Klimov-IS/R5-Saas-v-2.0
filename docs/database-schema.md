@@ -1046,8 +1046,8 @@ CREATE TABLE user_settings (
 
   -- Custom prompts (system prompts for Deepseek AI)
   prompt_chat_reply         TEXT NULL,  -- генерация ответов в чатах
-  prompt_chat_tag           TEXT NULL,  -- классификация тегов чатов
-  prompt_chat_deletion_tag  TEXT NULL,  -- deletion-классификация (fallback: prompt_chat_tag)
+  prompt_chat_tag           TEXT NULL,  -- классификация тегов чатов (DEPRECATED: migration 024, flow отключён)
+  prompt_chat_deletion_tag  TEXT NULL,  -- deletion-классификация (DEPRECATED: migration 024, flow отключён)
   prompt_deletion_offer     TEXT NULL,  -- генерация deletion offer (fallback: prompt_chat_reply)
   prompt_question_reply     TEXT NULL,  -- ответы на вопросы
   prompt_review_complaint   TEXT NULL,  -- генерация жалоб

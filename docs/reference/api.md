@@ -353,7 +353,7 @@ HMAC-SHA256 валидация с BOT_TOKEN. initData содержит `user.id`
 **Query params:**
 - `status` — фильтр по статусу (inbox, awaiting_reply, in_progress, closed, all)
 - `sender` — фильтр по отправителю (client, seller, all)
-- `tag` — фильтр по тегу (active, no_reply, completed, untagged)
+- `tag` — фильтр по тегу (deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed, null). Migration 024: старые теги (active, no_reply, completed, untagged и др.) удалены.
 - `search` — поиск по имени клиента, товару, сообщению
 - `hasDraft` — только чаты с черновиком (true/false)
 - `reviewLinkedOnly` — только чаты привязанные к отзывам через review_chat_links (true)

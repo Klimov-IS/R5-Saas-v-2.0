@@ -76,7 +76,8 @@ R5/
 │   │   ├── flows/              # AI workflows
 │   │   │   ├── generate-review-complaint-flow.ts
 │   │   │   ├── generate-chat-reply-flow.ts
-│   │   │   └── classify-chat-tag-flow.ts
+│   │   │   ├── classify-chat-tag-flow.ts      # DEPRECATED (migration 024, disabled)
+│   │   │   └── classify-chat-deletion-flow.ts # DEPRECATED (migration 024, disabled)
 │   │   ├── prompts/            # Prompt templates
 │   │   └── utils/              # AI utilities (templates, filters)
 │   │
@@ -171,8 +172,8 @@ REST API на базе Next.js App Router. Все endpoints требуют Beare
 |------|------------|
 | `generate-review-complaint-flow.ts` | Генерация текста жалобы |
 | `generate-chat-reply-flow.ts` | Генерация ответа в чат |
-| `classify-chat-tag-flow.ts` | Классификация чата по тегам |
-| `classify-chat-deletion-flow.ts` | Классификация на удаление |
+| `classify-chat-tag-flow.ts` | ~~Классификация чата по тегам~~ **DEPRECATED** (migration 024, отключено) |
+| `classify-chat-deletion-flow.ts` | ~~Классификация на удаление~~ **DEPRECATED** (migration 024, отключено) |
 | `generate-deletion-offer-flow.ts` | Генерация предложения удаления |
 | `generate-review-reply-flow.ts` | Генерация ответа на отзыв |
 | `generate-question-reply-flow.ts` | Генерация ответа на вопрос |
