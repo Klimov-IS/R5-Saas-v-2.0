@@ -82,10 +82,22 @@ export interface UpdateReviewChatLinkInput {
 export async function createReviewChatLink(
   input: CreateReviewChatLinkInput
 ): Promise<{ link: ReviewChatLink; created: boolean }> {
-  // Check for existing record first (idempotency)
+  // Check for existing record first (idempotency by review_key)
   const existing = await findLinkByStoreAndReviewKey(input.store_id, input.review_key);
   if (existing) {
     return { link: existing, created: false };
+  }
+
+  // Enforce 1 chat = 1 review: if chat_id is already linked to another review, return existing
+  if (input.chat_id) {
+    const existingByChat = await query<ReviewChatLink>(
+      `SELECT * FROM review_chat_links WHERE store_id = $1 AND chat_id = $2 LIMIT 1`,
+      [input.store_id, input.chat_id]
+    );
+    if (existingByChat.rows[0]) {
+      console.warn(`[RCL] chat_id ${input.chat_id} already linked to review ${existingByChat.rows[0].review_key}, skipping new link for ${input.review_key}`);
+      return { link: existingByChat.rows[0], created: false };
+    }
   }
 
   const result = await query<ReviewChatLink>(
@@ -603,15 +615,29 @@ export async function reconcileChatWithLink(
   // Extract UUID part from "1:uuid" format
   const uuidPart = chatId.includes(':') ? chatId.split(':').slice(1).join(':') : chatId;
 
+  // Enforce 1 chat = 1 review: if chat_id already linked, skip
+  const existingLink = await query(
+    `SELECT id FROM review_chat_links WHERE store_id = $1 AND chat_id = $2 LIMIT 1`,
+    [storeId, chatId]
+  );
+  if (existingLink.rows.length > 0) {
+    return true; // Already reconciled
+  }
+
   // Match against chat_url (which contains UUID only) and update chat_id to full format
   // Handles both: chat_id IS NULL (never set) and chat_id without prefix (set by extractChatIdFromUrl)
+  // LIMIT 1 via subquery: only update ONE record to enforce 1 chat = 1 review
   const result = await query(
     `UPDATE review_chat_links
      SET chat_id = $1, updated_at = NOW()
-     WHERE store_id = $2
-       AND (chat_id IS NULL OR chat_id NOT LIKE '%:%')
-       AND (chat_url LIKE '%chatId=' || $3 || '%'
-            OR chat_url LIKE '%/' || $3)
+     WHERE id = (
+       SELECT id FROM review_chat_links
+       WHERE store_id = $2
+         AND (chat_id IS NULL OR chat_id NOT LIKE '%:%')
+         AND (chat_url LIKE '%chatId=' || $3 || '%'
+              OR chat_url LIKE '%/' || $3)
+       LIMIT 1
+     )
      RETURNING id`,
     [chatId, storeId, uuidPart]
   );
