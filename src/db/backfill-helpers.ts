@@ -39,9 +39,10 @@ export async function createBackfillJob(input: CreateBackfillJobInput): Promise<
     `SELECT COUNT(*) as count
      FROM reviews r
      JOIN stores s ON r.store_id = s.id
+     JOIN product_rules pr ON pr.product_id = r.product_id
      WHERE r.product_id = $1
        AND r.rating IN (1, 2, 3)
-       AND r.date >= '2023-10-01'
+       AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
        AND r.is_product_active = TRUE
        AND s.status = 'active'
        AND NOT EXISTS (
@@ -389,9 +390,10 @@ export async function getReviewsForBackfill(
     FROM reviews r
     JOIN products p ON r.product_id = p.id
     JOIN stores s ON r.store_id = s.id
+    JOIN product_rules pr ON pr.product_id = p.id
     WHERE r.product_id = $1
       AND r.rating IN (1, 2, 3)
-      AND r.date >= '2023-10-01'
+      AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
       AND r.is_product_active = TRUE
       AND s.status = 'active'
       AND NOT EXISTS (

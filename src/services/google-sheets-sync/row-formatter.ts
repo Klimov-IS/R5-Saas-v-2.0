@@ -30,7 +30,10 @@ export const TABLE_HEADERS = [
   'Макс, ₽',
   'Кто платит',
   // Мета
-  'Обновлено'
+  'Обновлено',
+  // Новые поля (migration 025)
+  'Работаем от',
+  'Комментарий'
 ];
 
 /**
@@ -96,6 +99,23 @@ function formatCompensationBy(by: string | null | undefined): string {
 }
 
 /**
+ * Format date as DD.MM.YYYY (date only, no time)
+ */
+function formatDateShort(dateStr: string | null | undefined): string {
+  if (!dateStr) return '01.10.2023';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  } catch {
+    return '01.10.2023';
+  }
+}
+
+/**
  * Format date for display
  */
 function formatDate(dateStr: string | undefined): string {
@@ -151,7 +171,10 @@ export function formatProductRow(
     rule?.max_compensation || '—',
     formatCompensationBy(rule?.compensation_by),
     // Мета
-    formatDate(rule?.updated_at || product.updated_at)
+    formatDate(rule?.updated_at || product.updated_at),
+    // Новые поля (migration 025)
+    formatDateShort(rule?.work_from_date),
+    rule?.comment || ''
   ];
 }
 

@@ -19,6 +19,8 @@ export interface CustomRules {
   max_compensation: string;
   compensation_type: 'cashback' | 'refund';
   compensation_by: 'r5' | 'seller';
+  work_from_date: string;
+  comment: string;
 }
 
 interface CustomRulesModalProps {
@@ -44,6 +46,8 @@ const DEFAULT_RULES: CustomRules = {
   max_compensation: '500',
   compensation_type: 'cashback',
   compensation_by: 'r5',
+  work_from_date: '2023-10-01',
+  comment: '',
 };
 
 export function CustomRulesModal({ isOpen, onClose, onApply, selectedCount }: CustomRulesModalProps) {
@@ -392,6 +396,70 @@ export function CustomRulesModal({ isOpen, onClose, onApply, selectedCount }: Cu
                 </div>
               </div>
             )}
+          </section>
+
+          {/* Work From Date */}
+          <section>
+            <label style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              color: 'hsl(var(--foreground))',
+              display: 'block',
+              marginBottom: '8px'
+            }}>
+              Работаем с отзывами от
+            </label>
+            <input
+              type="date"
+              value={rules.work_from_date}
+              onChange={(e) => updateRule('work_from_date', e.target.value)}
+              style={{
+                padding: '8px 12px',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                fontSize: '13px',
+                backgroundColor: 'hsl(var(--card))',
+                color: 'hsl(var(--foreground))',
+                cursor: 'pointer'
+              }}
+            />
+            <p style={{
+              fontSize: '12px',
+              color: 'hsl(var(--muted-foreground))',
+              margin: '6px 0 0 0'
+            }}>
+              Отзывы до этой даты не обрабатываются
+            </p>
+          </section>
+
+          {/* Comment */}
+          <section>
+            <label style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              color: 'hsl(var(--foreground))',
+              display: 'block',
+              marginBottom: '8px'
+            }}>
+              Комментарий
+            </label>
+            <textarea
+              value={rules.comment}
+              onChange={(e) => updateRule('comment', e.target.value)}
+              placeholder="Заметка для менеджера (отображается в Google Sheets)"
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                fontSize: '13px',
+                backgroundColor: 'hsl(var(--card))',
+                color: 'hsl(var(--foreground))',
+                resize: 'vertical',
+                fontFamily: 'inherit'
+              }}
+            />
           </section>
         </div>
 

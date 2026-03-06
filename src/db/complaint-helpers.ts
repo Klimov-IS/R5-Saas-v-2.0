@@ -660,12 +660,13 @@ export async function findEligibleReviewsForComplaints(options?: {
     FROM reviews r
     INNER JOIN products p ON r.product_id = p.id
     INNER JOIN stores s ON r.store_id = s.id
+    INNER JOIN product_rules pr ON pr.product_id = p.id
     WHERE
       -- 1. Rating 1-3 stars
       r.rating IN (1, 2, 3)
 
-      -- 2. Not older than October 1, 2023
-      AND r.date >= '${COMPLAINT_CUTOFF_DATE}'
+      -- 2. Not older than per-product work_from_date (default: Oct 1, 2023)
+      AND r.date >= COALESCE(pr.work_from_date, '${COMPLAINT_CUTOFF_DATE}')
 
       -- 3. Product is active
       AND r.is_product_active = TRUE
@@ -718,8 +719,10 @@ export async function getComplaintBacklogCount(storeId?: string): Promise<number
     SELECT COUNT(*) as count
     FROM reviews r
     INNER JOIN stores s ON r.store_id = s.id
+    INNER JOIN products p ON r.product_id = p.id
+    INNER JOIN product_rules pr ON pr.product_id = p.id
     WHERE r.rating IN (1, 2, 3)
-      AND r.date >= '${COMPLAINT_CUTOFF_DATE}'
+      AND r.date >= COALESCE(pr.work_from_date, '${COMPLAINT_CUTOFF_DATE}')
       AND r.is_product_active = TRUE
       AND s.status = 'active'
       AND r.marketplace = 'wb'

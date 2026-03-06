@@ -2146,6 +2146,10 @@ export interface ProductRule {
   max_compensation?: string | null;
   compensation_by?: string | null;
 
+  // Дата начала работы и комментарий
+  work_from_date?: string | null;
+  comment?: string | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -2198,8 +2202,9 @@ export async function upsertProductRule(
       submit_complaints, complaint_rating_1, complaint_rating_2, complaint_rating_3, complaint_rating_4,
       work_in_chats, chat_rating_1, chat_rating_2, chat_rating_3, chat_rating_4, chat_strategy,
       offer_compensation, compensation_type, max_compensation, compensation_by,
+      work_from_date, comment,
       created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
     ON CONFLICT (product_id) DO UPDATE SET
       submit_complaints = EXCLUDED.submit_complaints,
       complaint_rating_1 = EXCLUDED.complaint_rating_1,
@@ -2216,6 +2221,8 @@ export async function upsertProductRule(
       compensation_type = EXCLUDED.compensation_type,
       max_compensation = EXCLUDED.max_compensation,
       compensation_by = EXCLUDED.compensation_by,
+      work_from_date = EXCLUDED.work_from_date,
+      comment = EXCLUDED.comment,
       updated_at = NOW()
     RETURNING *`,
     [
@@ -2236,6 +2243,8 @@ export async function upsertProductRule(
       rule.compensation_type || null,
       rule.max_compensation || null,
       rule.compensation_by || null,
+      rule.work_from_date || '2023-10-01',
+      rule.comment || null,
     ]
   );
   return result.rows[0];
@@ -2320,7 +2329,7 @@ export async function getReviewsWithoutComplaints(
       AND r.rating <= $2
       AND rc.id IS NULL
       AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
-      AND r.date >= '2023-10-01'
+      AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
       AND r.marketplace = 'wb'`;
 
   // Filter only active products (for CRON auto-generation)
@@ -3038,7 +3047,8 @@ function loadReviewStatsInBackground(): void {
 
   const reviewSql = `
     WITH complaint_products AS (
-      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3
+      SELECT p.id, pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3,
+             pr.work_from_date
       FROM products p
       INNER JOIN product_rules pr ON pr.product_id = p.id
       WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial'))
@@ -3052,7 +3062,7 @@ function loadReviewStatsInBackground(): void {
     INNER JOIN reviews r ON r.product_id = cp.id
       AND r.marketplace = 'wb'
       AND r.rating BETWEEN 1 AND 3
-      AND r.date >= '2023-10-01'
+      AND r.date >= COALESCE(cp.work_from_date, '2023-10-01')
       AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
       AND (
         (r.rating = 1 AND cp.complaint_rating_1 = TRUE) OR

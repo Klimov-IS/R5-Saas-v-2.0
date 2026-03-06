@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getReviewById, getStoreById, getProductById } from '@/db/helpers';
+import { getReviewById, getStoreById, getProductById, getProductRule } from '@/db/helpers';
 import {
   getComplaintByReviewId,
   createComplaint,
@@ -124,6 +124,20 @@ export async function POST(
             skipped: true
           });
           continue;
+        }
+
+        // Skip reviews before per-product work_from_date
+        const productRule = await getProductRule(review.product_id);
+        if (productRule?.work_from_date) {
+          const workFrom = new Date(productRule.work_from_date);
+          if (reviewDate < workFrom) {
+            failed.push({
+              review_id: reviewId,
+              error: `Review before work_from_date (${productRule.work_from_date})`,
+              skipped: true
+            });
+            continue;
+          }
         }
 
         // Skip if review already has complaint status from extension sync

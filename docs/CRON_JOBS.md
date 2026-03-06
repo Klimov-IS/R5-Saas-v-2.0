@@ -720,13 +720,14 @@ pm2 show wb-reputation
 **What It Does:**
 1. Exports all active product rules from all active stores to Google Sheets
 2. Full sync strategy: clear and rewrite entire sheet on every sync
-3. **Preserves comments** in column U (last+1 column) — reads before clear, restores after write
-4. Provides management visibility into active stores and their configurations
+3. Provides management visibility into active stores and their configurations
 
-**Data Exported (per row, 20 columns A-T):**
-| Магазин | Артикул WB | Название | Статус | Жалобы | ⭐1-4 | Чаты | ⭐1-4 | Стратегия | Компенсация | Тип | Макс ₽ | Кто платит | Обновлено |
+**Data Exported (per row, 22 columns A-V):**
+| Магазин | Артикул WB | Название | Статус | Жалобы | ⭐1-4 | Чаты | ⭐1-4 | Стратегия | Компенсация | Тип | Макс ₽ | Кто платит | Обновлено | Работаем от | Комментарий |
 
-**Column U (index 20):** Ручные комментарии менеджеров — сохраняются между синками через composite key `storeName|article`.
+**Columns U-V (migration 025):**
+- **Column U (Работаем от):** Per-product cutoff date (`product_rules.work_from_date`), formatted DD.MM.YYYY. Default: 01.10.2023.
+- **Column V (Комментарий):** Manager comment (`product_rules.comment`) from DB. Single source of truth — no manual comment preservation needed.
 
 **Triggers:**
 1. **CRON** — ежедневно в 6:00 MSK
@@ -743,14 +744,6 @@ pm2 show wb-reputation
 **Retry (Google API):**
 - Все Google API вызовы обёрнуты в `withRetry()` (3 попытки, exponential backoff: 1/2/4 сек)
 - Не ретраит 4xx ошибки (кроме 429 rate limit)
-
-**Comment Preservation Flow:**
-```
-1. readSheetData('A:U') → read existing comments
-2. Build map: "storeName|article" → comment
-3. clearAndWriteRows() → clear + write data (columns A-T)
-4. batchUpdateRows() → restore comments to column U
-```
 
 **Configuration (Environment Variables):**
 ```bash
@@ -875,7 +868,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 | Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues (WB + OZON) |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue (BATCH=200, DAILY_LIMIT=6000) |
-| Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets (clear+write, preserves column U comments) |
+| Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets (22 cols A-V, clear+write, comments from DB) |
 | Client Directory Sync | 7:30 AM | 30 4 * * * | Sync client directory to "Список клиентов" (upsert, preserves INN) |
 | **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
 | **Resolved-Review Closer** | Every 30 min (:15/:45) | 15,45 * * * * | Auto-close chats with resolved reviews (200/batch) |

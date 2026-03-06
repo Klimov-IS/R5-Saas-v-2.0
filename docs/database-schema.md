@@ -4,7 +4,7 @@
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
 **Marketplaces:** Wildberries, OZON
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -1112,10 +1112,18 @@ CREATE TABLE product_rules (
   max_compensation      TEXT NULL,
   compensation_by       TEXT NULL,
 
+  -- Per-product cutoff date and manager comment (migration 025)
+  work_from_date        DATE DEFAULT '2023-10-01',   -- Reviews before this date are not processed
+  comment               TEXT DEFAULT NULL,            -- Manager comment (displayed in Google Sheets)
+
   created_at            TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
   updated_at            TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
 );
 ```
+
+**Key Fields (migration 025):**
+- `work_from_date` — Per-product cutoff date. Reviews before this date are excluded from complaint generation and chat processing. Default `'2023-10-01'` matches the global WB cutoff. Used via `COALESCE(pr.work_from_date, '2023-10-01')` in SQL queries.
+- `comment` — Free-text manager comment. No backend logic impact — displayed only in Google Sheets sync (columns U-V).
 
 **Indexes:**
 ```sql
@@ -1401,6 +1409,8 @@ Key migrations:
 18. `022_rating_excluded.sql` - `rating_excluded` BOOLEAN on reviews + review_statuses_from_extension (WB transparent rating)
 19. `023_review_status_alignment.sql` - Align statuses 1:1 with WB: add `temporarily_hidden` to review_status_wb, add `returned`/`return_requested` to product_status_by_review, backfill `deleted` → `unpublished` where set by extension
 
+20. `025_add_work_from_date_and_comment.sql` - `work_from_date` DATE + `comment` TEXT on product_rules (per-product cutoff date + manager comment for Google Sheets)
+
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
 ---
@@ -1581,7 +1591,7 @@ CREATE TABLE invites (
 
 ---
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-03-06
 **Maintained By:** R5 Team
 **Database:** Yandex Managed PostgreSQL 15
 **Connection:** See `.env.local` for credentials

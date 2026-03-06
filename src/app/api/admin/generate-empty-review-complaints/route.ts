@@ -58,8 +58,9 @@ export async function POST(request: NextRequest) {
       FROM reviews r
       LEFT JOIN review_complaints rc ON rc.review_id = r.id
       LEFT JOIN products p ON p.id = r.product_id
+      LEFT JOIN product_rules pr ON pr.product_id = p.id
       WHERE r.rating BETWEEN 1 AND 3
-        AND r.date >= '${COMPLAINT_CUTOFF_DATE}'
+        AND r.date >= COALESCE(pr.work_from_date, '${COMPLAINT_CUTOFF_DATE}')
         AND (r.text IS NULL OR TRIM(r.text) = '')
         AND (r.pros IS NULL OR TRIM(r.pros) = '')
         AND (r.cons IS NULL OR TRIM(r.cons) = '')

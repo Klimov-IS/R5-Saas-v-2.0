@@ -84,6 +84,10 @@ export async function PUT(
       max_compensation: body.max_compensation ?? null,
       compensation_type: body.compensation_type ?? null,
       compensation_by: body.compensation_by ?? null,
+
+      // Дата начала работы и комментарий
+      work_from_date: body.work_from_date ?? '2023-10-01',
+      comment: body.comment ?? null,
     };
 
     // Create or update rules
@@ -192,6 +196,10 @@ export async function POST(
       max_compensation: '500',
       compensation_type: 'cashback',
       compensation_by: 'r5',
+
+      // Дата начала работы (default) и комментарий
+      work_from_date: '2023-10-01',
+      comment: null,
     };
 
     // Apply default rules

@@ -253,6 +253,16 @@ export async function shouldGenerateComplaint(review: Review): Promise<boolean> 
     return false;
   }
 
+  // 5.5. Check work_from_date — per-product cutoff (stricter than global COMPLAINT_CUTOFF_DATE)
+  if (productRule.work_from_date && review.date) {
+    const workFrom = new Date(productRule.work_from_date);
+    const reviewDate = new Date(review.date);
+    if (reviewDate < workFrom) {
+      console.log(`[AutoComplaint] Skip: review ${review.id} is before work_from_date ${productRule.work_from_date}`);
+      return false;
+    }
+  }
+
   // 6. Check complaint doesn't already exist (idempotency)
   const existingComplaint = await dbHelpers.getComplaintByReviewId(review.id);
   if (existingComplaint) {
@@ -332,6 +342,16 @@ export async function shouldGenerateComplaintWithRules(
   const ratingKey = `complaint_rating_${review.rating}` as keyof ProductRule;
   if (!productRule[ratingKey]) {
     return false;
+  }
+
+  // 5.5. Check work_from_date — per-product cutoff
+  if (productRule.work_from_date && review.date) {
+    const workFrom = new Date(productRule.work_from_date);
+    const reviewDate = new Date(review.date);
+    if (reviewDate < workFrom) {
+      console.log(`[AutoComplaint] Skip: review ${review.id} is before work_from_date ${productRule.work_from_date}`);
+      return false;
+    }
   }
 
   // 6. Check complaint doesn't already exist
@@ -454,7 +474,7 @@ export async function triggerInstantComplaintGeneration(
          AND r.store_id = $2
          AND r.marketplace = 'wb'
          AND r.rating BETWEEN 1 AND 4
-         AND r.date >= $3
+         AND r.date >= GREATEST($3::date, pr.work_from_date)
          AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent')
          AND (r.review_status_wb IS NULL OR r.review_status_wb != 'deleted')
          AND NOT EXISTS (

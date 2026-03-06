@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getReviewById, getStoreById, getProductById } from '@/db/helpers';
+import { getReviewById, getStoreById, getProductById, getProductRule } from '@/db/helpers';
 import {
   getComplaintByReviewId,
   createComplaint,
@@ -127,6 +127,24 @@ export async function POST(
         },
         { status: 400 }
       );
+    }
+
+    // Check per-product work_from_date
+    const productRuleForDate = await getProductRule(review.product_id);
+    if (productRuleForDate?.work_from_date) {
+      const workFrom = new Date(productRuleForDate.work_from_date);
+      if (reviewDate < workFrom) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code: 'REVIEW_TOO_OLD',
+              message: `Отзыв раньше даты начала работы (${productRuleForDate.work_from_date}).`
+            }
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Check if review already has a complaint status from extension sync
