@@ -14,6 +14,8 @@ import { sendMessageToMarketplace } from '@/core/services/message-sender';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 import { buildStoreInstructions, detectConversationPhase, formatTimestampMSK, getRecencyLabel, getTagLabel, getStatusLabel } from '@/lib/ai-context';
 import { findLinkWithReviewByChatId } from '@/db/review-chat-link-helpers';
+import { isOfferMessage } from '@/lib/tag-classifier';
+import { canAutoOverwriteTag } from '@/lib/chat-transitions';
 import { runValidator } from '@/ai/output-validator';
 
 /**
@@ -161,6 +163,17 @@ export async function sendMessage(
     last_message_text: trimmedMessage,
     last_message_date: new Date().toISOString(),
   });
+
+  // Auto-classify tag if seller message is an offer (regex, no AI)
+  try {
+    const currentTag = (chat.tag as any) || null;
+    if (isOfferMessage(trimmedMessage) && canAutoOverwriteTag(currentTag, 'deletion_offered')) {
+      await dbHelpers.updateChat(chatId, { tag: 'deletion_offered' });
+      console.log(`[TG-SEND] Tag auto-classified: chat ${chatId} ${currentTag || 'null'} → deletion_offered`);
+    }
+  } catch (tagErr: any) {
+    console.error(`[TG-SEND] Tag classification error: ${tagErr.message}`);
+  }
 
   return { success: true };
 }

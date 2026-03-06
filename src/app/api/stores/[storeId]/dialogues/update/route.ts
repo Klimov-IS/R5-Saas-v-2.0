@@ -4,7 +4,9 @@ import * as dbHelpers from '@/db/helpers';
 import { query } from '@/db/client';
 import { verifyApiKey } from '@/lib/server-utils';
 import type { ChatStatus } from '@/db/helpers';
-// AI classification removed (migration 024): tags are now set manually or auto-assigned on link creation
+// Tag classification: regex-based (replaced AI in migration 024)
+import { isOfferMessage, isAgreementMessage, isConfirmationMessage } from '@/lib/tag-classifier';
+import { canAutoOverwriteTag } from '@/lib/chat-transitions';
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
 import { refreshOzonChats } from '@/lib/ozon-chat-sync';
@@ -313,15 +315,56 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                 }
             }
 
+            // Fetch review-linked chat IDs once (used for tag classification + TG notifications)
+            const linkedResult = await query<{ chat_id: string }>(
+                `SELECT chat_id FROM review_chat_links WHERE store_id = $1 AND chat_id IS NOT NULL`,
+                [storeId]
+            );
+            const reviewLinkedChatIds = new Set(linkedResult.rows.map(r => r.chat_id));
+
+            // --- Step 5-tag: Auto-classify tags based on new messages (regex, no AI) ---
+            try {
+                let tagUpdates = 0;
+                for (const chatId in latestMessagesPerChat) {
+                    if (!reviewLinkedChatIds.has(chatId)) continue;
+
+                    const latestMsg = latestMessagesPerChat[chatId];
+                    const msgText = latestMsg.message?.text;
+                    if (!msgText) continue;
+
+                    const existingChat = existingChatMap.get(chatId);
+                    const currentTag = (existingChat?.tag as any) || null;
+
+                    let newTag: string | null = null;
+
+                    if (latestMsg.sender === 'seller') {
+                        if (isOfferMessage(msgText) && canAutoOverwriteTag(currentTag, 'deletion_offered')) {
+                            newTag = 'deletion_offered';
+                        }
+                    } else if (latestMsg.sender === 'client') {
+                        // Check confirmed first (higher priority than agreed)
+                        if (isConfirmationMessage(msgText, 'client') && canAutoOverwriteTag(currentTag, 'deletion_confirmed')) {
+                            newTag = 'deletion_confirmed';
+                        } else if (isAgreementMessage(msgText) && canAutoOverwriteTag(currentTag, 'deletion_agreed')) {
+                            newTag = 'deletion_agreed';
+                        }
+                    }
+
+                    if (newTag && newTag !== currentTag) {
+                        await dbHelpers.updateChat(chatId, { tag: newTag });
+                        console.log(`[DIALOGUES] Tag auto-classified: chat ${chatId} ${currentTag || 'null'} → ${newTag}`);
+                        tagUpdates++;
+                    }
+                }
+                if (tagUpdates > 0) {
+                    console.log(`[DIALOGUES] Tag classification: ${tagUpdates} chats updated`);
+                }
+            } catch (classifyErr: any) {
+                console.error(`[DIALOGUES] Tag classification error (non-critical):`, classifyErr.message);
+            }
+
             // --- Step 5a-tg: Send Telegram notifications for new client replies ---
             try {
-                // Only notify for review-linked chats (chats we opened for complaint follow-up)
-                const linkedResult = await query<{ chat_id: string }>(
-                    `SELECT chat_id FROM review_chat_links WHERE store_id = $1 AND chat_id IS NOT NULL`,
-                    [storeId]
-                );
-                const reviewLinkedChatIds = new Set(linkedResult.rows.map(r => r.chat_id));
-
                 const clientRepliedChats: Array<{ chatId: string; clientName: string; productName: string | null; messagePreview: string | null }> = [];
                 for (const chatId in latestMessagesPerChat) {
                     if (latestMessagesPerChat[chatId].sender === 'client') {
@@ -363,9 +406,8 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
             // Old logic: detected trigger phrases in seller messages → auto-created sequences.
             // New logic: user starts sequences manually via "Запустить рассылку" button.
 
-            // Step 6 REMOVED: AI tag classification disabled (migration 024).
-            // Tags are now set: deletion_candidate (auto on link creation),
-            // deletion_offered/agreed/confirmed (manual from TG Mini App).
+            // Step 6: Tag classification now handled by regex in Step 5-tag above.
+            // AI classification disabled (migration 024). Regex classifier: src/lib/tag-classifier.ts
         }
 
         // --- Step 7: Recalculate stats for the store ---

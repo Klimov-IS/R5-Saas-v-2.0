@@ -16,7 +16,9 @@ import { createOzonClient, OzonChatMessage } from '@/lib/ozon-api';
 import * as dbHelpers from '@/db/helpers';
 import { query } from '@/db/client';
 import type { ChatStatus } from '@/db/helpers';
-// AI classification removed (migration 024): tags set manually or auto on link creation
+// Tag classification: regex-based (replaced AI in migration 024)
+import { isOfferMessage, isAgreementMessage, isConfirmationMessage } from '@/lib/tag-classifier';
+import { canAutoOverwriteTag } from '@/lib/chat-transitions';
 import { sendTelegramNotifications, sendSuccessNotification } from '@/lib/telegram-notifications';
 import { detectSuccessEvent } from '@/lib/success-detector';
 
@@ -353,6 +355,33 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
             }
           } catch (transErr: any) {
             console.error(`[OZON-CHATS] Status transition error for chat ${chatId}: ${transErr.message}`);
+          }
+
+          // Step 3b: Auto-classify tag based on latest message (regex, no AI)
+          if (latestText && latestSender && existing?.product_nm_id) {
+            try {
+              const currentTag = (existing.tag as any) || null;
+              let newTag: string | null = null;
+
+              if (latestSender === 'seller') {
+                if (isOfferMessage(latestText) && canAutoOverwriteTag(currentTag, 'deletion_offered')) {
+                  newTag = 'deletion_offered';
+                }
+              } else if (latestSender === 'client') {
+                if (isConfirmationMessage(latestText, 'client') && canAutoOverwriteTag(currentTag, 'deletion_confirmed')) {
+                  newTag = 'deletion_confirmed';
+                } else if (isAgreementMessage(latestText) && canAutoOverwriteTag(currentTag, 'deletion_agreed')) {
+                  newTag = 'deletion_agreed';
+                }
+              }
+
+              if (newTag && newTag !== currentTag) {
+                await dbHelpers.updateChat(chatId, { tag: newTag });
+                console.log(`[OZON-CHATS] Tag auto-classified: chat ${chatId} ${currentTag || 'null'} → ${newTag}`);
+              }
+            } catch (tagErr: any) {
+              console.error(`[OZON-CHATS] Tag classification error for chat ${chatId}: ${tagErr.message}`);
+            }
           }
         }
 
