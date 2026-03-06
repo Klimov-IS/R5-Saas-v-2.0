@@ -172,6 +172,8 @@ export interface Chat {
   tag?: ChatTag | null;
   status: ChatStatus;
   status_updated_at?: string | null;
+  status_changed_by?: string | null;
+  closure_type?: 'manual' | 'auto' | null;
   completion_reason?: CompletionReason | null;
   draft_reply?: string | null;
   draft_reply_thread_id?: string | null;
@@ -996,6 +998,8 @@ export async function updateChat(
     ['status', 'status'], // NEW: Kanban status
     ['status_updated_at', 'status_updated_at'], // NEW
     ['completion_reason', 'completion_reason'], // NEW: Why chat was closed
+    ['status_changed_by', 'status_changed_by'],
+    ['closure_type', 'closure_type'],
     ['draft_reply', 'draft_reply'],
     ['draft_reply_thread_id', 'draft_reply_thread_id'],
     ['draft_reply_generated_at', 'draft_reply_generated_at'],
@@ -2094,6 +2098,118 @@ export async function updateChatStatus(
     status,
     status_updated_at: new Date().toISOString()
   });
+}
+
+// ============================================================================
+// Audit Trail — Status Change History
+// ============================================================================
+
+export type ChangeSource =
+  | 'tg_app'          // TG Mini App user action
+  | 'web_app'         // Web dashboard user action
+  | 'cron_resolved'   // Cron resolved-review-closer
+  | 'cron_sequence'   // Cron auto-sequence-processor
+  | 'sync_dialogue'   // Dialogue sync (auto-close, reopen, transition)
+  | 'extension'       // Chrome Extension auto-close
+  | 'bulk_action';    // Web bulk actions
+
+export interface AuditContext {
+  changedBy: string | null;  // userId or null for system actions
+  source: ChangeSource;
+}
+
+/**
+ * Insert a record into chat_status_history (immutable audit log).
+ */
+async function insertStatusHistory(params: {
+  chatId: string;
+  storeId: string;
+  oldStatus: string | null;
+  newStatus: string;
+  oldTag: string | null;
+  newTag: string | null;
+  completionReason: string | null;
+  closureType: string | null;
+  changedBy: string | null;
+  changeSource: ChangeSource;
+}): Promise<void> {
+  await query(
+    `INSERT INTO chat_status_history
+       (id, chat_id, store_id, old_status, new_status, old_tag, new_tag,
+        completion_reason, closure_type, changed_by, change_source)
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      params.chatId,
+      params.storeId,
+      params.oldStatus,
+      params.newStatus,
+      params.oldTag,
+      params.newTag,
+      params.completionReason,
+      params.closureType,
+      params.changedBy,
+      params.changeSource,
+    ]
+  );
+}
+
+/**
+ * Update chat status/tag with full audit trail.
+ *
+ * - Sets status_changed_by and closure_type on the chat
+ * - Inserts immutable record into chat_status_history
+ * - Optional existingChat param skips extra SELECT (optimization for cron/sync)
+ */
+export async function updateChatWithAudit(
+  chatId: string,
+  updates: Partial<Chat>,
+  audit: AuditContext,
+  existingChat?: Chat
+): Promise<Chat | null> {
+  // 1. Get current state (skip if caller already has it)
+  const current = existingChat || await getChatById(chatId);
+  if (!current) return null;
+
+  const newStatus = (updates.status as string) || current.status;
+  const newTag = updates.tag !== undefined ? updates.tag : current.tag;
+  const statusChanged = updates.status != null && updates.status !== current.status;
+  const tagChanged = updates.tag !== undefined && updates.tag !== current.tag;
+
+  // 2. Compute audit fields
+  if (statusChanged || tagChanged) {
+    updates.status_changed_by = audit.changedBy;
+  }
+  if (newStatus === 'closed' && statusChanged) {
+    updates.closure_type = audit.changedBy ? 'manual' : 'auto';
+  } else if (statusChanged && current.status === 'closed') {
+    // Reopening — clear closure fields
+    updates.closure_type = null;
+  }
+
+  // 3. Apply update via existing updateChat()
+  const updated = await updateChat(chatId, updates);
+
+  // 4. Log to history if status or tag changed
+  if (statusChanged || tagChanged) {
+    try {
+      await insertStatusHistory({
+        chatId,
+        storeId: current.store_id,
+        oldStatus: current.status,
+        newStatus,
+        oldTag: current.tag || null,
+        newTag: (newTag as string) || null,
+        completionReason: (updates.completion_reason as string) || null,
+        closureType: updates.closure_type || null,
+        changedBy: audit.changedBy,
+        changeSource: audit.source,
+      });
+    } catch (err: any) {
+      console.error(`[AUDIT] Failed to insert status history for chat ${chatId}:`, err.message);
+    }
+  }
+
+  return updated;
 }
 
 /**

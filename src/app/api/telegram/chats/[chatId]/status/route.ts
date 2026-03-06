@@ -23,7 +23,7 @@ export async function PATCH(
 
     const { status, completion_reason, tag } = await request.json();
     const storeIds = await getAccessibleStoreIds(auth.userId);
-    const result = await changeStatus(params.chatId, storeIds, status, completion_reason, tag);
+    const result = await changeStatus(params.chatId, storeIds, status, completion_reason, tag, auth.userId);
 
     return NextResponse.json(result);
   } catch (error: any) {

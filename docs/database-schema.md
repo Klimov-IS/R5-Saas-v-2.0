@@ -21,6 +21,7 @@
    - [complaint_details](#complaint_details)
 4. [Communication Tables](#communication-tables)
    - [chats](#chats)
+   - [chat_status_history](#chat_status_history)
    - [chat_messages](#chat_messages)
    - [questions](#questions)
    - [chat_auto_sequences](#chat_auto_sequences)
@@ -749,8 +750,14 @@ CREATE TABLE chats (
   ozon_unread_count         INTEGER NULL,       -- Unread messages count
   ozon_last_message_id      TEXT NULL,          -- For incremental history fetch
 
+  -- Audit trail (migration 027)
+  status_changed_by         TEXT NULL,          -- userId of last status/tag change (NULL = system/cron)
+  closure_type              VARCHAR(20) NULL,   -- 'manual' (userId present) | 'auto' (system action) | NULL (not closed)
+
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_closure_type CHECK (closure_type IS NULL OR closure_type IN ('manual', 'auto'))
 );
 ```
 
@@ -771,6 +778,57 @@ CREATE INDEX idx_chats_last_message ON chats(last_message_date DESC);
 CREATE INDEX idx_chats_product ON chats(product_nm_id) WHERE product_nm_id IS NOT NULL;
 CREATE INDEX idx_chats_marketplace ON chats(marketplace);  -- migration 013
 ```
+
+---
+
+### `chat_status_history`
+
+**Purpose:** Immutable audit log for every status/tag change on chats. Tracks who changed what, when, and from which source.
+
+**Created by:** Migration 027
+
+```sql
+CREATE TABLE chat_status_history (
+  id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  chat_id           TEXT NOT NULL,
+  store_id          TEXT NOT NULL,
+  old_status        TEXT,
+  new_status        TEXT NOT NULL,
+  old_tag           TEXT,
+  new_tag           TEXT,
+  completion_reason TEXT,
+  closure_type      VARCHAR(20),        -- 'manual' | 'auto'
+  changed_by        TEXT,               -- userId (NULL = system/cron)
+  change_source     VARCHAR(30) NOT NULL,  -- origin of the change
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**`change_source` values:**
+| Value | Description |
+|-------|-------------|
+| `tg_app` | Status/tag changed from Telegram Mini App |
+| `web_app` | Status/tag changed from web dashboard |
+| `cron_resolved` | Auto-closed by resolved-review-closer cron |
+| `cron_sequence` | Status changed by auto-sequence-processor cron |
+| `sync_dialogue` | Status changed during dialogue sync |
+| `extension` | Status changed from Chrome Extension |
+| `bulk_action` | Bulk status change from web dashboard |
+
+**Key Design Decisions:**
+1. **Immutable** -- rows are never updated or deleted; insert-only log
+2. **No FK on `chat_id`** -- deliberate; avoids CASCADE issues, history survives chat deletion
+3. **`changed_by`** -- nullable; NULL means system/cron action, non-NULL means user action
+4. **`closure_type`** -- `'manual'` when `changed_by` is present, `'auto'` when system closes
+
+**Indexes:**
+```sql
+CREATE INDEX idx_csh_chat ON chat_status_history(chat_id, created_at DESC);
+CREATE INDEX idx_csh_store ON chat_status_history(store_id, created_at DESC);
+CREATE INDEX idx_csh_changed_by ON chat_status_history(changed_by) WHERE changed_by IS NOT NULL;
+```
+
+**Helper function:** `updateChatWithAudit()` in `src/db/helpers.ts` -- wraps `updateChat()` with automatic history insertion. Used by 10 call sites across the codebase.
 
 ---
 
@@ -1254,6 +1312,7 @@ users (1) ───── (N) stores
   │                  │
   │                  ├─── (N) chats
   │                  │        ├─── (N) chat_messages
+  │                  │        ├─── (N) chat_status_history (audit log, no FK)
   │                  │        ├─── (N) chat_auto_sequences
   │                  │        └───┐
   │                  │            │ review_chat_links (N:1 chats, N:1 reviews)
@@ -1410,6 +1469,8 @@ Key migrations:
 19. `023_review_status_alignment.sql` - Align statuses 1:1 with WB: add `temporarily_hidden` to review_status_wb, add `returned`/`return_requested` to product_status_by_review, backfill `deleted` → `unpublished` where set by extension
 
 20. `025_add_work_from_date_and_comment.sql` - `work_from_date` DATE + `comment` TEXT on product_rules (per-product cutoff date + manager comment for Google Sheets)
+
+21. `027_chat_audit_trail.sql` - `status_changed_by` TEXT + `closure_type` VARCHAR(20) on chats, `chat_status_history` table (immutable audit log for every status/tag change, `change_source` tracking)
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 

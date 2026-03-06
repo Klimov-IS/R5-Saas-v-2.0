@@ -23,7 +23,7 @@ export async function POST(
 
     const body = await request.json().catch(() => ({}));
     const storeIds = await getAccessibleStoreIds(auth.userId);
-    const result = await startSequence(params.chatId, storeIds, body.sequenceType);
+    const result = await startSequence(params.chatId, storeIds, body.sequenceType, auth.userId);
 
     return NextResponse.json(result);
   } catch (error: any) {

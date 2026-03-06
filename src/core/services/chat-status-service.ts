@@ -40,7 +40,8 @@ export async function changeStatus(
   accessibleStoreIds: string[],
   status: string,
   completionReason?: string,
-  tag?: string
+  tag?: string,
+  changedByUserId?: string
 ): Promise<StatusChangeResponse> {
   // Validate status
   if (!status || !VALID_STATUSES.includes(status as ChatStatus)) {
@@ -92,7 +93,12 @@ export async function changeStatus(
     console.log(`[STATUS] Tag changed: chat ${chatId}, ${currentChat?.tag} → ${tag}`);
   }
 
-  await dbHelpers.updateChat(chatId, updateData);
+  await dbHelpers.updateChatWithAudit(
+    chatId,
+    updateData,
+    { changedBy: changedByUserId || null, source: 'tg_app' },
+    currentChat || undefined
+  );
 
   // Stop active sequence when tag changes (family mismatch)
   let sequenceStopped = false;

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateChat, getActiveSequenceForChat, stopSequence, getChatById, getStoreById } from '@/db/helpers';
+import { updateChatWithAudit, getActiveSequenceForChat, stopSequence, getChatById } from '@/db/helpers';
 import type { ChatStatus, CompletionReason } from '@/db/helpers';
 import { validateTransition } from '@/lib/chat-transitions';
+import { getSession } from '@/lib/auth';
 
 /**
  * PATCH /api/stores/[storeId]/chats/[chatId]/status
@@ -66,12 +67,21 @@ export async function PATCH(
       }
     }
 
+    // Get userId from session for audit trail
+    const session = getSession();
+    const userId = session?.userId || null;
+
     // Update chat with status and optionally completion_reason
-    const updatedChat = await updateChat(chatId, {
-      status: status as ChatStatus,
-      status_updated_at: new Date().toISOString(),
-      completion_reason: status === 'closed' ? (completion_reason as CompletionReason) : null,
-    });
+    const updatedChat = await updateChatWithAudit(
+      chatId,
+      {
+        status: status as ChatStatus,
+        status_updated_at: new Date().toISOString(),
+        completion_reason: status === 'closed' ? (completion_reason as CompletionReason) : null,
+      },
+      { changedBy: userId, source: 'web_app' },
+      currentChat || undefined
+    );
 
     if (!updatedChat) {
       return NextResponse.json(
@@ -80,7 +90,7 @@ export async function PATCH(
       );
     }
 
-    console.log(`✅ [API] Chat ${chatId} status updated: ${status}${completion_reason ? ` (reason: ${completion_reason})` : ''}`);
+    console.log(`[API] Chat ${chatId} status updated: ${status}${completion_reason ? ` (reason: ${completion_reason})` : ''}${userId ? ` by ${userId}` : ''}`);
 
     // Auto-sequence trigger removed: sequences are now started manually from TG mini app
     // via "Запустить рассылку" button → /api/telegram/chats/[chatId]/sequence/start
@@ -91,7 +101,7 @@ export async function PATCH(
         const activeSeq = await getActiveSequenceForChat(chatId);
         if (activeSeq) {
           await stopSequence(activeSeq.id, 'manual');
-          console.log(`🛑 [API] Auto-sequence stopped for chat ${chatId} (status changed to ${status})`);
+          console.log(`[API] Auto-sequence stopped for chat ${chatId} (status changed to ${status})`);
         }
       } catch (seqError: any) {
         console.error(`[API] Failed to stop auto-sequence for chat ${chatId}:`, seqError.message);

@@ -908,6 +908,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
    e. **Max steps reached?** → Send СТОП message (per `sequence_type`) + close chat (`no_reply`)
    f. Send next follow-up via WB Chat API
    g. Record in `chat_messages`, update chat, advance sequence
+   h. **Audit trail (migration 027):** All status/tag changes written to `chat_status_history` with `change_source = 'cron_sequence'`, `closure_type = 'auto'`
 3. Rate limits: 3 seconds between sends
 
 **Review-resolved check (step 2b):** Before each message send, checks `isReviewResolvedForChat()`:
@@ -997,6 +998,7 @@ Auto-closes chats linked to reviews that no longer affect store rating:
 1. Queries non-closed chats where linked review is "resolved"
 2. Sets `status = 'closed'`, `completion_reason` = `'review_resolved'` or `'temporarily_hidden'` (CASE-based)
 3. Stops active auto-sequences with appropriate reason
+4. **Audit trail (migration 027):** Writes to `chat_status_history` with `change_source = 'cron_resolved'`, `closure_type = 'auto'`
 
 **Resolved conditions:**
 - `complaint_status = 'approved'` — complaint accepted by WB

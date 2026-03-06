@@ -119,7 +119,8 @@ export async function stopSequence(
 export async function startSequence(
   chatId: string,
   accessibleStoreIds: string[],
-  requestedType?: string
+  requestedType?: string,
+  changedByUserId?: string
 ): Promise<StartSequenceResponse> {
   const chat = await verifyChatAccess(chatId, accessibleStoreIds);
 
@@ -174,10 +175,14 @@ export async function startSequence(
   if (resumable) {
     const resumeNextSendAt = getNextSlotTime(resumable.current_step);
     await dbHelpers.resumeSequence(resumable.id, resumeNextSendAt);
-    await dbHelpers.updateChat(chatId, {
-      status: 'awaiting_reply' as ChatStatus,
-      status_updated_at: new Date().toISOString(),
-    });
+    await dbHelpers.updateChatWithAudit(
+      chatId,
+      {
+        status: 'awaiting_reply' as ChatStatus,
+        status_updated_at: new Date().toISOString(),
+      },
+      { changedBy: changedByUserId || null, source: 'tg_app' }
+    );
     console.log(
       `[SEQUENCE] Resumed: chat ${chatId}, type=${resumable.sequence_type}, ` +
       `step ${resumable.current_step}/${resumable.max_steps}`
@@ -236,10 +241,14 @@ export async function startSequence(
   }
 
   // Active sequence = always awaiting_reply
-  await dbHelpers.updateChat(chatId, {
-    status: 'awaiting_reply' as ChatStatus,
-    status_updated_at: new Date().toISOString(),
-  });
+  await dbHelpers.updateChatWithAudit(
+    chatId,
+    {
+      status: 'awaiting_reply' as ChatStatus,
+      status_updated_at: new Date().toISOString(),
+    },
+    { changedBy: changedByUserId || null, source: 'tg_app' }
+  );
 
   console.log(
     `[SEQUENCE] Manual start: chat ${chatId}, type=${sequenceType}, ` +

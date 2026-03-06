@@ -787,11 +787,16 @@ export function startAutoSequenceProcessor() {
                 if (freshChat && freshChat.status_updated_at !== chatStatusBefore) {
                   console.log(`[CRON] ⚠️  Sequence ${seq.id}: chat status changed by another process, skipping close`);
                 } else {
-                  await dbHelpers.updateChat(seq.chat_id, {
-                    status: 'closed' as dbHelpers.ChatStatus,
-                    status_updated_at: new Date().toISOString(),
-                    completion_reason: 'no_reply' as dbHelpers.CompletionReason,
-                  });
+                  await dbHelpers.updateChatWithAudit(
+                    seq.chat_id,
+                    {
+                      status: 'closed' as dbHelpers.ChatStatus,
+                      status_updated_at: new Date().toISOString(),
+                      completion_reason: 'no_reply' as dbHelpers.CompletionReason,
+                    },
+                    { changedBy: null, source: 'cron_sequence' },
+                    freshChat || undefined
+                  );
                 }
 
                 console.log(`[CRON] 🛑 Sequence ${seq.id}: completed → ${is30d ? 'chat closed (last msg was stop)' : 'stop message sent + chat closed'}`);
@@ -1405,11 +1410,15 @@ export function startResolvedReviewCloser() {
         try {
           // Close the chat with appropriate reason
           const completionReason = chat.close_reason as dbHelpers.CompletionReason;
-          await dbHelpers.updateChat(chat.id, {
-            status: 'closed' as dbHelpers.ChatStatus,
-            completion_reason: completionReason,
-            status_updated_at: new Date().toISOString(),
-          });
+          await dbHelpers.updateChatWithAudit(
+            chat.id,
+            {
+              status: 'closed' as dbHelpers.ChatStatus,
+              completion_reason: completionReason,
+              status_updated_at: new Date().toISOString(),
+            },
+            { changedBy: null, source: 'cron_resolved' }
+          );
           closed++;
 
           // Stop active sequence if any

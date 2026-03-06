@@ -134,11 +134,16 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                     // Use specific reason for temporarily_hidden, generic for others
                     const completionReason = (reason === 'review_temporarily_hidden'
                         ? 'temporarily_hidden' : 'review_resolved') as dbHelpers.CompletionReason;
-                    await dbHelpers.updateChat(activeChat.chatID, {
-                        status: 'closed' as dbHelpers.ChatStatus,
-                        completion_reason: completionReason,
-                        status_updated_at: new Date().toISOString(),
-                    });
+                    await dbHelpers.updateChatWithAudit(
+                        activeChat.chatID,
+                        {
+                            status: 'closed' as dbHelpers.ChatStatus,
+                            completion_reason: completionReason,
+                            status_updated_at: new Date().toISOString(),
+                        },
+                        { changedBy: null, source: 'sync_dialogue' },
+                        chatRecord || undefined
+                    );
                     // Stop active sequence if any
                     const activeSeq = await dbHelpers.getActiveSequenceForChat(activeChat.chatID);
                     if (activeSeq) {
@@ -269,7 +274,11 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         if (existingChat.status === 'closed') {
                             updates.completion_reason = null;
                         }
-                        await dbHelpers.updateChat(chatId, updates);
+                        await dbHelpers.updateChatWithAudit(
+                            chatId, updates,
+                            { changedBy: null, source: 'sync_dialogue' },
+                            existingChat
+                        );
                         console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → inbox (client replied)`);
                     }
 
@@ -296,20 +305,30 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                             }
                         }
                         if (!skipTransition) {
-                            await dbHelpers.updateChat(chatId, {
-                                status: 'in_progress' as ChatStatus,
-                                status_updated_at: new Date().toISOString(),
-                            });
+                            await dbHelpers.updateChatWithAudit(
+                                chatId,
+                                {
+                                    status: 'in_progress' as ChatStatus,
+                                    status_updated_at: new Date().toISOString(),
+                                },
+                                { changedBy: null, source: 'sync_dialogue' },
+                                existingChat
+                            );
                             console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → in_progress (seller replied)`);
                         }
                     }
                     // Reopen closed chats when seller sends a new message
                     if (existingChat && existingChat.status === 'closed') {
-                        await dbHelpers.updateChat(chatId, {
-                            status: 'in_progress' as ChatStatus,
-                            status_updated_at: new Date().toISOString(),
-                            completion_reason: null,
-                        });
+                        await dbHelpers.updateChatWithAudit(
+                            chatId,
+                            {
+                                status: 'in_progress' as ChatStatus,
+                                status_updated_at: new Date().toISOString(),
+                                completion_reason: null,
+                            },
+                            { changedBy: null, source: 'sync_dialogue' },
+                            existingChat
+                        );
                         console.log(`[DIALOGUES] Chat ${chatId}: closed → in_progress (seller replied)`);
                     }
                 }

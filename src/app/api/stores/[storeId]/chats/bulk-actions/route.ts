@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getChatById, getChatMessages, updateChat, updateChatStatus, getStoreById } from '@/db/helpers';
+import { getChatById, getChatMessages, updateChat, updateChatWithAudit, getStoreById } from '@/db/helpers';
 import { generateChatReply } from '@/ai/flows/generate-chat-reply-flow';
 import { buildStoreInstructions, detectConversationPhase } from '@/lib/ai-context';
 import { sendChatMessage } from '@/lib/wb-chat-api';
 import { createOzonClient } from '@/lib/ozon-api';
+import { getSession } from '@/lib/auth';
 import type { ChatStatus } from '@/db/helpers';
 
 type BulkAction = 'generate' | 'send' | 'change_status';
@@ -53,6 +54,10 @@ export async function POST(
       failed: 0,
       errors: [] as string[],
     };
+
+    // Get userId for audit trail
+    const session = getSession();
+    const userId = session?.userId || null;
 
     // Fetch store for marketplace-aware dispatch
     const store = await getStoreById(storeId);
@@ -146,7 +151,12 @@ ${chatHistory}
               });
 
               // Update status to in_progress after sending (seller replied → "В работе")
-              await updateChatStatus(chatId, 'in_progress');
+              await updateChatWithAudit(
+                chatId,
+                { status: 'in_progress', status_updated_at: new Date().toISOString() },
+                { changedBy: userId, source: 'bulk_action' },
+                chat
+              );
 
               results.successful++;
             } catch (sendError: any) {
@@ -160,7 +170,12 @@ ${chatHistory}
 
           case 'change_status': {
             // Change chat status
-            await updateChatStatus(chatId, status!);
+            await updateChatWithAudit(
+              chatId,
+              { status: status!, status_updated_at: new Date().toISOString() },
+              { changedBy: userId, source: 'bulk_action' },
+              chat
+            );
             results.successful++;
             break;
           }

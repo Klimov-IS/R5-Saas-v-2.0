@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByApiToken } from '@/db/extension-helpers';
 import { query } from '@/db/client';
+import { updateChatWithAudit } from '@/db/helpers';
 import {
   createReviewChatLink,
   matchReviewByContext,
@@ -141,10 +142,14 @@ export async function POST(request: NextRequest) {
       try {
         const completionReason = resolvedReason === 'review_temporarily_hidden'
           ? 'temporarily_hidden' : 'review_resolved';
-        await query(
-          `UPDATE chats SET status = 'closed', completion_reason = $2,
-           status_updated_at = NOW() WHERE id = $1 AND status != 'closed'`,
-          [chatId, completionReason]
+        await updateChatWithAudit(
+          chatId,
+          {
+            status: 'closed' as any,
+            completion_reason: completionReason as any,
+            status_updated_at: new Date().toISOString(),
+          },
+          { changedBy: null, source: 'extension' }
         );
         console.log(`[Extension Chat API] Auto-closed chat: ${chatId} (${completionReason})`);
       } catch (err) {
