@@ -1,7 +1,9 @@
 # Stage 2: AI Classification - Implementation Guide
-**Status:** ✅ COMPLETE
+**Status:** ⛔ DEPRECATED (migration 024, 2026-03-06)
 **Date:** 2026-01-16
 **Duration:** Days 4-5
+
+> **DEPRECATED:** AI classification flows (classify-chat-tag, classify-chat-deletion) were disabled in migration 024. Tags are now: NULL (default), deletion_candidate (auto on link creation), deletion_offered/agreed/confirmed (manual TG). This document is kept for historical reference only.
 
 ---
 
