@@ -11,7 +11,10 @@ interface MessageBubbleProps {
 
 function AttachmentPreview({ downloadId, storeId }: { downloadId: string; storeId: string }) {
   const [failed, setFailed] = useState(false);
-  const src = `/api/stores/${storeId}/chat-files/${downloadId}`;
+  // If downloadId is a full URL (WB CDN), use directly; otherwise proxy through our API
+  const src = downloadId.startsWith('http')
+    ? downloadId
+    : `/api/stores/${storeId}/chat-files/${downloadId}`;
 
   if (failed) {
     return (
@@ -45,7 +48,7 @@ export function MessageBubble({ message, storeId }: MessageBubbleProps) {
   const isSeller = message.sender === 'seller';
   const isAutoReply = message.isAutoReply === true;
   const status = message.status || 'sent';
-  const hasAttachment = !!message.downloadId && !!storeId;
+  const hasAttachment = !!message.downloadId && (message.downloadId.startsWith('http') || !!storeId);
   const hasText = !!message.text && message.text !== 'Вложение';
 
   // Format time with date if needed

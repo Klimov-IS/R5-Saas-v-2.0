@@ -626,28 +626,34 @@ export default function TgChatPage() {
                   lineHeight: 1.5,
                   boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                 }}>
-                  {msg.downloadId && chat && (
-                    <img
-                      src={`/api/telegram/chat-files/${msg.downloadId}?storeId=${chat.storeId}`}
-                      alt="Вложение"
-                      loading="lazy"
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        target.style.display = 'none';
-                        const fallback = target.nextElementSibling as HTMLElement;
-                        if (fallback?.dataset?.fallback) fallback.style.display = 'flex';
-                      }}
-                      style={{
-                        maxWidth: '100%',
-                        borderRadius: '8px',
-                        marginBottom: msg.text && msg.text !== 'Вложение' ? '8px' : '0',
-                      }}
-                    />
-                  )}
-                  {msg.downloadId && chat && (
+                  {msg.downloadId && (
                     <a
-                      data-fallback="true"
-                      href={`/api/telegram/chat-files/${msg.downloadId}?storeId=${chat.storeId}`}
+                      href={msg.downloadId.startsWith('http') ? msg.downloadId : `/api/telegram/chat-files/${msg.downloadId}?storeId=${chat?.storeId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <img
+                        src={msg.downloadId.startsWith('http') ? msg.downloadId : `/api/telegram/chat-files/${msg.downloadId}?storeId=${chat?.storeId}`}
+                        alt="Вложение"
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          target.style.display = 'none';
+                          const fallback = document.getElementById(`fallback-${msg.id}`);
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                        style={{
+                          maxWidth: '100%',
+                          borderRadius: '8px',
+                          marginBottom: msg.text && msg.text !== 'Вложение' ? '8px' : '0',
+                        }}
+                      />
+                    </a>
+                  )}
+                  {msg.downloadId && (
+                    <a
+                      id={`fallback-${msg.id}`}
+                      href={msg.downloadId.startsWith('http') ? msg.downloadId : `/api/telegram/chat-files/${msg.downloadId}?storeId=${chat?.storeId}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{

@@ -228,6 +228,9 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         if (isDupe.rows.length > 0) continue;
                     }
 
+                    // Extract attachment URL from WB API (images array in message.attachments)
+                    const attachmentUrl = event.message?.attachments?.images?.[0]?.url || null;
+
                     const messagePayload: Omit<dbHelpers.ChatMessage, 'created_at'> = {
                         id: event.eventID,
                         chat_id: chatId,
@@ -237,7 +240,7 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         text: msgText,
                         sender: event.sender,
                         timestamp: event.addTime,
-                        download_id: event.downloadID || null,
+                        download_id: attachmentUrl,
                     };
 
                     await dbHelpers.upsertChatMessage(messagePayload);
