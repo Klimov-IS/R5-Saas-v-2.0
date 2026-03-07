@@ -377,6 +377,16 @@ HMAC-SHA256 валидация с BOT_TOKEN. initData содержит `user.id`
 
 Получить чат с историей сообщений. Включает review enrichment данные (рейтинг, дата, текст отзыва, стратегия, кешбек) через JOINs с review_chat_links, reviews, product_rules.
 
+Каждое сообщение содержит `downloadId` (string | null) — идентификатор вложения WB. Для загрузки файла используйте proxy endpoint.
+
+---
+
+### GET /api/stores/:storeId/chat-files/:downloadId
+
+Proxy для вложений из WB Buyer Chat API. Требует JWT auth (cookie `r5_token`).
+
+Проксирует файл с `https://buyer-chat-api.wildberries.ru/api/v1/seller/files/{downloadId}`, добавляя WB токен магазина. Возвращает файл с оригинальным Content-Type. Browser cache: 24 часа.
+
 ---
 
 ### PATCH /api/stores/:storeId/chats/:chatId
@@ -1249,6 +1259,14 @@ API для TG Mini App. Все endpoints аутентифицируются че
   ]
 }
 ```
+
+---
+
+### GET /api/telegram/chat-files/:downloadId?storeId=xxx
+
+Proxy для вложений из WB Buyer Chat API. Требует TG initData auth + storeId в query.
+
+Аналогично web-версии, проксирует файл с WB API, добавляя WB токен магазина. Проверяет доступ пользователя к указанному магазину. Browser cache: 24 часа.
 
 ---
 

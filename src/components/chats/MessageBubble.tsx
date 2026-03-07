@@ -1,15 +1,52 @@
+'use client';
+
+import { useState } from 'react';
 import type { ChatMessage } from '@/types/chats';
-import { Loader2, Check, AlertCircle, Bot } from 'lucide-react';
+import { Loader2, Check, AlertCircle, Bot, Paperclip } from 'lucide-react';
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  storeId?: string;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+function AttachmentPreview({ downloadId, storeId }: { downloadId: string; storeId: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = `/api/stores/${storeId}/chat-files/${downloadId}`;
+
+  if (failed) {
+    return (
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 text-xs opacity-80 hover:opacity-100 underline"
+      >
+        <Paperclip className="w-3.5 h-3.5" />
+        <span>Скачать вложение</span>
+      </a>
+    );
+  }
+
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer">
+      <img
+        src={src}
+        alt="Вложение"
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="max-w-[280px] max-h-[320px] rounded-lg object-cover cursor-pointer"
+      />
+    </a>
+  );
+}
+
+export function MessageBubble({ message, storeId }: MessageBubbleProps) {
   const isClient = message.sender === 'client';
   const isSeller = message.sender === 'seller';
   const isAutoReply = message.isAutoReply === true;
   const status = message.status || 'sent';
+  const hasAttachment = !!message.downloadId && !!storeId;
+  const hasText = !!message.text && message.text !== 'Вложение';
 
   // Format time with date if needed
   const formatTime = (dateString: string): string => {
@@ -92,7 +129,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             }
           `}
         >
-          {message.text}
+          {hasAttachment && (
+            <div className={hasText ? 'mb-2' : ''}>
+              <AttachmentPreview downloadId={message.downloadId!} storeId={storeId!} />
+            </div>
+          )}
+          {hasText && message.text}
         </div>
 
         {/* Timestamp + Status (only for seller messages) */}

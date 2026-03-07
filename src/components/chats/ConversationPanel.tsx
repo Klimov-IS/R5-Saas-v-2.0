@@ -196,7 +196,7 @@ export function ConversationPanel({ storeId, chatId }: ConversationPanelProps) {
         ) : (
           <>
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble key={message.id} message={message} storeId={storeId} />
             ))}
             <div ref={messagesEndRef} />
           </>

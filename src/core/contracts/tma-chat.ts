@@ -16,6 +16,7 @@ export interface ChatMessageDTO {
   sender: string;
   timestamp: string;
   isAutoReply: boolean;
+  downloadId?: string | null;
 }
 
 export interface ChatDetailDTO {

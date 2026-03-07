@@ -10,6 +10,7 @@ interface ChatMessage {
   sender: 'client' | 'seller';
   timestamp: string;
   isAutoReply?: boolean;
+  downloadId?: string | null;
 }
 
 interface ChatDetail {
@@ -625,7 +626,43 @@ export default function TgChatPage() {
                   lineHeight: 1.5,
                   boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                 }}>
-                  {msg.text}
+                  {msg.downloadId && chat && (
+                    <img
+                      src={`/api/telegram/chat-files/${msg.downloadId}?storeId=${chat.storeId}`}
+                      alt="Вложение"
+                      loading="lazy"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.style.display = 'none';
+                        const fallback = target.nextElementSibling as HTMLElement;
+                        if (fallback?.dataset?.fallback) fallback.style.display = 'flex';
+                      }}
+                      style={{
+                        maxWidth: '100%',
+                        borderRadius: '8px',
+                        marginBottom: msg.text && msg.text !== 'Вложение' ? '8px' : '0',
+                      }}
+                    />
+                  )}
+                  {msg.downloadId && chat && (
+                    <a
+                      data-fallback="true"
+                      href={`/api/telegram/chat-files/${msg.downloadId}?storeId=${chat.storeId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'none',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '12px',
+                        opacity: 0.8,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Скачать вложение
+                    </a>
+                  )}
+                  {(!msg.downloadId || (msg.text && msg.text !== 'Вложение')) && msg.text}
                   <div style={{
                     fontSize: '10px',
                     opacity: msg.sender === 'seller' ? 0.6 : 1,

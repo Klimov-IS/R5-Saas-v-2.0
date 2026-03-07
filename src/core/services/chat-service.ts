@@ -46,6 +46,7 @@ export async function getChatDetail(
     sender: m.sender,
     timestamp: m.timestamp,
     isAutoReply: m.is_auto_reply,
+    downloadId: m.download_id || null,
   }));
 
   // Synthesize last message if not yet synced to chat_messages.
@@ -61,6 +62,7 @@ export async function getChatDetail(
         sender: chat.last_message_sender,
         timestamp: chat.last_message_date,
         isAutoReply: false,
+        downloadId: null,
       });
     }
   }

@@ -42,7 +42,7 @@ export async function findChatDetailById(chatId: string, accessibleStoreIds: str
 export async function findLastMessages(chatId: string, limit: number = 200) {
   const result = await query(
     `SELECT * FROM (
-       SELECT id, text, sender, timestamp, is_auto_reply
+       SELECT id, text, sender, timestamp, is_auto_reply, download_id
        FROM chat_messages
        WHERE chat_id = $1
        ORDER BY timestamp DESC

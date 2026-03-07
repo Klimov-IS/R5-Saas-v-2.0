@@ -109,6 +109,7 @@ export async function GET(
       timestamp: msg.timestamp,
       createdAt: msg.created_at,
       isAutoReply: msg.is_auto_reply || false,
+      downloadId: msg.download_id || null,
     }));
 
     return NextResponse.json({

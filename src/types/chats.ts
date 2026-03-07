@@ -58,6 +58,7 @@ export interface ChatMessage {
   createdAt: string;
   status?: MessageStatus; // Optional: для оптимистичных обновлений
   isAutoReply?: boolean;  // true = отправлено авто-рассылкой (бот)
+  downloadId?: string | null; // WB attachment file ID for proxy download
 }
 
 export interface ChatsResponse {
