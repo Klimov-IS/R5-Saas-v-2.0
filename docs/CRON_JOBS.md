@@ -322,7 +322,7 @@ export function startDailyReviewSync() {
 
 ```bash
 # Deploy with update-app.sh
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
@@ -375,7 +375,7 @@ cron.schedule('...', async () => {
 
 ```bash
 # SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 # View PM2 logs (look for [INSTRUMENTATION] and [INIT] logs)
 pm2 logs wb-reputation | grep -E "\[INSTRUMENTATION\]|\[INIT\]|\[CRON\]"
@@ -412,7 +412,7 @@ pm2 logs wb-reputation --lines 1000 | grep "2026-01-15T05:00"
 **Endpoint:** `GET /api/cron/status`
 
 ```bash
-curl -X GET "http://158.160.217.236/api/cron/status" \
+curl -X GET "http://158.160.229.16/api/cron/status" \
   -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
 ```
 
@@ -1180,6 +1180,51 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 - Auto-complaint generation triggers automatically for new reviews found
 
 **Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startMiddayReviewCatchup()`
+
+---
+
+## Development Standards (CRON Policy)
+
+> Merged from: `_rules/CRON_POLICY.md`
+
+### Principles
+
+1. **Idempotency** — re-running a job must be safe (no duplicates, no side effects)
+2. **Logging** — every job logs `[CRON] start/end/errors` with duration
+3. **Overlap protection** — concurrent runs prevented via `runningJobs` flags
+4. **Documentation** — every job documented in this file
+
+### Prohibited
+
+| Action | Risk |
+|--------|------|
+| Add cron without documentation | Knowledge loss |
+| Change schedule without load assessment | API/DB overload |
+| Create job without overlap protection | Race conditions |
+| Job without logging | Impossible to diagnose |
+
+### Checklist: Adding a New CRON Job
+
+1. Implement with overlap protection pattern (see "Concurrent Execution Protection" section)
+2. Register in `src/lib/init-server.ts`
+3. Document in this file (CRON_JOBS.md) with: job name, schedule (prod/dev), what it does, source file, idempotency guarantee, error handling
+4. Use UTC timezone, note MSK equivalent in comments
+5. Use dev-vs-prod schedule pattern:
+```typescript
+const schedule = process.env.NODE_ENV === 'production'
+  ? '0 5 * * *'      // Production (MSK = UTC+3)
+  : '*/5 * * * *';   // Development (fast iteration)
+```
+
+### Idempotency Pattern
+
+```typescript
+// Check before creating
+const exists = await db.query('SELECT 1 FROM table WHERE key = $1', [key]);
+if (!exists.rows.length) {
+  await db.query('INSERT INTO table ...', [values]);
+}
+```
 
 ---
 

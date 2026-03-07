@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Historical sprint plan -- completed and superseded
+
 # План реализации рефакторинга страницы Чаты
 
 **Дата:** 2026-01-16

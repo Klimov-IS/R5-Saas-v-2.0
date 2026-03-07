@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Audit artifact -- migration 027 completed
+
 # AUDIT: Telegram Mini Apps (R5 SaaS)
 
 **Дата аудита:** 2026-03-06

@@ -436,7 +436,7 @@ JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
 - **Domain:** `rating5.ru` (registrar: nic.ru, DNS: Cloudflare)
 - **CDN/Proxy:** Cloudflare (SSL Full Strict, Proxied ON)
 - **Cloud:** Yandex Cloud Compute
-- **Server:** 2 vCPU, 4GB RAM, 20GB SSD (IP: 158.160.217.236)
+- **Server:** 2 vCPU, 4GB RAM, 20GB SSD (IP: 158.160.229.16)
 - **OS:** Ubuntu 24.04 LTS
 - **Process Manager:** PM2 (4 processes: app cluster x2, cron fork, tg-bot fork)
 - **Web Server:** Nginx (reverse proxy + SSL termination, ports 80/443)

@@ -12,7 +12,7 @@
 
 ### Структура документации
 
-1. **[CHATS_CURRENT_STATE_ANALYSIS.md](./CHATS_CURRENT_STATE_ANALYSIS.md)** — Анализ текущего состояния
+1. **~~CHATS_CURRENT_STATE_ANALYSIS.md~~** *(archived)* — Анализ текущего состояния
    - Что работает / не работает
    - Технический стек
    - Database schema
@@ -33,7 +33,7 @@
    - API Specifications
    - Edge Cases и Testing Strategy
 
-4. **[CHATS_IMPLEMENTATION_ROADMAP.md](./CHATS_IMPLEMENTATION_ROADMAP.md)** — План реализации
+4. **~~CHATS_IMPLEMENTATION_ROADMAP.md~~** *(archived)* — План реализации
    - Приоритизация MoSCoW
    - Разбивка на 4 спринта (по неделям)
    - Детальные задачи с Story Points
@@ -60,17 +60,17 @@
 
 ### Для Product Owner / Stakeholders
 
-1. Прочитайте **Executive Summary** в [CHATS_CURRENT_STATE_ANALYSIS.md](./CHATS_CURRENT_STATE_ANALYSIS.md#executive-summary)
+1. Прочитайте **Executive Summary** в [CHATS_CURRENT_STATE_ANALYSIS.md](../archive/CHATS_CURRENT_STATE_ANALYSIS.md#executive-summary) *(archived)*
 2. Посмотрите **прототипы UI** в [CHATS_UI_UX_PROTOTYPES.md](./CHATS_UI_UX_PROTOTYPES.md#режим-2-messenger-view-мессенджер)
 3. Ознакомьтесь с **User Stories** в [CHATS_FEATURE_SPEC.md](./CHATS_FEATURE_SPEC.md#user-stories)
-4. Одобрите **Roadmap** в [CHATS_IMPLEMENTATION_ROADMAP.md](./CHATS_IMPLEMENTATION_ROADMAP.md#разбивка-на-спринты)
+4. Одобрите **Roadmap** в [CHATS_IMPLEMENTATION_ROADMAP.md](../archive/CHATS_IMPLEMENTATION_ROADMAP.md#разбивка-на-спринты) *(archived)*
 
 ### Для Разработчиков
 
-1. Изучите **технический стек** в [CHATS_CURRENT_STATE_ANALYSIS.md](./CHATS_CURRENT_STATE_ANALYSIS.md#технический-стек)
+1. Изучите **технический стек** в [CHATS_CURRENT_STATE_ANALYSIS.md](../archive/CHATS_CURRENT_STATE_ANALYSIS.md#технический-стек) *(archived)*
 2. Посмотрите **компоненты** в [CHATS_UI_UX_PROTOTYPES.md](./CHATS_UI_UX_PROTOTYPES.md#компоненты-ui)
 3. Ознакомьтесь с **API specs** в [CHATS_FEATURE_SPEC.md](./CHATS_FEATURE_SPEC.md#api-specifications)
-4. Начните с **Sprint 1 tasks** в [CHATS_IMPLEMENTATION_ROADMAP.md](./CHATS_IMPLEMENTATION_ROADMAP.md#sprint-1-фундамент-messenger-view-неделя-1)
+4. Начните с **Sprint 1 tasks** в [CHATS_IMPLEMENTATION_ROADMAP.md](../archive/CHATS_IMPLEMENTATION_ROADMAP.md#sprint-1-фундамент-messenger-view-неделя-1) *(archived)*
 
 ### Для Дизайнеров
 

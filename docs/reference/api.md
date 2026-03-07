@@ -1,8 +1,8 @@
 # R5 API Reference
 
 **Версия:** 1.0
-**Base URL:** `http://158.160.217.236`
-**Swagger UI:** `http://158.160.217.236/api/docs`
+**Base URL:** `http://158.160.229.16`
+**Swagger UI:** `http://158.160.229.16/api/docs`
 
 ---
 

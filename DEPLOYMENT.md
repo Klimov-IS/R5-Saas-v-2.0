@@ -4,7 +4,7 @@
 
 ## 📋 Информация о сервере
 
-- **IP:** `158.160.217.236`
+- **IP:** `158.160.229.16`
 - **OS:** Ubuntu 24.04 LTS
 - **Конфигурация:** 2 vCPU, 4GB RAM, 20GB SSD
 - **Регион:** ru-central1-d
@@ -12,7 +12,7 @@
 ## 🔑 SSH-подключение
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 ```
 
 ## 📦 Шаг 1: Настройка сервера
@@ -100,7 +100,7 @@ POSTGRES_USER=admin_R5
 POSTGRES_PASSWORD=MyNewPass123
 
 # Next.js
-NEXT_PUBLIC_API_URL=http://158.160.217.236:3000
+NEXT_PUBLIC_API_URL=http://158.160.229.16:3000
 
 # Port
 PORT=3000
@@ -190,7 +190,7 @@ sudo nano /etc/nginx/sites-available/wb-reputation
 ```nginx
 server {
     listen 80;
-    server_name 158.160.217.236;
+    server_name 158.160.229.16;
 
     # Gzip compression
     gzip on;
@@ -265,7 +265,7 @@ curl http://localhost:3000
 
 Откройте в браузере:
 ```
-http://158.160.217.236
+http://158.160.229.16
 ```
 
 Вы должны увидеть главную страницу приложения!
@@ -492,7 +492,7 @@ sudo journalctl -u nginx -f
 - [ ] Проект собран (`npm run build`)
 - [ ] PM2 запущен и сохранен (`pm2 start` + `pm2 save`)
 - [ ] Nginx настроен и перезагружен
-- [ ] Приложение доступно по IP: http://158.160.217.236
+- [ ] Приложение доступно по IP: http://158.160.229.16
 - [ ] Логи проверены (нет критических ошибок)
 - [ ] Firewall настроен (опционально)
 

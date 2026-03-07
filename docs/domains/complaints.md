@@ -530,9 +530,8 @@ WHERE generated_at >= CURRENT_DATE;
 - [Database Schema](../database-schema.md) — полная схема review_complaints + complaint_details
 - [Extension API Documentation](../reference/EXTENSION_API_DOCUMENTATION.md) — контракты complaint-statuses и complaint-details
 - [CRON Jobs](../CRON_JOBS.md) — автоматизация
-- [complaint-auto-generation-rules.md](complaint-auto-generation-rules.md) — детальные правила
+- [auto-complaints.md](auto-complaints.md) — авто-генерация жалоб (правила, бюджет, retry)
 - [complaints-table-schema.md](complaints-table-schema.md) — детальная схема таблицы
-- [AUTO_COMPLAINT_STRATEGY.md](AUTO_COMPLAINT_STRATEGY.md) — стратегия
 
 ---
 

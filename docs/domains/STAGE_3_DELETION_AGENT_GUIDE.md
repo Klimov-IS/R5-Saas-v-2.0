@@ -1,7 +1,9 @@
 # Stage 3: Deletion Agent - Implementation Guide
-**Status:** ✅ COMPLETE
-**Date:** 2026-01-16
+**Status:** ⚠️ PARTIALLY OUTDATED (see notes below)
+**Date:** 2026-01-16 (updated 2026-03-06)
 **Duration:** Days 6-9
+
+> **IMPORTANT (2026-03-06):** Compensation rules changed. 4-5★ reviews get NO compensation — `generate-deletion-offer` returns 400 for 4-5★. Only 1-3★ reviews are eligible. See updated calculator below.
 
 ---
 
@@ -21,14 +23,24 @@ Stage 3 implements the core deletion agent: AI-powered offer generation, deletio
 ### 1. AI Offer Generation Flow ([generate-deletion-offer-flow.ts](c:/Users/79025/Desktop/проекты/R5/Pilot-entry/R5 saas-prod/src/ai/flows/generate-deletion-offer-flow.ts))
 
 **Compensation Calculator:**
+
+> **UPDATED (2026-03-06):** 4-5★ reviews are NO LONGER eligible for compensation.
+> `generate-deletion-offer` returns HTTP 400 for 4-5★ reviews.
+> AI prompt says: "только повышение до 5★, без кешбека" for 4-5★.
+
 ```typescript
+// CURRENT RULE: Only 1-3★ reviews get compensation
 function calculateCompensation(reviewRating, maxCompensation) {
   const multipliers = {
     1: 1.0,   // 1★ → 100% max (most damage)
     2: 0.8,   // 2★ → 80% max
     3: 0.6,   // 3★ → 60% max
-    4: 0.4,   // 4★ → 40% max
+    // 4★, 5★ → NOT ELIGIBLE (API returns 400)
   };
+
+  if (!multipliers[reviewRating]) {
+    throw new Error('4-5★ reviews are not eligible for compensation');
+  }
 
   return Math.max(50, Math.min(
     maxCompensation * multipliers[reviewRating],
@@ -41,6 +53,8 @@ function calculateCompensation(reviewRating, maxCompensation) {
 - Review: 2★
 - Max compensation: 500₽
 - Calculated: 500₽ × 0.8 = **400₽**
+
+**4-5★ reviews:** Compensation NOT offered. Only "повышение до 5★" strategy without cashback.
 
 **AI Generation Process:**
 1. Calculate compensation amount (deterministic)

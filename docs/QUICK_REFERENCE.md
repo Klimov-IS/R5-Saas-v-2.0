@@ -1,6 +1,6 @@
-# Quick Reference - WB Reputation Manager
+# Quick Reference - R5 Reputation Manager
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -8,12 +8,27 @@
 
 | Item | Value |
 |------|-------|
-| **IP** | 158.160.217.236 |
+| **Domain** | `https://rating5.ru` (via Cloudflare, SSL Full Strict) |
+| **IP** | `158.160.229.16` (dynamic — changes on VM stop!) |
 | **SSH Key** | `~/.ssh/yandex-cloud-wb-reputation` |
-| **User** | ubuntu |
+| **User** | `ubuntu` |
 | **App Path** | `/var/www/wb-reputation` |
-| **Port** | 3000 (internal), 80 (external) |
-| **PM2 App Name** | wb-reputation |
+| **Ports** | 3000 (internal), 80+443 (Nginx) |
+| **SSL Cert** | `/etc/ssl/rating5/` (expires 2026-09-12) |
+
+---
+
+## PM2 Process Topology (4 processes)
+
+| Process | Mode | Purpose |
+|---------|------|---------|
+| `wb-reputation` (x2) | cluster | Next.js web app (2 instances) |
+| `wb-reputation-cron` | fork | Cron scheduler (triggers `/api/cron/trigger` on start) |
+| `wb-reputation-tg-bot` | fork | Telegram bot (long-polling) |
+
+**CRITICAL:** After `pm2 reload wb-reputation`, always also `pm2 restart wb-reputation-cron` — cron schedulers are in-memory and lost on reload.
+
+**WARNING:** PM2 runs as `ubuntu` user — NEVER use `sudo pm2` (creates separate root daemon).
 
 ---
 
@@ -21,13 +36,13 @@
 
 ```bash
 # Connect to production
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 # One-line status check
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 status"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 status"
 
-# One-line logs
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-reputation --lines 50 --nostream"
+# One-line logs (all processes)
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs --lines 50 --nostream"
 ```
 
 ---
@@ -37,21 +52,22 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 "pm2 logs wb-rep
 ### One-Command Deploy (Recommended)
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
 ### Manual Deploy
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 cd /var/www/wb-reputation
 git pull origin main
 npm ci --production=false
 npm run build
 pm2 reload wb-reputation
-pm2 logs wb-reputation
+pm2 restart wb-reputation-cron   # CRITICAL: always restart cron after reload
+pm2 logs --lines 50 --nostream
 ```
 
 ---
@@ -59,11 +75,16 @@ pm2 logs wb-reputation
 ## PM2 Commands
 
 ```bash
-# Status
+# Status of ALL processes
 pm2 status
 
-# Real-time logs
-pm2 logs wb-reputation
+# Real-time logs (all processes)
+pm2 logs
+
+# Logs for specific process
+pm2 logs wb-reputation              # web app
+pm2 logs wb-reputation-cron         # cron process
+pm2 logs wb-reputation-tg-bot      # telegram bot
 
 # Last 100 lines (no streaming)
 pm2 logs wb-reputation --lines 100 --nostream
@@ -74,20 +95,15 @@ pm2 logs wb-reputation --err
 # Monitor CPU/memory
 pm2 monit
 
-# Reload (zero-downtime)
-pm2 reload wb-reputation
+# Reload web app (zero-downtime) + restart cron
+pm2 reload wb-reputation && pm2 restart wb-reputation-cron
 
-# Restart (with downtime)
-pm2 restart wb-reputation
+# Restart specific process
+pm2 restart wb-reputation-cron
+pm2 restart wb-reputation-tg-bot
 
-# Stop
-pm2 stop wb-reputation
-
-# Start
+# Start all from config
 pm2 start ecosystem.config.js
-
-# Detailed info
-pm2 info wb-reputation
 
 # Save current state
 pm2 save
@@ -98,23 +114,14 @@ pm2 save
 ## Database Access
 
 ```bash
-# Connect to production database
-PGPASSWORD="MyNewPass123" psql \
-  -h rc1a-u6gmh29sivrjjbc8.mdb.yandexcloud.net \
-  -p 6432 \
-  -U admin_R5 \
-  -d wb_reputation
+# Connect to production database (via Node.js scripts — psql not installed on server)
+# Use scripts like: node scripts/run-migration-014.mjs
 
-# Quick query (one-line)
-PGPASSWORD="MyNewPass123" psql \
-  -h rc1a-u6gmh29sivrjjbc8.mdb.yandexcloud.net \
-  -p 6432 \
-  -U admin_R5 \
-  -d wb_reputation \
-  -c "SELECT COUNT(*) FROM stores WHERE status='active';"
+# Environment variables for DB connection:
+# POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB (not POSTGRES_DATABASE!), POSTGRES_USER, POSTGRES_PASSWORD
 ```
 
-### Useful Queries
+### Useful Queries (run via scripts or pg admin)
 
 ```sql
 -- Active stores count
@@ -123,7 +130,7 @@ SELECT COUNT(*) FROM stores WHERE status='active';
 -- Total reviews
 SELECT COUNT(*) FROM reviews;
 
--- Reviews by store
+-- Reviews by store (top 10)
 SELECT s.name, COUNT(r.id) as review_count
 FROM stores s
 LEFT JOIN reviews r ON s.id = r.store_id
@@ -139,11 +146,11 @@ WHERE status='active'
 ORDER BY last_review_sync_at DESC
 LIMIT 10;
 
--- CRON job logs (if logged to DB)
-SELECT * FROM logs
-WHERE event_type = 'cron_sync'
-ORDER BY created_at DESC
-LIMIT 20;
+-- Chat status distribution
+SELECT status, COUNT(*) FROM chats GROUP BY status;
+
+-- Active auto-sequences
+SELECT status, COUNT(*) FROM chat_auto_sequences GROUP BY status;
 ```
 
 ---
@@ -152,83 +159,46 @@ LIMIT 20;
 
 ### Authentication
 
-All endpoints require:
-```
-Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue
-```
+Three auth methods:
+1. **JWT** — httpOnly cookie `r5_token` (web dashboard)
+2. **Bearer** — `Authorization: Bearer wbrm_*` (Extension API)
+3. **Telegram** — `X-Telegram-Init-Data` header (TG Mini App)
 
 ### Common Endpoints
 
 ```bash
 # Health check
-curl http://158.160.217.236/health
+curl https://rating5.ru/health
 
-# List all stores
-curl -X GET "http://158.160.217.236/api/stores" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Get store details
-curl -X GET "http://158.160.217.236/api/stores/{storeId}" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+# List all stores (requires JWT cookie or Bearer token)
+curl -X GET "https://rating5.ru/api/stores" \
+  -H "Authorization: Bearer wbrm_YOUR_TOKEN"
 
 # Sync products
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/products/update" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+curl -X POST "https://rating5.ru/api/stores/{storeId}/products/update" \
+  -H "Authorization: Bearer wbrm_YOUR_TOKEN"
 
 # Incremental review sync
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/reviews/update?mode=incremental" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Full review sync (use cautiously for large stores)
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/reviews/update?mode=full" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Get reviews (with filters)
-curl -X GET "http://158.160.217.236/api/stores/{storeId}/reviews?rating=1&hasAnswer=false&limit=20" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Sync chats
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/dialogues/update" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Classify chats
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/chats/classify-all?limit=50" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Generate AI reply for review
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/reviews/{reviewId}/generate-reply" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
-
-# Generate complaint for review
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/reviews/{reviewId}/generate-complaint" \
-  -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
+curl -X POST "https://rating5.ru/api/stores/{storeId}/reviews/update?mode=incremental" \
+  -H "Authorization: Bearer wbrm_YOUR_TOKEN"
 ```
 
 ---
 
-## CRON Jobs
+## CRON Jobs Summary
 
-### Check CRON Status
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| Nightly full sync | `0 19 * * *` (22:00 MSK) | All 12 chunks, parallel |
+| Midday catchup | `0 10 * * *` (13:00 MSK) | Chunk 0 only |
+| Dialogue sync (WB) | Adaptive 5/15/60 min | 3-tier: work/transition/night |
+| OZON chat sync | 5 min + hourly full | Hybrid: unread + safety net |
+| Auto-sequence processor | Every 30 min | 8:00-22:00 MSK |
+| Resolved-review closer | Every 30 min (:15/:45) | Auto-close on resolved reviews |
+| Product Rules → Sheets | `0 3 * * *` (6:00 MSK) | Google Sheets sync |
+| Client Directory → Sheets | `30 4 * * *` (7:30 MSK) | Google Sheets sync |
 
-```bash
-# View CRON initialization logs
-pm2 logs wb-reputation | grep -E "INSTRUMENTATION|INIT|CRON"
-
-# Check if CRON job is running
-pm2 logs wb-reputation | grep "Daily review sync job started"
-
-# View CRON execution logs
-pm2 logs wb-reputation | grep "daily review sync"
-```
-
-### CRON Schedule
-
-| Environment | Schedule | Description |
-|-------------|----------|-------------|
-| Production | `0 5 * * *` | Daily at 8:00 AM MSK (5:00 UTC) |
-| Development | `*/5 * * * *` | Every 5 minutes |
-
-**Stores synced:** Only `status='active'` stores (currently 43)
+See [CRON_JOBS.md](./CRON_JOBS.md) for full details.
 
 ---
 
@@ -241,192 +211,11 @@ sudo nginx -t
 # Reload
 sudo systemctl reload nginx
 
-# Restart
-sudo systemctl restart nginx
+# Config location
+/etc/nginx/sites-available/wb-reputation
 
-# Status
-sudo systemctl status nginx
-
-# Access logs
-sudo tail -f /var/log/nginx/access.log
-
-# Error logs
-sudo tail -f /var/log/nginx/error.log
-```
-
----
-
-## Git
-
-```bash
-# Check current branch and status
-cd /var/www/wb-reputation
-git status
-git branch
-
-# View recent commits
-git log --oneline -10
-
-# Discard local changes (before pulling)
-git reset --hard HEAD
-
-# Pull latest changes
-git pull origin main
-
-# View diff before pulling
-git fetch
-git diff main origin/main
-```
-
----
-
-## Environment Variables
-
-```bash
-# View production environment
-cat /var/www/wb-reputation/.env.production
-
-# Check specific variable
-cat /var/www/wb-reputation/.env.production | grep POSTGRES_HOST
-
-# Edit environment (use with caution)
-nano /var/www/wb-reputation/.env.production
-
-# After editing, reload PM2
-pm2 reload wb-reputation
-```
-
----
-
-## Monitoring
-
-### Quick Health Check Script
-
-```bash
-#!/bin/bash
-echo "=== Quick Health Check ==="
-echo "[1/4] PM2 Status:"
-pm2 status wb-reputation
-echo ""
-
-echo "[2/4] API Health:"
-curl -s http://localhost:3000/health | jq || echo "Health endpoint failed"
-echo ""
-
-echo "[3/4] Active Stores:"
-PGPASSWORD="MyNewPass123" psql \
-  -h rc1a-u6gmh29sivrjjbc8.mdb.yandexcloud.net \
-  -p 6432 \
-  -U admin_R5 \
-  -d wb_reputation \
-  -t -c "SELECT COUNT(*) FROM stores WHERE status='active';"
-echo ""
-
-echo "[4/4] Recent Errors:"
-pm2 logs wb-reputation --err --lines 10 --nostream
-echo ""
-echo "=== Done ==="
-```
-
-### Performance Check
-
-```bash
-# CPU and memory usage
-pm2 monit
-
-# Disk space
-df -h /var/www/wb-reputation
-
-# Network connections
-sudo netstat -tulpn | grep :3000
-
-# Process details
-pm2 show wb-reputation
-```
-
----
-
-## Troubleshooting
-
-### Application Won't Start
-
-```bash
-# Check logs for errors
-pm2 logs wb-reputation --err --lines 100
-
-# Delete and restart
-pm2 delete wb-reputation
-pm2 start /var/www/wb-reputation/ecosystem.config.js
-pm2 save
-```
-
-### Database Connection Issues
-
-```bash
-# Test connection
-PGPASSWORD="MyNewPass123" psql \
-  -h rc1a-u6gmh29sivrjjbc8.mdb.yandexcloud.net \
-  -p 6432 \
-  -U admin_R5 \
-  -d wb_reputation \
-  -c "SELECT version();"
-
-# Check active connections
-PGPASSWORD="MyNewPass123" psql \
-  -h rc1a-u6gmh29sivrjjbc8.mdb.yandexcloud.net \
-  -p 6432 \
-  -U admin_R5 \
-  -d wb_reputation \
-  -c "SELECT COUNT(*) FROM pg_stat_activity WHERE datname='wb_reputation';"
-```
-
-### Build Fails
-
-```bash
-cd /var/www/wb-reputation
-
-# Clear cache
-rm -rf .next
-
-# Reinstall dependencies
-rm -rf node_modules package-lock.json
-npm install
-
-# Rebuild
-npm run build
-```
-
-### Port Already in Use
-
-```bash
-# Find process on port 3000
-sudo lsof -i :3000
-
-# Kill if needed
-pm2 stop wb-reputation
-pm2 start wb-reputation
-```
-
----
-
-## Local Development
-
-```bash
-# Clone repository
-git clone https://github.com/Klimov-IS/R5-Saas-v-2.0.git
-cd R5-Saas-v-2.0
-
-# Install dependencies
-npm install
-
-# Setup environment
-cp .env.example .env.local
-# Edit .env.local with your credentials
-
-# Run dev server
-npm run dev
-
-# Access at http://localhost:9002
+# SSL cert location
+/etc/ssl/rating5/
 ```
 
 ---
@@ -436,39 +225,26 @@ npm run dev
 | Item | Path |
 |------|------|
 | Application | `/var/www/wb-reputation` |
-| Environment | `/var/www/wb-reputation/.env.production` |
+| Environment | `/var/www/wb-reputation/.env.local` |
 | PM2 Config | `/var/www/wb-reputation/ecosystem.config.js` |
 | Update Script | `/var/www/wb-reputation/deploy/update-app.sh` |
 | Nginx Config | `/etc/nginx/sites-available/wb-reputation` |
+| SSL Certs | `/etc/ssl/rating5/` |
 | Nginx Logs | `/var/log/nginx/access.log`, `/var/log/nginx/error.log` |
 | SSH Key | `~/.ssh/yandex-cloud-wb-reputation` (local machine) |
 
 ---
 
-## Important Store IDs (Examples)
-
-```bash
-# Тайди Центр (largest store: 1.3M+ reviews)
-UiLCn5HyzRPphSRvR11G
-
-# ИП Соколов А.А. (test store)
-TwKRrPji2KhTS8TmYJlD
-
-# Another test store
-0rCKlFCdrT7L3B2ios45
-```
-
----
-
 ## Links
 
-- **Production URL:** http://158.160.217.236
+- **Production URL:** https://rating5.ru
 - **GitHub:** https://github.com/Klimov-IS/R5-Saas-v-2.0
-- **Deployment Guide:** [DEPLOYMENT.md](./DEPLOYMENT.md)
+- **Deployment Guide:** [../DEPLOYMENT.md](../DEPLOYMENT.md)
 - **CRON Jobs:** [CRON_JOBS.md](./CRON_JOBS.md)
 - **Troubleshooting:** [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
 - **Development:** [DEVELOPMENT.md](./DEVELOPMENT.md)
+- **Database Schema:** [database-schema.md](./database-schema.md)
 
 ---
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-03-06

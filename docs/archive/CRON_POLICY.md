@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Content merged into [CRON_JOBS.md](../CRON_JOBS.md) — "Development Standards" section
+
 # Политика работы с CRON jobs
 
 **Дата:** 2026-02-08

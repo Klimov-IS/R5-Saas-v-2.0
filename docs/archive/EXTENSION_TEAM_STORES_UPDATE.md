@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Superseded by auth system (migration 010)
+
 # Extension API Update: Draft Complaints Count
 
 **Дата:** 2026-02-08
@@ -69,7 +71,7 @@ type StoresResponse = Store[];
 ## Пример запроса
 
 ```bash
-curl -X GET "http://158.160.217.236/api/extension/stores" \
+curl -X GET "http://158.160.229.16/api/extension/stores" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997"
 ```
 
@@ -215,7 +217,7 @@ WHERE r.store_id = '7kKX9WgLvOPiXYIHk6hi'
 ## Контакты
 
 **Backend Team:** R5 Development
-**Production URL:** http://158.160.217.236
+**Production URL:** http://158.160.229.16
 **Документация:** [EXTENSION_API_COMPLETE.md](./reference/EXTENSION_API_COMPLETE.md)
 
 ---

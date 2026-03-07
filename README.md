@@ -4,7 +4,7 @@
 
 **🚀 Status:** Production (deployed on Yandex Cloud)
 **📊 Scale:** 44 active stores, 2M+ reviews
-**🌐 Production URL:** http://158.160.217.236
+**🌐 Production URL:** http://158.160.229.16
 
 ---
 
@@ -197,7 +197,7 @@ stores (1) → (N) chats
 All API endpoints require Bearer token authentication:
 
 ```bash
-curl -X GET "http://158.160.217.236/api/stores" \
+curl -X GET "http://158.160.229.16/api/stores" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -207,7 +207,7 @@ curl -X GET "http://158.160.217.236/api/stores" \
 
 ## 📖 API Documentation
 
-**Swagger UI:** http://158.160.217.236/api/docs
+**Swagger UI:** http://158.160.229.16/api/docs
 
 ### Key Endpoints
 
@@ -290,7 +290,7 @@ EXCLUDE_STORE_ID="UiLCn5HyzRPphSRvR11G"  # Тайди Центр
 
 ```bash
 # SSH to production server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
 # Navigate to project
 cd /var/www/wb-reputation
@@ -314,7 +314,7 @@ pm2 logs wb-reputation --lines 50
 
 **One-command update:**
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
@@ -326,7 +326,7 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
 
 ```bash
 # Quick health check
-curl http://158.160.217.236/health
+curl http://158.160.229.16/health
 
 # PM2 status
 pm2 status
@@ -424,9 +424,9 @@ curl -s http://localhost:3000/api/stores \
 
 ## 📞 Support & Links
 
-- **Production URL:** http://158.160.217.236
+- **Production URL:** http://158.160.229.16
 - **GitHub Repository:** https://github.com/Klimov-IS/R5-Saas-v-2.0
-- **API Documentation:** http://158.160.217.236/api/docs
+- **API Documentation:** http://158.160.229.16/api/docs
 
 ---
 

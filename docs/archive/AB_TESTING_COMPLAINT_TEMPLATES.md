@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** A/B test completed -- historical experiment
+
 # A/B Testing: Шаблоны жалоб для пустых отзывов
 
 **Статус:** ✅ РЕАЛИЗОВАНО

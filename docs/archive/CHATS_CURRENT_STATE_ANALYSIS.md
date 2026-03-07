@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Pre-Kanban gap analysis -- historical sprint artifact
+
 # Анализ текущего состояния страницы Чаты
 
 **Дата:** 2026-01-16

@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Audit artifact -- migration 027 completed
+
 # Аудит TG Mini Apps — Резюме для руководителя
 
 **Дата:** 2026-03-06

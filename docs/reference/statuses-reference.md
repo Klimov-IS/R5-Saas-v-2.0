@@ -2,7 +2,7 @@
 
 **Purpose:** Single source of truth for all status values across the system (Database, API, Chrome Extension)
 
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -72,7 +72,7 @@
 | Status Type | Purpose | Source | Mutable |
 |-------------|---------|--------|---------|
 | `chat_strategy_enum` | Chat handling approach | Product rules | Yes (user setting) |
-| `tag` | Chat classification | AI classification | Yes (re-classify) |
+| `tag` | Deletion workflow stage | Auto (link creation) + Manual (TG) | Yes (forward-only) |
 | `completion_reason` | Why chat was closed | Manager / Cron | Yes (set on close) |
 
 ### Chat Completion Reasons
@@ -108,10 +108,12 @@
 
 ```sql
 CREATE TYPE review_status_wb AS ENUM (
-  'visible',      -- Виден (нормальный отзыв)
-  'unpublished',  -- Снят с публикации
-  'excluded',     -- Исключён из рейтинга
-  'unknown'       -- Неизвестно (по умолчанию)
+  'visible',              -- Виден (подаем жалобы + чаты)
+  'unpublished',          -- Снят с публикации (НЕ подаем жалобы, привязываем чаты)
+  'excluded',             -- Исключён из рейтинга (НЕ подаем жалобы, привязываем чаты)
+  'temporarily_hidden',   -- Временно скрыт (подаем жалобы, привязываем чаты, НЕ открываем новые) — migration 023
+  'deleted',              -- Не найден на WB (обнаружен при full sync) — migration 015
+  'unknown'               -- Неизвестно (по умолчанию)
 );
 ```
 
@@ -133,10 +135,26 @@ CREATE TYPE review_status_wb AS ENUM (
 
 #### `excluded`
 - **Meaning:** Review excluded from rating calculation
-- **Russian:** "Исключён из рейтинга" или "Временно скрыт"
+- **Russian:** "Исключён из рейтинга"
 - **WB UI:** Orange/yellow badge
 - **Business Rule:** ❌ Cannot file complaint (already excluded)
 - **Why:** Complaint approved OR automatic exclusion
+
+#### `temporarily_hidden`
+- **Meaning:** Review temporarily hidden by WB (may reappear)
+- **Russian:** "Временно скрыт"
+- **WB UI:** Badge "Временно скрыт"
+- **Business Rule:** ✅ Can file complaint, ✅ Link chats, ❌ Don't open new chats
+- **Added:** Migration 023
+- **Note:** Previously mapped to `excluded`, now separate status for accurate tracking
+
+#### `deleted`
+- **Meaning:** Review not found on WB during full sync
+- **Russian:** N/A (detected automatically)
+- **WB UI:** Review no longer exists
+- **Business Rule:** ❌ Cannot file complaint, ❌ Don't open chats
+- **Added:** Migration 015
+- **Note:** Set ONLY by full sync process, NOT by extension. `deleted_from_wb_at` timestamp tracked.
 
 #### `unknown`
 - **Meaning:** Status not yet parsed by extension
@@ -153,10 +171,12 @@ CREATE TYPE review_status_wb AS ENUM (
 
 ```sql
 CREATE TYPE product_status_by_review AS ENUM (
-  'purchased',      -- Выкуп
-  'refused',        -- Отказ
-  'not_specified',  -- Не указано
-  'unknown'         -- Неизвестно
+  'purchased',        -- Выкуп (товар выкуплен)
+  'refused',          -- Отказ (отказ от товара)
+  'returned',         -- Возврат (товар возвращён) — migration 023
+  'return_requested', -- Запрошен возврат — migration 023
+  'not_specified',    -- Не указано
+  'unknown'           -- Неизвестно
 );
 ```
 
@@ -169,10 +189,24 @@ CREATE TYPE product_status_by_review AS ENUM (
 - **Impact:** Review is more credible (actual customer)
 
 #### `refused`
-- **Meaning:** Customer refused/returned the product
+- **Meaning:** Customer refused the product
 - **Russian:** "Отказ"
 - **WB UI:** Red badge "Отказ"
 - **Impact:** Review credibility lower (didn't keep product)
+
+#### `returned`
+- **Meaning:** Customer returned the product after purchase
+- **Russian:** "Возврат"
+- **WB UI:** Badge "Возврат"
+- **Impact:** Customer had the product but returned it
+- **Added:** Migration 023
+
+#### `return_requested`
+- **Meaning:** Customer requested a return (in process)
+- **Russian:** "Запрошен возврат"
+- **WB UI:** Badge "Запрошен возврат"
+- **Impact:** Return in progress
+- **Added:** Migration 023
 
 #### `not_specified`
 - **Meaning:** Purchase status not shown by WB
@@ -194,9 +228,9 @@ CREATE TYPE product_status_by_review AS ENUM (
 
 ```sql
 CREATE TYPE chat_status_by_review AS ENUM (
-  'unavailable',  -- Недоступен
-  'available',    -- Доступен (можно открыть)
-  'opened',       -- Чат открыт (необратимо)
+  'unavailable',  -- Недоступен (WB не дает открыть чат)
+  'available',    -- Доступен (можно открыть чат)
+  'opened',       -- Чат открыт (необратимый статус) — migration 017
   'unknown'       -- Неизвестно
 );
 ```
@@ -224,6 +258,7 @@ CREATE TYPE chat_status_by_review AS ENUM (
 - **Business Rule:** ✅ Chat exists, can send messages (with reply_sign)
 - **CRITICAL:** **Необратимый статус.** Нельзя понизить до `available` или `unavailable`
 - **Added:** Migration 017
+- **SQL guard:** `review-statuses/route.ts` prevents downgrade (WB may not load chat button → extension could erroneously send `unavailable`)
 
 #### `unknown`
 - **Meaning:** Not yet parsed
@@ -256,22 +291,26 @@ CREATE TYPE chat_status_by_review AS ENUM (
 
 ```sql
 CREATE TYPE complaint_status AS ENUM (
-  'not_sent',  -- Не отправлена (жалоба не создана)
-  'draft',     -- Черновик (сгенерирована AI)
-  'sent',      -- Отправлена (пользователь подал через расширение)
-  'approved',  -- Одобрена WB
-  'rejected',  -- Отклонена WB
-  'pending'    -- На рассмотрении WB
+  'not_sent',         -- Без черновика (жалоба не создана)
+  'draft',            -- Черновик (сгенерирована AI, но не отправлена)
+  'sent',             -- Отправлена (вручную отмечено пользователем)
+  'approved',         -- Одобрена (WB одобрил жалобу)
+  'rejected',         -- Отклонена (WB отклонил жалобу)
+  'pending',          -- На рассмотрении (WB рассматривает)
+  'reconsidered',     -- Пересмотрена (WB пересмотрел решение) — migration 20260201
+  'not_applicable'    -- Нельзя подать (отзыв удалён / не на WB) — migration 015
 );
 ```
 
 ### Lifecycle Workflow
 
 ```
-not_sent → draft → sent → pending → approved / rejected
+not_sent → draft → sent → pending → approved / rejected / reconsidered
    ↑        ↓       ↑
    └────────┴───────┘
    (can regenerate)  (immutable after sent)
+
+Special: not_sent → not_applicable (review deleted or non-WB)
 ```
 
 ### Values
@@ -401,7 +440,8 @@ CREATE TYPE chat_strategy_enum AS ENUM (
 
 ## Store Status
 
-**Database Field:** `stores.status` (VARCHAR)
+**Database Field:** `stores.status` (VARCHAR(20))
+**CHECK constraint:** `status IN ('active', 'paused', 'stopped', 'trial', 'archived')` — migration 028
 
 ### Values
 
@@ -410,10 +450,25 @@ CREATE TYPE chat_strategy_enum AS ENUM (
 - **Business Rule:** ✅ Include in sync jobs, show in UI
 - **Default:** All new stores
 
-#### `inactive`
-- **Meaning:** Store temporarily disabled
-- **Business Rule:** ❌ Skip sync jobs, hide from UI
-- **Use Case:** Client paused service, API token expired
+#### `paused`
+- **Meaning:** Store temporarily paused
+- **Business Rule:** ⏸️ Skip sync jobs, still visible
+- **Use Case:** Client paused service temporarily
+
+#### `stopped`
+- **Meaning:** Store work stopped
+- **Business Rule:** ❌ Skip sync jobs
+- **Use Case:** Client contract ended
+
+#### `trial`
+- **Meaning:** Store in trial period
+- **Business Rule:** ✅ Include in sync, limited features
+- **Use Case:** New client evaluation
+
+#### `archived`
+- **Meaning:** Store archived (inactive, preserved)
+- **Business Rule:** ❌ Skip sync, hidden from active UI
+- **Use Case:** Historical data preservation
 
 ---
 
@@ -464,8 +519,11 @@ function parseReviewStatus(reviewElement) {
   if (statusText.includes('Снят с публикации')) {
     return 'unpublished';
   }
-  if (statusText.includes('Исключён из рейтинга') || statusText.includes('Временно скрыт')) {
+  if (statusText.includes('Исключён из рейтинга')) {
     return 'excluded';
+  }
+  if (statusText.includes('Временно скрыт')) {
+    return 'temporarily_hidden';  // Separated from excluded in migration 023
   }
 
   return 'unknown'; // Fallback
@@ -487,8 +545,11 @@ function parseProductStatus(reviewElement) {
   if (statusText.includes('Отказ')) {
     return 'refused';
   }
+  if (statusText.includes('Запрошен возврат')) {
+    return 'return_requested';  // Added migration 023
+  }
   if (statusText.includes('Возврат')) {
-    return 'refused'; // Same as отказ for our purposes
+    return 'returned';  // Changed from 'refused' — now separate status (migration 023)
   }
 
   return 'not_specified';
@@ -600,10 +661,10 @@ OR product.work_status != 'active'  -- Product not in workflow
 
 ```typescript
 // Ensure these match database ENUMs exactly
-export type ReviewStatusWB = 'visible' | 'unpublished' | 'excluded' | 'unknown';
-export type ProductStatusByReview = 'purchased' | 'refused' | 'not_specified' | 'unknown';
-export type ChatStatusByReview = 'unavailable' | 'available' | 'unknown';
-export type ComplaintStatus = 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending';
+export type ReviewStatusWB = 'visible' | 'unpublished' | 'excluded' | 'temporarily_hidden' | 'deleted' | 'unknown';
+export type ProductStatusByReview = 'purchased' | 'refused' | 'returned' | 'return_requested' | 'not_specified' | 'unknown';
+export type ChatStatusByReview = 'unavailable' | 'available' | 'opened' | 'unknown';
+export type ComplaintStatus = 'not_sent' | 'draft' | 'sent' | 'approved' | 'rejected' | 'pending' | 'reconsidered' | 'not_applicable';
 
 export interface ParsedReviewStatuses {
   review_status_wb: ReviewStatusWB;
@@ -684,6 +745,7 @@ interface ExtensionReviewSyncPayload {
 | 1.0 | 2026-01-09 | Initial migration: Added ENUM types to database |
 | 1.1 | 2026-01-10 | Documentation created, extension integration planned |
 | 1.2 | 2026-03-03 | Added platform constraints: WB 1-complaint rule, OZON no complaints |
+| 1.3 | 2026-03-06 | Synced ENUM definitions with production: added deleted/temporarily_hidden to review_status_wb, returned/return_requested to product_status_by_review, opened to chat_status_by_review, reconsidered/not_applicable to complaint_status. Updated store status values. Updated TypeScript types. |
 
 ---
 
@@ -701,4 +763,4 @@ interface ExtensionReviewSyncPayload {
 - [API Reference](../extension/api-reference.md) - Status field validation
 
 **Maintained By:** R5 Team
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-06

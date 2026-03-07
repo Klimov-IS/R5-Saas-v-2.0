@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Proposes 12 tags; reality = 4 + NULL (migration 024). Superseded by `docs/domains/chats-ai.md`
+
 # Chat Status & Tagging System — Product Analysis & Recommendations
 
 **Дата:** 2026-01-22

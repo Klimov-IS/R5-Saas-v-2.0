@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Unclear implementation status -- superseded by `docs/domains/complaints.md`
+
 # План интеграции системы проверки жалоб
 
 ## Обзор

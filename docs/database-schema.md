@@ -19,6 +19,8 @@
    - [reviews](#reviews)
    - [review_complaints](#review_complaints)
    - [complaint_details](#complaint_details)
+   - [complaint_backfill_jobs](#complaint_backfill_jobs)
+   - [complaint_daily_limits](#complaint_daily_limits)
 4. [Communication Tables](#communication-tables)
    - [chats](#chats)
    - [chat_status_history](#chat_status_history)
@@ -27,11 +29,13 @@
    - [chat_auto_sequences](#chat_auto_sequences)
    - [store_faq](#store_faq)
    - [store_guides](#store_guides)
+   - [manager_tasks](#manager_tasks)
 5. [Configuration Tables](#configuration-tables)
    - [user_settings](#user_settings)
    - [product_rules](#product_rules)
 6. [Analytics Tables](#analytics-tables)
    - [ai_logs](#ai_logs)
+   - [review_statuses_from_extension](#review_statuses_from_extension)
 7. [Auth & Organizations Tables](#auth--organizations-tables)
    - [organizations](#organizations)
    - [org_members](#org_members)
@@ -121,11 +125,13 @@ CREATE TYPE product_status_by_review AS ENUM (
 CREATE TYPE chat_status_by_review AS ENUM (
   'unavailable',  -- Недоступен (WB не дает открыть чат)
   'available',    -- Доступен (можно открыть чат)
+  'opened',       -- Чат открыт (необратимо, migration 017)
   'unknown'       -- Неизвестно
 );
 ```
 
 **Usage:** Indicates if we can initiate dialogue with reviewer
+**`opened`** — irreversible status. Once chat is opened, status stays `opened` forever. SQL guard in `review-statuses/route.ts` prevents downgrade.
 
 ---
 
@@ -281,7 +287,8 @@ CREATE TABLE stores (
   created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-  CONSTRAINT stores_marketplace_check CHECK (marketplace IN ('wb', 'ozon'))
+  CONSTRAINT stores_marketplace_check CHECK (marketplace IN ('wb', 'ozon')),
+  CONSTRAINT chk_store_status CHECK (status IN ('active', 'paused', 'stopped', 'trial', 'archived'))  -- migration 028
 );
 ```
 
@@ -419,11 +426,12 @@ CREATE TABLE reviews (
   supplier_feedback_valuation INTEGER NULL,
   supplier_product_valuation  INTEGER NULL,
 
-  -- Legacy complaint fields (kept for backward compatibility)
+  -- Complaint denormalization (dual-write with review_complaints, used by DB trigger)
   complaint_text             TEXT NULL,
   complaint_sent_date        TIMESTAMPTZ NULL,
+
+  -- Review reply draft (active workflow: AI generates → user edits → sends → cleared)
   draft_reply                TEXT NULL,
-  draft_reply_thread_id      TEXT NULL,
 
   -- Denormalized flags (for fast filtering)
   is_product_active          BOOLEAN DEFAULT TRUE,
@@ -436,11 +444,6 @@ CREATE TABLE reviews (
   product_status_by_review   product_status_by_review DEFAULT 'unknown',
   chat_status_by_review      chat_status_by_review DEFAULT 'unknown',
   complaint_status           complaint_status DEFAULT 'not_sent',
-
-  -- Complaint metadata (duplicated in review_complaints table)
-  complaint_generated_at     TIMESTAMPTZ NULL,
-  complaint_reason_id        INTEGER NULL,
-  complaint_category         TEXT NULL,
 
   -- Extension parsing metadata
   purchase_date              TIMESTAMPTZ NULL,
@@ -701,6 +704,90 @@ CREATE INDEX idx_cd_review ON complaint_details(review_id) WHERE review_id IS NO
 
 ---
 
+### `complaint_backfill_jobs`
+
+**Purpose:** Queue for bulk complaint generation when products are activated. Manages daily limits and progress tracking.
+
+**Created by:** Migration `20260208_001_complaint_backfill_system.sql`
+
+```sql
+CREATE TABLE complaint_backfill_jobs (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id          TEXT NOT NULL,
+  store_id            TEXT NOT NULL,
+  owner_id            TEXT NOT NULL,
+
+  status              TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'in_progress', 'completed', 'paused', 'failed')),
+  priority            INTEGER NOT NULL DEFAULT 0,
+
+  -- Progress
+  total_reviews       INTEGER NOT NULL DEFAULT 0,
+  processed           INTEGER NOT NULL DEFAULT 0,
+  failed              INTEGER NOT NULL DEFAULT 0,
+  skipped             INTEGER NOT NULL DEFAULT 0,
+
+  -- Daily limit tracking
+  daily_generated     INTEGER NOT NULL DEFAULT 0,
+  daily_limit_date    DATE,
+
+  -- Error handling
+  last_error          TEXT,
+  retry_count         INTEGER NOT NULL DEFAULT 0,
+  max_retries         INTEGER NOT NULL DEFAULT 3,
+
+  triggered_by        TEXT,  -- 'product_activation', 'store_activation', 'manual', 'rules_change'
+  metadata            JSONB DEFAULT '{}'::jsonb,
+
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  started_at          TIMESTAMPTZ,
+  completed_at        TIMESTAMPTZ,
+  last_processed_at   TIMESTAMPTZ
+);
+```
+
+**Indexes:**
+```sql
+CREATE INDEX idx_backfill_status ON complaint_backfill_jobs(status);
+CREATE INDEX idx_backfill_store ON complaint_backfill_jobs(store_id);
+CREATE INDEX idx_backfill_product ON complaint_backfill_jobs(product_id);
+CREATE INDEX idx_backfill_priority_created ON complaint_backfill_jobs(priority DESC, created_at ASC)
+  WHERE status IN ('pending', 'in_progress');
+CREATE UNIQUE INDEX idx_backfill_product_active ON complaint_backfill_jobs(product_id)
+  WHERE status IN ('pending', 'in_progress', 'paused');
+```
+
+**Key constraint:** `idx_backfill_product_active` ensures only one active job per product.
+
+**View:** `v_backfill_status` — monitoring view with progress % and daily limit info.
+
+---
+
+### `complaint_daily_limits`
+
+**Purpose:** Track daily complaint generation limits per store (default: 2000/day).
+
+**Created by:** Migration `20260208_001_complaint_backfill_system.sql`
+
+```sql
+CREATE TABLE complaint_daily_limits (
+  store_id    TEXT NOT NULL,
+  date        DATE NOT NULL,
+  generated   INTEGER NOT NULL DEFAULT 0,
+  limit_value INTEGER NOT NULL DEFAULT 2000,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (store_id, date)
+);
+```
+
+**Helper functions:**
+- `get_remaining_daily_limit(store_id, date)` — returns remaining quota
+- `increment_daily_limit(store_id, count, date)` — UPSERT increment
+
+---
+
 ## Communication Tables
 
 ### `chats`
@@ -728,21 +815,22 @@ CREATE TABLE chats (
   last_message_text         TEXT NULL,
   last_message_sender       TEXT NULL,
 
-  -- Chat classification (AI-assigned tag)
-  tag                       TEXT NOT NULL DEFAULT 'untagged',
+  -- Chat classification (deletion workflow stage, migration 024: simplified to 4 tags + NULL)
+  tag                       TEXT NULL,  -- NULL = new/unprocessed
   tag_update_date           TIMESTAMPTZ NULL,
 
-  -- Kanban board status (user-managed)
+  -- Kanban board status (user-managed, migration 008: 4 statuses)
   status                    TEXT NOT NULL DEFAULT 'inbox',
+  status_updated_at         TIMESTAMPTZ DEFAULT NOW(),
   completion_reason         TEXT NULL,  -- required when status='closed'
+
+  CONSTRAINT chats_tag_check CHECK (tag IS NULL OR tag IN ('deletion_candidate', 'deletion_offered', 'deletion_agreed', 'deletion_confirmed')),
+  CONSTRAINT chats_status_check CHECK (status IN ('inbox', 'in_progress', 'awaiting_reply', 'closed')),
+  CONSTRAINT chk_completion_reason CHECK (completion_reason IS NULL OR completion_reason IN ('review_deleted', 'review_upgraded', 'review_resolved', 'temporarily_hidden', 'refusal', 'no_reply', 'old_dialog', 'not_our_issue', 'spam', 'negative', 'other')),
 
   -- AI draft reply
   draft_reply               TEXT NULL,
   draft_reply_thread_id     TEXT NULL,
-
-  -- No-reply automation (tracking sent messages)
-  sent_no_reply_messages    JSONB DEFAULT '[]'::jsonb,
-  sent_no_reply_messages2   JSONB DEFAULT '[]'::jsonb,
 
   -- OZON-specific fields (migration 013)
   ozon_chat_type            TEXT NULL,          -- 'BUYER_SELLER' | 'SELLER_SUPPORT' | 'UNSPECIFIED'
@@ -763,11 +851,10 @@ CREATE TABLE chats (
 
 **Key Fields:**
 - `marketplace` - 'wb' | 'ozon' (migration 013)
-- `tag` - Deletion workflow stage (4 тега + NULL): `deletion_candidate` (auto on link creation), `deletion_offered`, `deletion_agreed`, `deletion_confirmed` (manual from TG), NULL = new/unprocessed. AI classification removed (migration 024).
-- `status` - Kanban position (4 статуса): `inbox`, `awaiting_reply`, `in_progress`, `closed` (resolved removed in migration 008)
-- `completion_reason` - причина закрытия: `review_deleted`, `review_upgraded`, `no_reply`, `old_dialog`, `not_our_issue`, `spam`, `negative`, `other`
-- `sent_no_reply_messages` - история отправленных авто-сообщений (набор 1)
-- `sent_no_reply_messages2` - история отправленных авто-сообщений (набор 2)
+- `tag` - Deletion workflow stage (4 тега + NULL): `deletion_candidate` (auto on link creation), `deletion_offered`, `deletion_agreed`, `deletion_confirmed` (manual from TG), NULL = new/unprocessed. AI classification removed (migration 024). CHECK constraint enforces valid values.
+- `status` - Kanban position (4 статуса): `awaiting_reply` (default for new chats + mailing), `inbox` (buyer replied), `in_progress` (seller replied), `closed`. CHECK constraint enforces valid values (resolved removed in migration 008).
+- `status_updated_at` - tracks when status was last changed (migration 003)
+- `completion_reason` - причина закрытия (11 values): `review_deleted`, `review_upgraded`, `review_resolved`, `temporarily_hidden`, `refusal`, `no_reply`, `old_dialog`, `not_our_issue`, `spam`, `negative`, `other`. CHECK constraint enforces valid values.
 
 **Indexes:**
 ```sql
@@ -777,6 +864,10 @@ CREATE INDEX idx_chats_store_tag_date ON chats(store_id, tag, last_message_date 
 CREATE INDEX idx_chats_last_message ON chats(last_message_date DESC);
 CREATE INDEX idx_chats_product ON chats(product_nm_id) WHERE product_nm_id IS NOT NULL;
 CREATE INDEX idx_chats_marketplace ON chats(marketplace);  -- migration 013
+
+-- Kanban board (migration 003)
+CREATE INDEX idx_chats_status ON chats(store_id, status, updated_at DESC);
+CREATE INDEX idx_chats_kanban ON chats(store_id, status, status_updated_at DESC, updated_at DESC);
 ```
 
 ---
@@ -874,6 +965,8 @@ CREATE TABLE questions (
   store_id                TEXT NOT NULL REFERENCES stores(id),
   owner_id                TEXT NOT NULL REFERENCES users(id),
 
+  marketplace             TEXT NOT NULL DEFAULT 'wb',  -- 'wb' | 'ozon' (migration 028)
+
   text                    TEXT NOT NULL,
   created_date            TIMESTAMPTZ NOT NULL,
   state                   TEXT NOT NULL,
@@ -883,7 +976,7 @@ CREATE TABLE questions (
   answer                  JSONB NULL,
 
   -- Product context
-  product_nm_id           INTEGER NOT NULL,
+  product_nm_id           TEXT NOT NULL,  -- Was INTEGER, changed to TEXT in migration 028 for consistency with products.wb_product_id
   product_name            TEXT NOT NULL,
   product_supplier_article TEXT NULL,
   product_brand_name      TEXT NULL,
@@ -959,6 +1052,7 @@ CREATE TABLE review_chat_links (
 - `review_id` nullable — matched asynchronously via fuzzy date/rating query
 - `chat_id` nullable — populated by dialogue sync reconciliation (Step 3.5)
 - `UNIQUE(store_id, review_key)` — one review = one chat link per store
+- `UNIQUE(chat_id, store_id) WHERE chat_id IS NOT NULL` — one chat = one review (migration 026). Enforces 1:1 invariant.
 - Both FKs use `ON DELETE SET NULL` — link survives if review/chat is deleted
 
 **Indexes:**
@@ -970,6 +1064,7 @@ idx_rcl_status(store_id, status)
 idx_rcl_chat_url(chat_url)
 idx_rcl_review_key(store_id, review_key)
 idx_rcl_matching(store_id, review_nm_id, review_rating, review_date)  -- NOT EXISTS dedup (2026-03-02)
+idx_rcl_unique_chat(chat_id, store_id) WHERE chat_id IS NOT NULL  -- 1 chat = 1 review (migration 026)
 ```
 
 ---
@@ -982,7 +1077,7 @@ idx_rcl_matching(store_id, review_nm_id, review_rating, review_date)  -- NOT EXI
 CREATE TABLE chat_auto_sequences (
   id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   chat_id                 TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-  store_id                TEXT NOT NULL,
+  store_id                TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,  -- FK added in migration 028
   owner_id                TEXT NOT NULL,
 
   -- Sequence configuration
@@ -1019,7 +1114,7 @@ CREATE INDEX idx_auto_sequences_chat ON chat_auto_sequences(chat_id, status);
 ```sql
 CREATE TABLE store_faq (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id    TEXT NOT NULL,
+  store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,  -- FK added in migration 028
   question    TEXT NOT NULL,
   answer      TEXT NOT NULL,
   is_active   BOOLEAN DEFAULT TRUE,
@@ -1030,7 +1125,7 @@ CREATE TABLE store_faq (
 ```
 
 **Key Fields:**
-- `store_id` — магазин-владелец (no FK, TEXT ID)
+- `store_id` — магазин-владелец (FK → stores(id) ON DELETE CASCADE, migration 028)
 - `question` / `answer` — пара вопрос-ответ
 - `is_active` — вкл/выкл отдельных записей без удаления
 - `sort_order` — порядок отображения
@@ -1055,7 +1150,7 @@ CREATE INDEX idx_store_faq_store_id ON store_faq(store_id);
 ```sql
 CREATE TABLE store_guides (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id    TEXT NOT NULL,
+  store_id    TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,  -- FK added in migration 028
   title       TEXT NOT NULL,
   content     TEXT NOT NULL,
   is_active   BOOLEAN DEFAULT TRUE,
@@ -1081,6 +1176,50 @@ CREATE INDEX idx_store_guides_store_id ON store_guides(store_id);
 **UI:** Вкладка AI → секция "Инструкции для клиентов" (CRUD + 7 шаблонов из `src/lib/guide-templates.ts`)
 
 **AI injection:** Активные гайды форматируются как `### Title\nContent` и инжектируются в system prompt через `buildStoreInstructions()` в `src/lib/ai-context.ts`
+
+---
+
+### `manager_tasks`
+
+**Purpose:** Centralized task tracking for managers across multiple stores. Entity-polymorphic (review/chat/question).
+
+**Created by:** Migration 002
+
+```sql
+CREATE TABLE manager_tasks (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  store_id     TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+
+  entity_type  TEXT NOT NULL CHECK (entity_type IN ('review', 'chat', 'question')),
+  entity_id    TEXT NOT NULL,
+  action       TEXT NOT NULL CHECK (action IN ('generate_complaint', 'submit_complaint', 'check_complaint', 'reply_to_chat', 'reply_to_question')),
+
+  status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+  priority     TEXT DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+
+  due_date     TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+
+  title        TEXT NOT NULL,
+  description  TEXT,
+  notes        TEXT,
+
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Indexes:**
+```sql
+CREATE INDEX idx_manager_tasks_user_id ON manager_tasks(user_id);
+CREATE INDEX idx_manager_tasks_store_id ON manager_tasks(store_id);
+CREATE INDEX idx_manager_tasks_status ON manager_tasks(status);
+CREATE INDEX idx_manager_tasks_entity ON manager_tasks(entity_type, entity_id);
+CREATE INDEX idx_manager_tasks_user_status ON manager_tasks(user_id, status);
+```
+
+**Trigger:** `trg_validate_manager_task_entity` — validates entity exists before insert/update.
 
 ---
 
@@ -1111,21 +1250,10 @@ CREATE TABLE user_settings (
   prompt_review_complaint   TEXT NULL,  -- генерация жалоб
   prompt_review_reply       TEXT NULL,  -- ответы на отзывы
 
-  -- OpenAI assistants (deprecated)
-  assistant_chat_reply      TEXT NULL,
-  assistant_chat_tag        TEXT NULL,
-  assistant_question_reply  TEXT NULL,
-  assistant_review_complaint TEXT NULL,
-  assistant_review_reply    TEXT NULL,
-
-  -- Auto-reply messages
-  no_reply_messages         JSONB DEFAULT '[]'::jsonb,
-  no_reply_trigger_phrase   TEXT NULL,
-  no_reply_stop_message     TEXT NULL,
-
-  no_reply_messages2        JSONB DEFAULT '[]'::jsonb,
-  no_reply_trigger_phrase2  TEXT NULL,
-  no_reply_stop_message2    TEXT NULL,
+  -- Auto-reply stop messages (active: used by cron auto-sequence processor)
+  no_reply_trigger_phrase   TEXT NULL,      -- trigger phrase for legacy backfill scripts
+  no_reply_stop_message     TEXT NULL,      -- 1-3★ sequence completion message
+  no_reply_stop_message2    TEXT NULL,      -- 4★ sequence completion message
 
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1239,6 +1367,46 @@ CREATE INDEX idx_ai_logs_store_error ON ai_logs(store_id, error) WHERE error IS 
 
 ---
 
+### `review_statuses_from_extension`
+
+**Purpose:** Stores review statuses parsed by Chrome Extension from WB seller cabinet. Used to filter reviews before complaint generation (saves ~80% AI tokens). Separate from `reviews` table because extension uses composite key matching, not internal review IDs.
+
+**Created by:** Migration `20260201_001_review_statuses_from_extension.sql`
+
+```sql
+CREATE TABLE review_statuses_from_extension (
+  id              SERIAL PRIMARY KEY,
+  review_key      VARCHAR(100) NOT NULL,     -- Format: {productId}_{rating}_{datetime without seconds}
+  store_id        TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  product_id      VARCHAR(50) NOT NULL,      -- WB product nmId
+  rating          SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  review_date     TIMESTAMPTZ NOT NULL,
+
+  statuses             JSONB NOT NULL DEFAULT '[]',  -- ["Жалоба отклонена", "Выкуп", ...]
+  can_submit_complaint BOOLEAN NOT NULL DEFAULT true,
+
+  parsed_at       TIMESTAMPTZ NOT NULL,
+  created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+  UNIQUE(review_key, store_id)
+);
+```
+
+**Indexes:**
+```sql
+CREATE INDEX idx_ext_statuses_store_can_submit ON review_statuses_from_extension(store_id, can_submit_complaint);
+CREATE INDEX idx_ext_statuses_product_rating_date ON review_statuses_from_extension(store_id, product_id, rating, review_date);
+CREATE INDEX idx_ext_statuses_parsed_at ON review_statuses_from_extension(parsed_at DESC);
+```
+
+**Key Fields:**
+- `review_key` — composite key for matching: `{productId}_{rating}_{datetime}` (e.g., `649502497_1_2026-01-07T20:09`)
+- `statuses` — JSONB array of Russian status strings from WB UI (e.g., "Жалоба отклонена", "Выкуп")
+- `can_submit_complaint` — calculated by extension: true if no complaint-related status present
+
+---
+
 ## Telegram Integration Tables
 
 ### `telegram_users`
@@ -1309,6 +1477,8 @@ users (1) ───── (N) stores
   │                  │                  └─── (N) complaint_details (approved complaints, source of truth)
   │                  │
   │                  ├─── (N) complaint_details (via store_id)
+  │                  ├─── (N) complaint_backfill_jobs (via store_id)
+  │                  ├─── (N) complaint_daily_limits (via store_id)
   │                  │
   │                  ├─── (N) chats
   │                  │        ├─── (N) chat_messages
@@ -1321,6 +1491,8 @@ users (1) ───── (N) stores
   │                  │
   │                  ├─── (N) store_faq
   │                  ├─── (N) store_guides
+  │                  ├─── (N) manager_tasks
+  │                  ├─── (N) review_statuses_from_extension
   │                  │
   │                  └─── (N) questions
   │
@@ -1469,8 +1641,12 @@ Key migrations:
 19. `023_review_status_alignment.sql` - Align statuses 1:1 with WB: add `temporarily_hidden` to review_status_wb, add `returned`/`return_requested` to product_status_by_review, backfill `deleted` → `unpublished` where set by extension
 
 20. `025_add_work_from_date_and_comment.sql` - `work_from_date` DATE + `comment` TEXT on product_rules (per-product cutoff date + manager comment for Google Sheets)
-
-21. `027_chat_audit_trail.sql` - `status_changed_by` TEXT + `closure_type` VARCHAR(20) on chats, `chat_status_history` table (immutable audit log for every status/tag change, `change_source` tracking)
+21. `024_simplify_chat_tags.sql` - Simplified tag system (12 → 4 + NULL), removed AI classification, dropped NOT NULL/DEFAULT on tag
+22. `024_update_completion_reason_check.sql` - Added CHECK constraint for 11 completion_reason values
+23. `026_enforce_chat_review_unique.sql` - Added UNIQUE constraint on review_chat_links(chat_id, store_id) WHERE chat_id IS NOT NULL (1 chat = 1 review)
+24. `027_chat_audit_trail.sql` - `status_changed_by` TEXT + `closure_type` VARCHAR(20) on chats, `chat_status_history` table (immutable audit log for every status/tag change, `change_source` tracking)
+25. `028_schema_integrity_improvements.sql` - FK constraints on store_faq/store_guides/chat_auto_sequences, stores.status CHECK, questions.marketplace + product_nm_id TEXT, performance indexes
+26. `029_drop_dead_columns.sql` - Drop 14 dead columns: reviews (draft_reply_thread_id, complaint_generated_at, complaint_reason_id, complaint_category), chats (sent_no_reply_messages x2), user_settings (no_reply_messages x2, no_reply_trigger_phrase2, assistant_* x5)
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 

@@ -226,6 +226,114 @@ Authorization: Bearer wbrm_<token>
 
 ---
 
+### 2a. Active Products
+
+#### GET /api/extension/stores/{storeId}/active-products
+
+Returns active products for a store (only `work_status = 'active'`).
+
+**Response 200:**
+
+```json
+{
+  "products": [
+    {
+      "id": "7kKX9WgLvOPiXYIHk6hi_766104062",
+      "wb_product_id": "766104062",
+      "vendor_code": "ART-001-BLK",
+      "name": "Футболка мужская оверсайз хлопок",
+      "work_status": "active",
+      "rules": {
+        "submit_complaints": true,
+        "complaint_rating_1": true,
+        "complaint_rating_2": true,
+        "complaint_rating_3": false,
+        "complaint_rating_4": false,
+        "work_in_chats": true,
+        "chat_strategy": null
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| wb_product_id | string | WB nmId (article number) |
+| rules.submit_complaints | boolean | Whether to file complaints |
+| rules.complaint_rating_1..4 | boolean | Which ratings to complain about |
+| rules.work_in_chats | boolean | Whether to work with chats |
+
+---
+
+### 2b. Extension Tasks
+
+#### GET /api/extension/stores/{storeId}/tasks
+
+Returns all extension tasks grouped by article. Main endpoint for the status checker extension.
+
+**Response 200:**
+
+```json
+{
+  "storeId": "7kKX9WgLvOPiXYIHk6hi",
+  "articles": {
+    "766104062": {
+      "nmId": "766104062",
+      "statusParses": [
+        {
+          "reviewId": "review_abc123",
+          "reviewKey": "766104062_1_2026-01-15T10:30",
+          "rating": 1,
+          "date": "2026-01-15T10:30:37.000Z",
+          "authorName": "Покупатель А.",
+          "text": "Ужасное качество...",
+          "currentComplaintStatus": "draft",
+          "currentChatStatus": null,
+          "currentReviewStatus": null
+        }
+      ],
+      "chatOpens": [],
+      "complaints": []
+    }
+  },
+  "totals": {
+    "statusParses": 3,
+    "chatOpens": 0,
+    "chatOpensNew": 0,
+    "chatLinks": 0,
+    "complaints": 0,
+    "articles": 2
+  },
+  "totalCounts": {
+    "statusParses": 150,
+    "chatOpens": 0,
+    "chatOpensNew": 0,
+    "chatLinks": 0,
+    "complaints": 0
+  },
+  "limits": {
+    "maxChatsPerRun": 50,
+    "maxComplaintsPerRun": 300,
+    "cooldownBetweenChatsMs": 3000,
+    "cooldownBetweenComplaintsMs": 1000
+  }
+}
+```
+
+**Key fields in `statusParses`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| reviewKey | string | `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}` — key for matching reviews on WB |
+| currentComplaintStatus | string\|null | `null`, `draft`, `pending`, `approved`, `rejected` |
+
+**Limits:**
+- `statusParses` returns up to 500 reviews per request
+- `totalCounts.statusParses` shows total count (for progress bar)
+
+---
+
 ### 3. Complaints Queue
 
 #### GET /api/extension/stores/{storeId}/complaints
@@ -424,7 +532,7 @@ const canSubmitComplaint = !statuses.some(s => COMPLAINT_STATUSES.includes(s));
 ### Production Environment
 
 ```bash
-Base URL: http://158.160.217.236
+Base URL: http://158.160.229.16
 Test Token: wbrm_0ab7137430d4fb62948db3a7d9b4b997
 Test Store: 7kKX9WgLvOPiXYIHk6hi (ИП Артюшина)
 ```
@@ -434,7 +542,7 @@ Test Store: 7kKX9WgLvOPiXYIHk6hi (ИП Артюшина)
 #### Тест POST review-statuses:
 
 ```bash
-curl -X POST "http://158.160.217.236/api/extension/review-statuses" \
+curl -X POST "http://158.160.229.16/api/extension/review-statuses" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997" \
   -d '{
@@ -457,14 +565,14 @@ curl -X POST "http://158.160.217.236/api/extension/review-statuses" \
 #### Тест GET review-statuses:
 
 ```bash
-curl "http://158.160.217.236/api/extension/review-statuses?storeId=7kKX9WgLvOPiXYIHk6hi&limit=10" \
+curl "http://158.160.229.16/api/extension/review-statuses?storeId=7kKX9WgLvOPiXYIHk6hi&limit=10" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997"
 ```
 
 #### Тест GET complaints:
 
 ```bash
-curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints?limit=5" \
+curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints?limit=5" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997"
 ```
 
@@ -727,7 +835,7 @@ curl "http://158.160.217.236/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaint
 
 **Backend Team:** WB Reputation Manager v2.0.0
 **Repository:** https://github.com/Klimov-IS/R5-Saas-v-2.0
-**Production:** http://158.160.217.236
+**Production:** http://158.160.229.16
 
 ---
 

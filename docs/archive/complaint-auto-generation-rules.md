@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Content merged into [auto-complaints.md](../domains/auto-complaints.md)
+
 # 🤖 Правила автоматической генерации жалоб
 
 ## ✅ Критерии отбора отзывов для генерации жалоб

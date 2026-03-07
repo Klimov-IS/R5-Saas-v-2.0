@@ -1,3 +1,5 @@
+> **ARCHIVED (2026-03-06):** Content merged into [EXTENSION_API_COMPLETE.md](../reference/EXTENSION_API_COMPLETE.md)
+
 # API Спецификация: Расширение для проверки статусов жалоб
 
 > **Статус:** API уже реализован и работает в продакшене.

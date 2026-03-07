@@ -2,7 +2,7 @@
 
 **Version:** 2.1.0
 **Last Updated:** 2026-02-20
-**Production URL:** http://158.160.217.236
+**Production URL:** http://158.160.229.16
 
 ---
 
@@ -272,7 +272,7 @@ async function fetchAllComplaints(storeId, token) {
 
   while (true) {
     const response = await fetch(
-      `http://158.160.217.236/api/stores/${storeId}/complaints?skip=${skip}&take=${take}`,
+      `http://158.160.229.16/api/stores/${storeId}/complaints?skip=${skip}&take=${take}`,
       {
         headers: { 'Authorization': `Bearer ${token}` }
       }
@@ -346,7 +346,7 @@ async function markAsSent(storeId, reviewId, token) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch(
-        `http://158.160.217.236/api/stores/${storeId}/reviews/${reviewId}/complaint/sent`,
+        `http://158.160.229.16/api/stores/${storeId}/reviews/${reviewId}/complaint/sent`,
         {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -478,7 +478,7 @@ Content-Type: application/json
 ## Support
 
 **Issues:** Report bugs or request features via GitHub Issues
-**Production Dashboard:** http://158.160.217.236
+**Production Dashboard:** http://158.160.229.16
 **Technical Contact:** See project README
 
 ---

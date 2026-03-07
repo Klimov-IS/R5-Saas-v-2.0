@@ -1,0 +1,232 @@
+ROLE
+
+You are a Principal Software Architect and Knowledge Systems Designer.
+
+Your task is to perform a deep semantic reorganization of the R5 SaaS documentation system.
+
+The repository already went through a first documentation cleanup and audit.
+However the current documentation still reflects the *history of development* rather than the *structure of the product and business logic*.
+
+Your mission is to analyze the entire documentation corpus and propose a new documentation architecture that reflects the true structure of the system.
+
+The goal is NOT to create more documents.
+
+The goal is to reduce fragmentation and produce a small set of high-quality, foundational documents that describe:
+
+• business logic
+• system behavior
+• product capabilities
+• platform rules
+
+These documents must become the **source of truth** for future development.
+
+The documentation must be structured so that engineers and AI agents can use it as the authoritative specification of the system.
+
+---
+
+CONTEXT
+
+The current documentation includes:
+
+• domain rules
+• product specifications
+• UI design documents
+• development guides
+• sprint artifacts
+• experimental documents
+• historical reports
+
+Some documents describe **long-term system rules**.
+
+Some documents describe **temporary development artifacts**.
+
+Some documents describe **specific UI components or screens**.
+
+Over time, these became mixed together.
+
+As a result, the documentation structure does not clearly reflect the system architecture or product domains.
+
+---
+
+GOAL
+
+Reconstruct a **clean documentation architecture** that:
+
+1. reflects the real structure of the system
+2. groups knowledge by logical domains
+3. reduces the number of documents where possible
+4. preserves all historical documents in archive
+5. creates a small number of foundational documents describing core system rules
+
+The resulting documentation system should prioritize **clarity and authority**, not quantity.
+
+---
+
+PHASE 1 — DOCUMENT CLASSIFICATION
+
+Analyze all documentation files inside the repository.
+
+Classify each document by **knowledge type**, for example:
+
+• core business rules
+• system architecture
+• product behavior
+• UI implementation
+• technical reference
+• operational guide
+• sprint artifact
+• experiment
+• historical report
+
+Output a table:
+
+file_path  
+knowledge_type  
+topic  
+long_term_relevance  
+recommended_action
+
+Actions may include:
+
+keep  
+merge  
+rewrite  
+move  
+archive
+
+---
+
+PHASE 2 — KNOWLEDGE DOMAIN DISCOVERY
+
+Analyze the documentation corpus and infer the **natural domains of the system**.
+
+Domains may correspond to:
+
+• business processes
+• platform integrations
+• product capabilities
+• internal subsystems
+• operational infrastructure
+
+Do NOT assume any predefined structure.
+
+Instead infer the domains from the actual system logic described in the documents.
+
+Output:
+
+Domain map
+
+domain_name  
+description  
+related_documents
+
+---
+
+PHASE 3 — DOCUMENT FRAGMENTATION ANALYSIS
+
+Identify where knowledge about a single domain is fragmented across multiple files.
+
+Examples may include:
+
+• business logic split across many files
+• UI documentation separated from the product behavior it belongs to
+• operational rules scattered across multiple documents
+
+For each fragmented domain provide:
+
+domain  
+related_documents  
+problems  
+recommended consolidation
+
+---
+
+PHASE 4 — CANONICAL DOCUMENT DESIGN
+
+Design a set of **canonical documents**.
+
+Canonical documents should:
+
+• represent the core knowledge of the system
+• consolidate fragmented knowledge
+• be stable long-term references
+• serve as authoritative sources for development
+
+Each canonical document should describe a coherent domain of the system.
+
+For each canonical document provide:
+
+title  
+purpose  
+scope  
+topics covered  
+source documents merged into it
+
+The number of canonical documents should be **kept as small as possible while preserving clarity**.
+
+---
+
+PHASE 5 — NEW DOCUMENTATION ARCHITECTURE
+
+Based on the discovered domains and canonical documents, propose a new documentation structure.
+
+The structure must:
+
+• group knowledge logically
+• separate long-term documentation from temporary documents
+• keep operational guides easy to find
+• isolate historical artifacts into archive
+
+Output a full folder tree of the proposed documentation architecture.
+
+---
+
+PHASE 6 — MIGRATION PLAN
+
+Create a migration plan for transforming the current documentation into the new architecture.
+
+For each existing document specify:
+
+original_path  
+action (keep / merge / rewrite / move / archive)  
+target_location
+
+The migration must preserve all knowledge.
+
+Nothing should be deleted without archival.
+
+---
+
+PHASE 7 — FOUNDATIONAL DOCUMENT REQUIREMENTS
+
+Define what information every foundational document must contain.
+
+For example:
+
+• purpose
+• scope
+• system rules
+• constraints
+• dependencies
+• related components
+• examples
+
+These documents must become the authoritative reference for future development.
+
+---
+
+OUTPUT FORMAT
+
+Provide a structured report with the following sections:
+
+1. Documentation Inventory
+2. Knowledge Domain Map
+3. Fragmentation Analysis
+4. Canonical Document Design
+5. Proposed Documentation Architecture
+6. Migration Plan
+7. Foundational Documentation Standards
+
+Do NOT modify files yet.
+
+Only produce the analysis and design plan.

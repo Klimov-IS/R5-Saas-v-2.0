@@ -1,6 +1,6 @@
 # Troubleshooting Guide - WB Reputation Manager
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -36,7 +36,7 @@ PGPASSWORD="MyNewPass123" psql \
 **2. Invalid Credentials**
 ```bash
 # Verify environment variables (production server)
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cat /var/www/wb-reputation/.env.production | grep POSTGRES"
 ```
 
@@ -121,60 +121,94 @@ No `[CRON]` logs after server restart.
 #### Diagnosis
 
 ```bash
-# 1. Check if instrumentation.ts ran
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
-  "pm2 logs wb-reputation | grep INSTRUMENTATION"
+# 1. Check cron process status (separate PM2 process since 2026-02)
+pm2 status   # Should show wb-reputation-cron as "online"
 
-# Expected output:
-# [INSTRUMENTATION] 🚀 Server starting, initializing cron jobs...
-# [INSTRUMENTATION] ✅ Cron jobs initialized successfully
+# 2. Check cron logs
+pm2 logs wb-reputation-cron --lines 100 --nostream
 
-# 2. Verify CRON job registration
-pm2 logs wb-reputation | grep "Daily review sync job started"
+# 3. Verify cron triggered API
+pm2 logs wb-reputation-cron | grep "trigger"
 ```
 
 #### Common Causes
 
-**1. Instrumentation Hook Not Enabled**
+**1. Cron process not running**
 
-Check [next.config.mjs](../next.config.mjs):
+The cron scheduler runs as a separate PM2 fork process `wb-reputation-cron`.
+It triggers `/api/cron/trigger` once at its own start, which initializes all cron jobs.
 
-```javascript
-const nextConfig = {
-  experimental: {
-    instrumentationHook: true,  // MUST be true
-  },
-};
+```bash
+# Check if cron process is running
+pm2 status   # Look for wb-reputation-cron
+
+# If not running:
+pm2 start ecosystem.config.js
 ```
 
-**2. Runtime Not Node.js**
+**2. Cron process was not restarted after web app reload**
 
-[instrumentation.ts](../instrumentation.ts) only runs in Node.js runtime:
+CRITICAL: Cron schedulers are in-memory in Next.js. After `pm2 reload wb-reputation`, you MUST also restart cron:
 
-```typescript
-if (process.env.NEXT_RUNTIME === 'nodejs') {
-  // CRON jobs start here
-}
+```bash
+pm2 reload wb-reputation && pm2 restart wb-reputation-cron
 ```
-
-Edge runtime won't initialize CRON jobs (this is intentional).
 
 **3. Server Crash During Initialization**
 
 ```bash
 # Check for errors
+pm2 logs wb-reputation-cron --err --lines 50 --nostream
 pm2 logs wb-reputation --err | grep -E "INIT|CRON"
 ```
 
 #### Fix
 
 ```bash
-# Restart PM2 to re-initialize
-pm2 reload wb-reputation
+# Restart cron process
+pm2 restart wb-reputation-cron
 
 # Verify initialization
-pm2 logs wb-reputation --lines 100 | grep -E "INSTRUMENTATION|INIT|CRON"
+pm2 logs wb-reputation-cron --lines 50 --nostream
 ```
+
+---
+
+### 3b. Telegram Bot Not Working
+
+#### Symptom
+
+TG Mini App shows errors, bot doesn't respond.
+
+#### Diagnosis
+
+```bash
+# Check TG bot process
+pm2 status   # Look for wb-reputation-tg-bot
+
+# Check TG bot logs
+pm2 logs wb-reputation-tg-bot --lines 100 --nostream
+```
+
+#### Common Causes
+
+**1. Bot process not running**
+
+```bash
+pm2 restart wb-reputation-tg-bot
+```
+
+**2. Bot token invalid**
+
+```bash
+# Check TELEGRAM_BOT_TOKEN in .env
+cat /var/www/wb-reputation/.env.local | grep TELEGRAM
+```
+
+**3. Webhook conflict**
+
+The bot uses long-polling (not webhooks). If another instance is running, it will conflict.
+PM2 processes are independent — restarting web app doesn't affect TG bot.
 
 ---
 
@@ -218,7 +252,7 @@ pm2 save
 #### Symptom
 
 ```bash
-curl http://158.160.217.236/api/stores
+curl http://158.160.229.16/api/stores
 # {"error":"Unauthorized"}
 ```
 
@@ -226,7 +260,7 @@ curl http://158.160.217.236/api/stores
 
 ```bash
 # Test with API key
-curl -X GET "http://158.160.217.236/api/stores" \
+curl -X GET "http://158.160.229.16/api/stores" \
   -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
 
 # Should return store list
@@ -249,7 +283,7 @@ Valid format: `wbrm_*` (prefix required)
 
 ```bash
 # Check .env.production
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cat /var/www/wb-reputation/.env.production | grep API_KEY"
 
 # Should show:
@@ -372,7 +406,7 @@ module.exports = {
 
 #### Symptom
 
-Browser shows "502 Bad Gateway" when accessing http://158.160.217.236
+Browser shows "502 Bad Gateway" when accessing http://158.160.229.16
 
 #### Diagnosis
 
@@ -433,7 +467,7 @@ sudo systemctl reload nginx
 
 ```bash
 # Check Deepseek API key
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.217.236 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
   "cat /var/www/wb-reputation/.env.production | grep DEEPSEEK"
 
 # Test API manually
@@ -484,7 +518,7 @@ Full sync for 1M+ review store takes 10+ hours.
 
 ```bash
 # Only fetch new reviews (much faster)
-curl -X POST "http://158.160.217.236/api/stores/{storeId}/reviews/update?mode=incremental" \
+curl -X POST "http://158.160.229.16/api/stores/{storeId}/reviews/update?mode=incremental" \
   -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
 ```
 
@@ -595,11 +629,11 @@ cd /var/www/wb-reputation && git log --oneline -5
 
 ### Useful Links
 
-- **Production URL:** http://158.160.217.236
+- **Production URL:** http://158.160.229.16
 - **GitHub Repo:** https://github.com/Klimov-IS/R5-Saas-v-2.0
 - **Deployment Guide:** [DEPLOYMENT.md](./DEPLOYMENT.md)
 - **CRON Jobs:** [CRON_JOBS.md](./CRON_JOBS.md)
 
 ---
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-03-06
