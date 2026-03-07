@@ -657,6 +657,20 @@ export function startAutoSequenceProcessor() {
       let errors = 0;
 
       for (const seq of pendingSequences) {
+        // Acquire row-level processing lock (H-2: prevents double-send after PM2 restart)
+        // 10-minute TTL auto-unlocks on crash
+        const lockResult = await query(
+          `UPDATE chat_auto_sequences
+           SET processing_locked_at = NOW()
+           WHERE id = $1 AND (processing_locked_at IS NULL OR processing_locked_at < NOW() - INTERVAL '10 minutes')
+           RETURNING id`,
+          [seq.id]
+        );
+        if (lockResult.rows.length === 0) {
+          console.log(`[CRON] ⏭️  Sequence ${seq.id}: already being processed, skipping`);
+          continue;
+        }
+
         try {
           // Check stop condition 1: did client reply since sequence started?
           const messages = await dbHelpers.getChatMessages(seq.chat_id);
@@ -860,6 +874,12 @@ export function startAutoSequenceProcessor() {
         } catch (error: any) {
           errors++;
           console.error(`[CRON] ❌ Sequence ${seq.id}: error - ${error.message}`);
+        } finally {
+          // Release processing lock
+          await query(
+            'UPDATE chat_auto_sequences SET processing_locked_at = NULL WHERE id = $1',
+            [seq.id]
+          ).catch(() => {});
         }
       }
 
@@ -885,6 +905,7 @@ export function startAutoSequenceProcessor() {
                  WHERE cas.chat_id = chats.id AND cas.status = 'active'
                )
                AND store_id IN (SELECT id FROM stores WHERE status = 'active')
+               AND status_updated_at < NOW() - INTERVAL '5 minutes'
              RETURNING id, last_message_sender`
           );
           if (staleResult.rows.length > 0) {

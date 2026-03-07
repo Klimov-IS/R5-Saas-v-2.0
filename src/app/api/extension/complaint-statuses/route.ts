@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/db/client';
+import { query, transaction } from '@/db/client';
 import { getUserByApiToken } from '@/db/extension-helpers';
 import { closeLinkedChatsForReviews } from '@/db/review-chat-link-helpers';
 
@@ -223,10 +223,8 @@ export async function POST(request: NextRequest) {
       }, { headers: corsHeaders });
     }
 
-    // 5. BULK UPDATE reviews table — one query for all items
-    //    Uses unnest arrays to match reviews by (store_id, product_id, rating, date minute in MSK)
-    //    Extension sends dates as shown on WB (Moscow time), so we convert DB dates to MSK for matching
-    //    Idempotent: updates complaint_status + filed_by + filed_date even for already-processed reviews
+    // 5-6. ATOMIC: Bulk update reviews + review_complaints in single transaction (M-4)
+    //    Ensures both tables stay consistent even if process crashes mid-operation.
     const productIds = validItems.map(v => v.productId);
     const ratings = validItems.map(v => v.rating);
     const dateMinutes = validItems.map(v => v.dateMinute);
@@ -234,69 +232,74 @@ export async function POST(request: NextRequest) {
     const filedBys = validItems.map(v => v.filedBy);
     const filedDates = validItems.map(v => v.complaintFiledDate);
 
-    const bulkUpdateResult = await query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(
-      `UPDATE reviews r
-       SET
-         complaint_status = v.new_status::complaint_status,
-         complaint_filed_by = v.filed_by,
-         complaint_filed_date = v.filed_date::date,
-         has_complaint_draft = false,
-         has_complaint = true,
-         updated_at = NOW()
-       FROM (
-         SELECT
-           unnest($2::text[]) as product_id,
-           unnest($3::int[]) as rating,
-           unnest($4::text[]) as date_minute,
-           unnest($5::text[]) as new_status,
-           unnest($6::text[]) as filed_by,
-           unnest($7::text[]) as filed_date
-       ) v
-       WHERE r.store_id = $1
-         AND r.product_id = v.product_id
-         AND r.rating = v.rating
-         AND to_char(r.date AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD"T"HH24:MI') = v.date_minute
-       RETURNING r.id, v.new_status, v.filed_by, v.filed_date`,
-      [storeId, productIds, ratings, dateMinutes, statuses, filedBys, filedDates]
-    );
-
-    const reviewsUpdated = bulkUpdateResult.rowCount || 0;
-    console.log(`[Extension ComplaintStatuses] 📝 Reviews updated: ${reviewsUpdated}`);
-
-    // 6. BULK UPDATE review_complaints table — set status + filed_by + filed_date
-    let complaintsUpdated = 0;
-    if (reviewsUpdated > 0) {
-      const updatedIds = bulkUpdateResult.rows.map(r => r.id);
-      const updatedStatuses = bulkUpdateResult.rows.map(r => r.new_status);
-      const updatedFiledBys = bulkUpdateResult.rows.map(r => r.filed_by);
-      const updatedFiledDates = bulkUpdateResult.rows.map(r => r.filed_date);
-
-      const rcResult = await query(
-        `UPDATE review_complaints rc
+    const { bulkUpdateRows, reviewsUpdated, complaintsUpdated } = await transaction(async (client) => {
+      // Step 5: BULK UPDATE reviews table
+      const bulkUpdateResult = await client.query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(
+        `UPDATE reviews r
          SET
-           status = v.new_status,
-           filed_by = v.filed_by,
+           complaint_status = v.new_status::complaint_status,
+           complaint_filed_by = v.filed_by,
            complaint_filed_date = v.filed_date::date,
-           moderated_at = COALESCE(rc.moderated_at, NOW()),
+           has_complaint_draft = false,
+           has_complaint = true,
            updated_at = NOW()
          FROM (
            SELECT
-             unnest($1::text[]) as review_id,
-             unnest($2::text[]) as new_status,
-             unnest($3::text[]) as filed_by,
-             unnest($4::text[]) as filed_date
+             unnest($2::text[]) as product_id,
+             unnest($3::int[]) as rating,
+             unnest($4::text[]) as date_minute,
+             unnest($5::text[]) as new_status,
+             unnest($6::text[]) as filed_by,
+             unnest($7::text[]) as filed_date
          ) v
-         WHERE rc.review_id = v.review_id`,
-        [updatedIds, updatedStatuses, updatedFiledBys, updatedFiledDates]
+         WHERE r.store_id = $1
+           AND r.product_id = v.product_id
+           AND r.rating = v.rating
+           AND to_char(r.date AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD"T"HH24:MI') = v.date_minute
+         RETURNING r.id, v.new_status, v.filed_by, v.filed_date`,
+        [storeId, productIds, ratings, dateMinutes, statuses, filedBys, filedDates]
       );
-      complaintsUpdated = rcResult.rowCount || 0;
-      console.log(`[Extension ComplaintStatuses] 📝 Review complaints updated: ${complaintsUpdated}`);
-    }
 
-    // 7. Immediate auto-close chats for approved complaints
+      const rvUpdated = bulkUpdateResult.rowCount || 0;
+      console.log(`[Extension ComplaintStatuses] Reviews updated: ${rvUpdated}`);
+
+      // Step 6: BULK UPDATE review_complaints table
+      let rcUpdated = 0;
+      if (rvUpdated > 0) {
+        const updatedIds = bulkUpdateResult.rows.map(r => r.id);
+        const updatedStatuses = bulkUpdateResult.rows.map(r => r.new_status);
+        const updatedFiledBys = bulkUpdateResult.rows.map(r => r.filed_by);
+        const updatedFiledDates = bulkUpdateResult.rows.map(r => r.filed_date);
+
+        const rcResult = await client.query(
+          `UPDATE review_complaints rc
+           SET
+             status = v.new_status,
+             filed_by = v.filed_by,
+             complaint_filed_date = v.filed_date::date,
+             moderated_at = COALESCE(rc.moderated_at, NOW()),
+             updated_at = NOW()
+           FROM (
+             SELECT
+               unnest($1::text[]) as review_id,
+               unnest($2::text[]) as new_status,
+               unnest($3::text[]) as filed_by,
+               unnest($4::text[]) as filed_date
+           ) v
+           WHERE rc.review_id = v.review_id`,
+          [updatedIds, updatedStatuses, updatedFiledBys, updatedFiledDates]
+        );
+        rcUpdated = rcResult.rowCount || 0;
+        console.log(`[Extension ComplaintStatuses] Review complaints updated: ${rcUpdated}`);
+      }
+
+      return { bulkUpdateRows: bulkUpdateResult.rows, reviewsUpdated: rvUpdated, complaintsUpdated: rcUpdated };
+    });
+
+    // 7. Immediate auto-close chats for approved complaints (outside transaction — side effects)
     let chatsClosed = 0;
     if (reviewsUpdated > 0) {
-      const approvedIds = bulkUpdateResult.rows
+      const approvedIds = bulkUpdateRows
         .filter(r => r.new_status === 'approved')
         .map(r => r.id);
       if (approvedIds.length > 0) {

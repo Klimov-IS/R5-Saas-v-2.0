@@ -979,7 +979,8 @@ export async function createChat(chat: Omit<Chat, 'created_at' | 'updated_at'>):
 
 export async function updateChat(
   id: string,
-  updates: Partial<Omit<Chat, 'id' | 'created_at'>>
+  updates: Partial<Omit<Chat, 'id' | 'created_at'>>,
+  options?: { expectedStatusUpdatedAt?: string | null }
 ): Promise<Chat | null> {
   const fields: string[] = [];
   const values: any[] = [];
@@ -1022,8 +1023,17 @@ export async function updateChat(
   fields.push(`updated_at = NOW()`);
   values.push(id);
 
+  // Optimistic locking: if expectedStatusUpdatedAt is provided, only update
+  // if status_updated_at hasn't changed (prevents stale snapshot overwrites)
+  let whereClause = `WHERE id = $${paramIndex}`;
+  if (options?.expectedStatusUpdatedAt !== undefined) {
+    paramIndex++;
+    values.push(options.expectedStatusUpdatedAt);
+    whereClause += ` AND status_updated_at IS NOT DISTINCT FROM $${paramIndex}`;
+  }
+
   const result = await query<Chat>(
-    `UPDATE chats SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+    `UPDATE chats SET ${fields.join(', ')} ${whereClause} RETURNING *`,
     values
   );
   return result.rows[0] || null;
@@ -2132,11 +2142,19 @@ async function insertStatusHistory(params: {
   changedBy: string | null;
   changeSource: ChangeSource;
 }): Promise<void> {
+  // Dedup: skip if identical status+tag change was logged within 5 seconds (M-5)
   await query(
     `INSERT INTO chat_status_history
        (id, chat_id, store_id, old_status, new_status, old_tag, new_tag,
         completion_reason, closure_type, changed_by, change_source)
-     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+     SELECT gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+     WHERE NOT EXISTS (
+       SELECT 1 FROM chat_status_history
+       WHERE chat_id = $1
+         AND new_status = $4
+         AND new_tag IS NOT DISTINCT FROM $6
+         AND created_at > NOW() - INTERVAL '5 seconds'
+     )`,
     [
       params.chatId,
       params.storeId,
@@ -2163,7 +2181,8 @@ export async function updateChatWithAudit(
   chatId: string,
   updates: Partial<Chat>,
   audit: AuditContext,
-  existingChat?: Chat
+  existingChat?: Chat,
+  options?: { expectedStatusUpdatedAt?: string | null }
 ): Promise<Chat | null> {
   // 1. Get current state (skip if caller already has it)
   const current = existingChat || await getChatById(chatId);
@@ -2186,7 +2205,13 @@ export async function updateChatWithAudit(
   }
 
   // 3. Apply update via existing updateChat()
-  const updated = await updateChat(chatId, updates);
+  const updated = await updateChat(chatId, updates, options);
+
+  // Optimistic lock miss: another process changed the status
+  if (!updated && options?.expectedStatusUpdatedAt !== undefined) {
+    console.log(`[AUDIT] Chat ${chatId}: optimistic lock missed, status update skipped`);
+    return null;
+  }
 
   // 4. Log to history if status or tag changed
   if (statusChanged || tagChanged) {

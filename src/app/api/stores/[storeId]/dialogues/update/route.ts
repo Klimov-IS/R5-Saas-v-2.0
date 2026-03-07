@@ -13,10 +13,29 @@ import { refreshOzonChats } from '@/lib/ozon-chat-sync';
 import { reconcileChatWithLink, isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 
 /**
+ * Deterministic int32 hash from storeId for advisory lock.
+ */
+function hashStoreId(storeId: string): number {
+    let hash = 0;
+    for (let i = 0; i < storeId.length; i++) {
+        hash = ((hash << 5) - hash + storeId.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash);
+}
+
+/**
  * Update dialogues (chats) and messages for a store from WB Chat API
  */
 async function updateDialoguesForStore(storeId: string, fullScan = false): Promise<{ success: boolean; message: string; }> {
     console.log(`[DIALOGUES] Starting dialogue update for store: ${storeId}`);
+
+    // Advisory lock: prevent concurrent syncs for the same store (M-2)
+    const lockId = hashStoreId(storeId);
+    const lockResult = await query('SELECT pg_try_advisory_lock($1) as acquired', [lockId]);
+    if (!lockResult.rows[0]?.acquired) {
+        console.log(`[DIALOGUES] Skipping store ${storeId}: sync already running (advisory lock)`);
+        return { success: true, message: `Sync already running for store ${storeId}, skipped` };
+    }
 
     try {
         // Update status to pending
@@ -277,12 +296,15 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         if (existingChat.status === 'closed') {
                             updates.completion_reason = null;
                         }
-                        await dbHelpers.updateChatWithAudit(
+                        const result = await dbHelpers.updateChatWithAudit(
                             chatId, updates,
                             { changedBy: null, source: 'sync_dialogue' },
-                            existingChat
+                            existingChat,
+                            { expectedStatusUpdatedAt: existingChat.status_updated_at }
                         );
-                        console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → inbox (client replied)`);
+                        if (result) {
+                            console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → inbox (client replied)`);
+                        }
                     }
 
                     // Stop auto-sequence if client replied
@@ -308,21 +330,24 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                             }
                         }
                         if (!skipTransition) {
-                            await dbHelpers.updateChatWithAudit(
+                            const result = await dbHelpers.updateChatWithAudit(
                                 chatId,
                                 {
                                     status: 'in_progress' as ChatStatus,
                                     status_updated_at: new Date().toISOString(),
                                 },
                                 { changedBy: null, source: 'sync_dialogue' },
-                                existingChat
+                                existingChat,
+                                { expectedStatusUpdatedAt: existingChat.status_updated_at }
                             );
-                            console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → in_progress (seller replied)`);
+                            if (result) {
+                                console.log(`[DIALOGUES] Chat ${chatId}: ${existingChat.status} → in_progress (seller replied)`);
+                            }
                         }
                     }
                     // Reopen closed chats when seller sends a new message
                     if (existingChat && existingChat.status === 'closed') {
-                        await dbHelpers.updateChatWithAudit(
+                        const result = await dbHelpers.updateChatWithAudit(
                             chatId,
                             {
                                 status: 'in_progress' as ChatStatus,
@@ -330,9 +355,12 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                                 completion_reason: null,
                             },
                             { changedBy: null, source: 'sync_dialogue' },
-                            existingChat
+                            existingChat,
+                            { expectedStatusUpdatedAt: existingChat.status_updated_at }
                         );
-                        console.log(`[DIALOGUES] Chat ${chatId}: closed → in_progress (seller replied)`);
+                        if (result) {
+                            console.log(`[DIALOGUES] Chat ${chatId}: closed → in_progress (seller replied)`);
+                        }
                     }
                 }
             }
@@ -478,6 +506,9 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
         });
 
         return { success: false, message: errorMessage };
+    } finally {
+        // Release advisory lock
+        await query('SELECT pg_advisory_unlock($1)', [lockId]).catch(() => {});
     }
 }
 

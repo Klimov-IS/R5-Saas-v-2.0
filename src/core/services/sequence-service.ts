@@ -12,6 +12,7 @@ import type { GetSequenceResponse, StopSequenceResponse, StartSequenceResponse, 
 import { ChatNotFoundError } from '@/core/services/chat-service';
 import * as chatRepo from '@/db/repositories/chat-repository';
 import * as seqRepo from '@/db/repositories/sequence-repository';
+import { transaction } from '@/db/client';
 import { findLinkByChatId, isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 import {
   DEFAULT_FOLLOWUP_TEMPLATES_30D,
@@ -124,7 +125,7 @@ export async function startSequence(
 ): Promise<StartSequenceResponse> {
   const chat = await verifyChatAccess(chatId, accessibleStoreIds);
 
-  // Check for existing active sequence
+  // Fast-path: check for existing active sequence (app-level, no transaction)
   const existing = await dbHelpers.getActiveSequenceForChat(chatId);
   if (existing) {
     throw new SequenceConflictError(chatId, existing.id, 'active');
@@ -205,16 +206,39 @@ export async function startSequence(
     throw new SequenceConflictError(chatId, '', 'family');
   }
 
-  // Create sequence
+  // Create sequence inside transaction (TOCTOU-safe).
+  // Belt: transaction re-checks for active sequence before INSERT.
+  // Suspenders: UNIQUE partial index (migration 030) catches any remaining race.
   const nextSendAt = getNextSlotTime(0);
-  const seq = await seqRepo.createSequence({
-    chatId,
-    storeId: chat.store_id,
-    ownerId: chat.owner_id,
-    sequenceType,
-    templates,
-    nextSendAt,
-  });
+  let seq;
+  try {
+    seq = await transaction(async (client) => {
+      // Re-check for active sequence inside transaction
+      const activeCheck = await client.query(
+        `SELECT id FROM chat_auto_sequences WHERE chat_id = $1 AND status = 'active' LIMIT 1`,
+        [chatId]
+      );
+      if (activeCheck.rows.length > 0) {
+        throw new SequenceConflictError(chatId, activeCheck.rows[0].id, 'active');
+      }
+
+      return await seqRepo.createSequence({
+        chatId,
+        storeId: chat.store_id,
+        ownerId: chat.owner_id,
+        sequenceType,
+        templates,
+        nextSendAt,
+      }, client);
+    });
+  } catch (error: any) {
+    if (error instanceof SequenceConflictError) throw error;
+    // UNIQUE partial index violation fallback (migration 030)
+    if (error.code === '23505' && error.constraint === 'idx_sequences_one_active_per_chat') {
+      throw new SequenceConflictError(chatId, '', 'active');
+    }
+    throw error;
+  }
 
   if (!seq) {
     throw new Error('Failed to create sequence');
