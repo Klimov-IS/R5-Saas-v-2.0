@@ -1446,10 +1446,9 @@ export async function verifyApiKey(apiKey: string): Promise<UserSettings | null>
     `SELECT id, deepseek_api_key, openai_api_key, api_key, ai_concurrency,
             prompt_chat_reply, prompt_chat_tag, prompt_question_reply,
             prompt_review_complaint, prompt_review_reply,
-            assistant_chat_reply, assistant_chat_tag, assistant_question_reply,
-            assistant_review_complaint, assistant_review_reply,
-            no_reply_messages, no_reply_trigger_phrase, no_reply_stop_message,
-            no_reply_messages2, no_reply_trigger_phrase2, no_reply_stop_message2,
+            prompt_chat_deletion_tag,
+            no_reply_trigger_phrase, no_reply_stop_message,
+            no_reply_stop_message2,
             created_at, updated_at
      FROM user_settings WHERE api_key = $1`,
     [apiKey]

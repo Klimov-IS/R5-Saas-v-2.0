@@ -134,8 +134,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 5. Extract chat_id from URL (FK dropped — stored directly as text reference)
-    const chatId = extractChatIdFromUrl(chatUrl);
+    // 5. Extract chat_id from URL and add WB replySign prefix
+    // extractChatIdFromUrl returns bare UUID, but chats.id uses '1:uuid' format (WB API)
+    // Adding prefix here makes the link immediately joinable with chats table,
+    // without waiting for dialogue sync reconciliation
+    const rawChatId = extractChatIdFromUrl(chatUrl);
+    const chatId = rawChatId && !rawChatId.includes(':') ? `1:${rawChatId}` : rawChatId;
 
     // 5b. If review is resolved, immediately close the chat (if it exists in chats table)
     if (reviewResolved && chatId) {
