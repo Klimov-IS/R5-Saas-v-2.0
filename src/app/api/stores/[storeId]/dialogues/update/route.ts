@@ -433,7 +433,7 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                         if (msgText) {
                             const successEvent = detectSuccessEvent(msgText);
                             if (successEvent) {
-                                await sendSuccessNotification(storeId, store.name || storeId, ownerId, {
+                                await sendSuccessNotification(storeId, store.name || storeId, {
                                     chatId,
                                     clientName: chatInfo?.client_name || 'Клиент',
                                     productName: chatInfo?.product_name || null,
@@ -445,7 +445,7 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                     }
                 }
                 if (clientRepliedChats.length > 0) {
-                    await sendTelegramNotifications(storeId, store.name || storeId, ownerId, clientRepliedChats);
+                    await sendTelegramNotifications(storeId, store.name || storeId, clientRepliedChats);
                 }
             } catch (tgErr: any) {
                 console.error(`[DIALOGUES] TG notification error (non-critical):`, tgErr.message);

@@ -302,7 +302,7 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
                   const successEvent = detectSuccessEvent(msgPreview);
                   if (successEvent) {
                     // Fire-and-forget — errors caught in outer try/catch
-                    sendSuccessNotification(storeId, store.name || storeId, ownerId, {
+                    sendSuccessNotification(storeId, store.name || storeId, {
                       chatId,
                       clientName: existing.client_name || 'Покупатель',
                       productName: productName || null,
@@ -402,7 +402,7 @@ export async function refreshOzonChats(storeId: string, fullScan = false): Promi
         // For OZON: all chats with product_nm_id are work-relevant (seller-initiated)
         // No rcl filter needed — OZON has no extension to create review_chat_links
         if (clientRepliedChats.length > 0) {
-          await sendTelegramNotifications(storeId, store.name || storeId, ownerId, clientRepliedChats);
+          await sendTelegramNotifications(storeId, store.name || storeId, clientRepliedChats);
         }
         console.log(`[OZON-CHATS] TG notifications: ${clientRepliedChats.length} chats`);
       } catch (tgErr: any) {

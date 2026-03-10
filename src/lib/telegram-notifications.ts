@@ -12,9 +12,9 @@
  */
 
 import {
-  getTelegramUserForStore,
+  getTelegramUsersForStore,
   wasNotificationSentRecently,
-  logTelegramNotification,
+  logTelegramNotificationAtomic,
 } from '@/db/telegram-helpers';
 import type { SuccessEvent } from './success-detector';
 
@@ -135,110 +135,123 @@ function truncate(text: string, maxLen: number): string {
 /**
  * Send digest notification for new client replies in a store.
  *
- * ONE message per sync per store, listing all new replies.
+ * Broadcasts to ALL org members with TG linked and access to this store.
+ * ONE message per user per sync per store, listing all new replies.
  * Called from dialogue sync after processing new messages.
  * Non-blocking — errors are logged but don't propagate.
  *
  * @param storeId Store ID
  * @param storeName Store name
- * @param ownerId Store owner's R5 user ID
  * @param chats Array of chats with new client replies
  */
 export async function sendTelegramNotifications(
   storeId: string,
   storeName: string,
-  ownerId: string,
   chats: ChatNotificationData[]
 ): Promise<void> {
   if (chats.length === 0) return;
   if (!isNotificationHour()) return; // silent hours: 20:00–10:00 MSK
 
-  // Find linked TG user for this store's owner
-  const tgUser = await getTelegramUserForStore(ownerId);
-  if (!tgUser) return;
+  // Find ALL TG users with access to this store
+  const tgUsers = await getTelegramUsersForStore(storeId);
+  if (tgUsers.length === 0) return;
 
-  // Filter out already-notified chats (dedup within 1 hour)
-  const newChats: ChatNotificationData[] = [];
-  for (const chat of chats) {
-    const alreadySent = await wasNotificationSentRecently(tgUser.id, chat.chatId, 'client_reply', 60);
-    if (!alreadySent) {
-      newChats.push(chat);
+  for (const tgUser of tgUsers) {
+    try {
+      // Filter out already-notified chats per user (dedup within 1 hour)
+      const newChats: ChatNotificationData[] = [];
+      for (const chat of chats) {
+        const alreadySent = await wasNotificationSentRecently(tgUser.id, chat.chatId, 'client_reply', 60);
+        if (!alreadySent) {
+          newChats.push(chat);
+        }
+      }
+
+      if (newChats.length === 0) continue;
+
+      console.log(`[TG-NOTIF] Sending digest for ${newChats.length} chats to TG ${tgUser.telegram_id} (store: ${storeName})`);
+
+      // Atomic dedup: log BEFORE sending to prevent race condition duplicates
+      const loggedChatIds: string[] = [];
+      for (const chat of newChats) {
+        const inserted = await logTelegramNotificationAtomic({
+          telegramUserId: tgUser.id,
+          chatId: chat.chatId,
+          storeId,
+          notificationType: 'client_reply',
+          messageText: `[digest] ${newChats.length} chats`,
+        });
+        if (inserted) loggedChatIds.push(chat.chatId);
+      }
+
+      // Only send if we actually logged at least one (won the race)
+      if (loggedChatIds.length === 0) continue;
+
+      const chatsToNotify = newChats.filter(c => loggedChatIds.includes(c.chatId));
+      const text = formatDigestNotification(storeName, chatsToNotify);
+      const replyMarkup = {
+        inline_keyboard: [[{
+          text: '📱 Открыть очередь',
+          web_app: { url: `${MINI_APP_URL}?storeId=${storeId}` },
+        }]],
+      };
+
+      await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+    } catch (err: any) {
+      console.error(`[TG-NOTIF] Error sending digest to TG ${tgUser.telegram_id}: ${err.message}`);
     }
-  }
-
-  if (newChats.length === 0) return;
-
-  console.log(`[TG-NOTIF] Sending digest for ${newChats.length} chats to TG ${tgUser.telegram_id} (store: ${storeName})`);
-
-  // Single digest message listing all new chats
-  const text = formatDigestNotification(storeName, newChats);
-  const replyMarkup = {
-    inline_keyboard: [[{
-      text: '📱 Открыть очередь',
-      web_app: { url: `${MINI_APP_URL}?storeId=${storeId}` },
-    }]],
-  };
-
-  const msgId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
-
-  // Log for all chats to prevent re-notification within the hour
-  for (const chat of newChats) {
-    await logTelegramNotification({
-      telegramUserId: tgUser.id,
-      chatId: chat.chatId,
-      storeId,
-      notificationType: 'client_reply',
-      messageText: `[digest] ${newChats.length} chats`,
-      tgMessageId: msgId || undefined,
-    });
   }
 }
 
 /**
  * Send immediate success notification when buyer deletes/upgrades their review.
  *
+ * Broadcasts to ALL org members with TG linked and access to this store.
  * Separate from digest — sent immediately, not batched.
  * Dedup: won't re-send for same chat within 24 hours.
  *
  * @param storeId Store ID
  * @param storeName Store name
- * @param ownerId Store owner's R5 user ID
  * @param data Success event data (chat, buyer, message, event type)
  */
 export async function sendSuccessNotification(
   storeId: string,
   storeName: string,
-  ownerId: string,
   data: SuccessNotificationData
 ): Promise<void> {
   if (!isNotificationHour()) return; // silent hours: 20:00–10:00 MSK
 
-  const tgUser = await getTelegramUserForStore(ownerId);
-  if (!tgUser) return;
+  const tgUsers = await getTelegramUsersForStore(storeId);
+  if (tgUsers.length === 0) return;
 
-  // Dedup: 24 hours per chat per event type
   const notifType = `success_${data.event.type}`;
-  const alreadySent = await wasNotificationSentRecently(tgUser.id, data.chatId, notifType, 1440);
-  if (alreadySent) return;
 
-  console.log(`[TG-NOTIF] Success event [${data.event.type}] for chat ${data.chatId} in store ${storeName}`);
+  for (const tgUser of tgUsers) {
+    try {
+      // Atomic dedup: log first, send only if we won the race
+      const inserted = await logTelegramNotificationAtomic({
+        telegramUserId: tgUser.id,
+        chatId: data.chatId,
+        storeId,
+        notificationType: notifType,
+        messageText: formatSuccessNotification(storeName, data).substring(0, 500),
+        dedupMinutes: 1440, // 24 hours
+      });
+      if (!inserted) continue;
 
-  const text = formatSuccessNotification(storeName, data);
-  const replyMarkup = {
-    inline_keyboard: [[{
-      text: '📱 Открыть чат',
-      web_app: { url: `${MINI_APP_URL}/chat/${data.chatId}?storeId=${storeId}` },
-    }]],
-  };
+      console.log(`[TG-NOTIF] Success event [${data.event.type}] for chat ${data.chatId} to TG ${tgUser.telegram_id} in store ${storeName}`);
 
-  const msgId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+      const text = formatSuccessNotification(storeName, data);
+      const replyMarkup = {
+        inline_keyboard: [[{
+          text: '📱 Открыть чат',
+          web_app: { url: `${MINI_APP_URL}/chat/${data.chatId}?storeId=${storeId}` },
+        }]],
+      };
 
-  await logTelegramNotification({
-    telegramUserId: tgUser.id,
-    chatId: data.chatId,
-    storeId,
-    notificationType: notifType,
-    messageText: text.substring(0, 500),
-    tgMessageId: msgId || undefined,
-  });
+      await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+    } catch (err: any) {
+      console.error(`[TG-NOTIF] Error sending success to TG ${tgUser.telegram_id}: ${err.message}`);
+    }
+  }
 }

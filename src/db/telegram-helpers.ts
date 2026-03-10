@@ -186,6 +186,45 @@ export async function logTelegramNotification(data: {
 }
 
 /**
+ * Atomic check-and-insert for notification dedup.
+ * INSERT only if no recent notification exists for this (user, chat, type) within dedupMinutes.
+ * Returns true if row was inserted (no duplicate), false if skipped (duplicate found).
+ * Prevents race condition duplicates in PM2 cluster.
+ */
+export async function logTelegramNotificationAtomic(data: {
+  telegramUserId: string;
+  chatId: string;
+  storeId: string;
+  notificationType: string;
+  messageText?: string;
+  dedupMinutes?: number;
+}): Promise<boolean> {
+  const dedupMinutes = data.dedupMinutes || 5;
+  const result = await query<{ id: string }>(
+    `INSERT INTO telegram_notifications_log
+       (id, telegram_user_id, chat_id, store_id, notification_type, message_text)
+     SELECT gen_random_uuid()::text, $1, $2, $3, $4, $5
+     WHERE NOT EXISTS (
+       SELECT 1 FROM telegram_notifications_log
+       WHERE telegram_user_id = $1
+         AND chat_id = $2
+         AND notification_type = $4
+         AND sent_at > NOW() - INTERVAL '1 minute' * $6
+     )
+     RETURNING id`,
+    [
+      data.telegramUserId,
+      data.chatId,
+      data.storeId,
+      data.notificationType,
+      data.messageText || null,
+      dedupMinutes,
+    ]
+  );
+  return (result.rowCount || 0) > 0;
+}
+
+/**
  * Check if notification was sent recently (dedup)
  */
 export async function wasNotificationSentRecently(
@@ -489,7 +528,7 @@ export async function getUnifiedChatQueueCountsByStatus(
 }
 
 /**
- * Get all telegram users who should be notified for a given store
+ * Get telegram user for store owner (DEPRECATED — use getTelegramUsersForStore)
  */
 export async function getTelegramUserForStore(storeOwnerId: string): Promise<TelegramUser | null> {
   const result = await query<TelegramUser>(
@@ -499,4 +538,30 @@ export async function getTelegramUserForStore(storeOwnerId: string): Promise<Tel
     [storeOwnerId]
   );
   return result.rows[0] || null;
+}
+
+/**
+ * Get ALL telegram users who should be notified for a given store.
+ * Returns all org members with TG linked + notifications enabled + access to this store.
+ * - owner/admin: access to all org stores
+ * - manager: only stores in member_store_access
+ */
+export async function getTelegramUsersForStore(storeId: string): Promise<TelegramUser[]> {
+  const result = await query<TelegramUser>(
+    `SELECT DISTINCT tu.*
+     FROM telegram_users tu
+     JOIN org_members om ON om.user_id = tu.user_id
+     JOIN stores s ON s.org_id = om.org_id
+     WHERE s.id = $1
+       AND tu.is_notifications_enabled = TRUE
+       AND (
+         om.role IN ('owner', 'admin')
+         OR EXISTS (
+           SELECT 1 FROM member_store_access msa
+           WHERE msa.member_id = om.id AND msa.store_id = s.id
+         )
+       )`,
+    [storeId]
+  );
+  return result.rows;
 }
