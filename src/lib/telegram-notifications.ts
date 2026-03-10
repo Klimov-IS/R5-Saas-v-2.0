@@ -20,10 +20,10 @@ import type { SuccessEvent } from './success-detector';
 
 const MINI_APP_URL = process.env.TELEGRAM_MINI_APP_URL || 'https://r5saas.ru/tg';
 
-/** Returns true if current MSK time is within working hours (10:00–20:00) */
+/** Returns true if current MSK time is within notification hours (08:00–23:00) */
 function isNotificationHour(): boolean {
   const mskHour = (new Date().getUTCHours() + 3) % 24;
-  return mskHour >= 10 && mskHour < 20;
+  return mskHour >= 8 && mskHour < 23;
 }
 
 interface ChatNotificationData {
@@ -150,7 +150,7 @@ export async function sendTelegramNotifications(
   chats: ChatNotificationData[]
 ): Promise<void> {
   if (chats.length === 0) return;
-  if (!isNotificationHour()) return; // silent hours: 20:00–10:00 MSK
+  if (!isNotificationHour()) return; // silent hours: 23:00–08:00 MSK
 
   // Find ALL TG users with access to this store
   const tgUsers = await getTelegramUsersForStore(storeId);
@@ -219,7 +219,7 @@ export async function sendSuccessNotification(
   storeName: string,
   data: SuccessNotificationData
 ): Promise<void> {
-  if (!isNotificationHour()) return; // silent hours: 20:00–10:00 MSK
+  if (!isNotificationHour()) return; // silent hours: 23:00–08:00 MSK
 
   const tgUsers = await getTelegramUsersForStore(storeId);
   if (tgUsers.length === 0) return;
