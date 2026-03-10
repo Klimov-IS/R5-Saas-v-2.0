@@ -423,7 +423,9 @@ export default function TgChatPage() {
       } else {
         const data = await res.json();
         haptic('success');
-        if (data.immediateSent) {
+        if (data.deferred) {
+          showFeedback('Рассылка запущена, 1-е сообщение уйдёт завтра');
+        } else if (data.immediateSent) {
           showFeedback('Рассылка запущена, 1-е сообщение отправлено');
           // Re-fetch chat + messages to show the sent message
           fetchChat();

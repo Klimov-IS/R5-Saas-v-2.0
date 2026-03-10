@@ -34,6 +34,7 @@ export interface StartSequenceRequest {
 export interface StartSequenceResponse {
   success: boolean;
   immediateSent?: boolean;
+  deferred?: boolean;
   resumed?: boolean;
   sequence: {
     id: string;

@@ -23,6 +23,25 @@ import {
 import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
 
 /**
+ * Check if a message timestamp falls within "today" in MSK (UTC+3).
+ * Uses the same MSK midnight calculation as the cron processor (cron-jobs.ts:719-729).
+ */
+function isMessageSentTodayMSK(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  const msgDate = new Date(dateStr);
+  if (isNaN(msgDate.getTime())) return false;
+  const todayStart = new Date();
+  // MSK midnight (00:00 MSK) = 21:00 UTC previous day
+  if (todayStart.getUTCHours() >= 21) {
+    todayStart.setUTCHours(21, 0, 0, 0);
+  } else {
+    todayStart.setUTCDate(todayStart.getUTCDate() - 1);
+    todayStart.setUTCHours(21, 0, 0, 0);
+  }
+  return msgDate >= todayStart;
+}
+
+/**
  * Verify chat exists and is accessible, then return the chat row.
  * Extended fields returned for startSequence needs.
  */
@@ -206,10 +225,13 @@ export async function startSequence(
     throw new SequenceConflictError(chatId, '', 'family');
   }
 
+  // Check if a message was already sent today (MSK) — defer first message to tomorrow
+  const lastMsgToday = isMessageSentTodayMSK(chat.last_message_date);
+
   // Create sequence inside transaction (TOCTOU-safe).
   // Belt: transaction re-checks for active sequence before INSERT.
   // Suspenders: UNIQUE partial index (migration 030) catches any remaining race.
-  const nextSendAt = getNextSlotTime(0);
+  const nextSendAt = getNextSlotTime(lastMsgToday ? 1 : 0);
   let seq;
   try {
     seq = await transaction(async (client) => {
@@ -246,22 +268,29 @@ export async function startSequence(
 
   const sequenceId = seq.id;
 
-  // Attempt to send the first message immediately
+  // Attempt to send the first message immediately (skip if deferred to tomorrow)
   let immediateSent = false;
-  try {
-    const result = await sendSequenceMessage({
-      sequenceId,
-      chatId,
-      storeId: chat.store_id,
-      ownerId: chat.owner_id,
-      currentStep: 0,
-      templates,
-    });
-    immediateSent = result.sent;
-  } catch (sendErr: any) {
-    console.warn(
-      `[SEQUENCE] Immediate send failed for chat ${chatId}, cron will pick up: ${sendErr.message}`
+  if (lastMsgToday) {
+    console.log(
+      `[SEQUENCE] Deferred start: chat ${chatId}, last message sent today (MSK), ` +
+      `first sequence message scheduled for tomorrow`
     );
+  } else {
+    try {
+      const result = await sendSequenceMessage({
+        sequenceId,
+        chatId,
+        storeId: chat.store_id,
+        ownerId: chat.owner_id,
+        currentStep: 0,
+        templates,
+      });
+      immediateSent = result.sent;
+    } catch (sendErr: any) {
+      console.warn(
+        `[SEQUENCE] Immediate send failed for chat ${chatId}, cron will pick up: ${sendErr.message}`
+      );
+    }
   }
 
   // Active sequence = always awaiting_reply
@@ -276,12 +305,13 @@ export async function startSequence(
 
   console.log(
     `[SEQUENCE] Manual start: chat ${chatId}, type=${sequenceType}, ` +
-    `${templates.length} msgs, tag=${chatTag}, immediateSent=${immediateSent}`
+    `${templates.length} msgs, tag=${chatTag}, immediateSent=${immediateSent}, deferred=${lastMsgToday}`
   );
 
   return {
     success: true,
     immediateSent,
+    deferred: lastMsgToday,
     sequence: {
       id: sequenceId,
       sequenceType,

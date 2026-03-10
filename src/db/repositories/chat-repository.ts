@@ -145,7 +145,7 @@ export async function verifyChatAccess(chatId: string, accessibleStoreIds: strin
  */
 export async function findChatForSequence(chatId: string, accessibleStoreIds: string[]) {
   const result = await query(
-    'SELECT id, store_id, owner_id, tag FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
+    'SELECT id, store_id, owner_id, tag, last_message_date FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
     [chatId, accessibleStoreIds]
   );
   return result.rows[0] || null;
