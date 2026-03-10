@@ -621,7 +621,17 @@ export async function reconcileChatWithLink(
     [storeId, chatId]
   );
   if (existingLink.rows.length > 0) {
-    return true; // Already reconciled
+    // Ensure tag is set even if link was already reconciled
+    // (covers case: extension created link before chat existed in DB)
+    try {
+      await query(
+        `UPDATE chats SET tag = 'deletion_candidate' WHERE id = $1 AND tag IS NULL`,
+        [chatId]
+      );
+    } catch (err: any) {
+      console.warn('[RCL] Failed to auto-tag on existing link:', err.message);
+    }
+    return true;
   }
 
   // Match against chat_url (which contains UUID only) and update chat_id to full format
