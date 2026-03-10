@@ -1,0 +1,18 @@
+{
+  "_comment": "Example golden snapshot. Copy this template when recording real chats.",
+  "id": "GOLDEN-WB-DISC",
+  "chatId": "TODO_REAL_CHAT_ID",
+  "marketplace": "wb",
+  "reviewRating": 2,
+  "phase": "discovery",
+  "sellerMessageCount": 0,
+  "storeName": "Example Store",
+  "productName": "Example Product",
+  "tag": "no_reply",
+  "status": "awaiting_reply",
+  "draft": "Добрый день! Увидели ваш отзыв и хотели бы разобраться. Расскажите, пожалуйста, что именно вас огорчило?",
+  "generatedAt": "2026-03-05T12:00:00Z",
+  "promptVersion": 1,
+  "manualScore": null,
+  "notes": "Fill manualScore (1-5) after human review"
+}

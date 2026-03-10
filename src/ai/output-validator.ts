@@ -44,6 +44,7 @@ const DIRECT_DELETION_PHRASE = /(удалите\s+отзыв|удалить\s+о
 const OZON_DELETION_WORDS = /(удал[иеёья]|удалени[еяю]|убрать\s+отзыв|снять\s+отзыв)/i;
 const COMPENSATION_AMOUNT = /\d+\s*[₽руб]/i;
 const QUESTION_ENDING = /[?»][\s)]*$/;
+const EMPTY_PROMISES = /после\s+решения\s+вопроса|разберёмся\s+и\s+поможем|хотел\s+бы\s+разобраться\s+и\s+помочь/i;
 
 /**
  * Validate AI-generated draft against business invariants.
@@ -120,6 +121,15 @@ export function validateDraft(draft: string, ctx: ValidatorContext): ValidationR
       rule: 'no_compensation_high_rating',
       severity: 'error',
       message: `Оценка ${ctx.reviewRating}★ — нельзя предлагать компенсацию с суммой`,
+    });
+  }
+
+  // Rule 9: No empty promises (warning — prompt issue, not hard error)
+  if (EMPTY_PROMISES.test(text)) {
+    violations.push({
+      rule: 'no_empty_promises',
+      severity: 'warning',
+      message: 'Пустое обещание ("после решения вопроса", "разберёмся и поможем")',
     });
   }
 
