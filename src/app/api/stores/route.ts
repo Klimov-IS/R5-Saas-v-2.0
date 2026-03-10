@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
+import { getOrgMemberByUserId } from '@/db/auth-helpers';
 import { triggerStoreOnboarding, isOnboardingConfigured } from '@/services/store-onboarding';
 
 /**
@@ -128,6 +129,10 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
+        // Resolve org_id from owner's membership
+        const orgMember = await getOrgMemberByUserId(userSettings.id);
+        const orgId = orgMember?.org_id || null;
+
         // Create store (WB by default via this endpoint)
         const newStore = await dbHelpers.createStore({
             id,
@@ -138,6 +143,7 @@ export async function POST(request: NextRequest) {
             feedbacks_api_token: feedbacksApiToken || null,
             chat_api_token: chatApiToken || null,
             owner_id: userSettings.id,
+            org_id: orgId,
             status: 'active',
             total_reviews: 0,
             total_chats: 0,
