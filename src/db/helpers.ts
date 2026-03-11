@@ -12,6 +12,9 @@ import { getNextSlotTime } from '@/lib/auto-sequence-templates';
 // Export complaint helpers
 export * from './complaint-helpers';
 
+// Export store types (Sprint 006 - separated for client-side usage)
+export { type StoreStage, STORE_STAGE_LABELS } from '@/types/stores';
+
 // ============================================================================
 // Types (matching PostgreSQL schema and old Firebase structure)
 // ============================================================================
@@ -21,27 +24,7 @@ export type ChatTag = 'deletion_candidate' | 'deletion_offered' | 'deletion_agre
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other' | 'review_resolved' | 'refusal' | 'temporarily_hidden';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
-export type StoreStage =
-  | 'contract'
-  | 'access_received'
-  | 'cabinet_connected'
-  | 'complaints_submitted'
-  | 'chats_opened'
-  | 'monitoring'
-  | 'client_paused'
-  | 'client_lost';
 export type Marketplace = 'wb' | 'ozon';
-
-export const STORE_STAGE_LABELS: Record<StoreStage, string> = {
-  contract: 'Договор',
-  access_received: 'Получены доступы',
-  cabinet_connected: 'Кабинет подключён',
-  complaints_submitted: 'Поданы жалобы',
-  chats_opened: 'Открыты чаты',
-  monitoring: 'Текущий контроль',
-  client_paused: 'Клиент на паузе',
-  client_lost: 'Клиент потерян',
-};
 
 export interface User {
   id: string;

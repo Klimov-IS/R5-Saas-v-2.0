@@ -1,4 +1,4 @@
-import { StoreStage, STORE_STAGE_LABELS } from '@/db/helpers';
+import { type StoreStage, STORE_STAGE_LABELS } from '@/types/stores';
 import { Badge } from '@/components/ui/badge';
 
 /**
