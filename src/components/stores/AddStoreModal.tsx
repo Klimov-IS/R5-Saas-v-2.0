@@ -336,7 +336,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
                 color: 'hsl(var(--muted-foreground))',
                 marginBottom: '16px'
               }}>
-                У каждого магазина должны быть уникальные токены для корректной работы API.
+                Если у вас один токен для всех API WB, оставьте эти поля пустыми — система автоматически использует основной токен. Заполните только если у вас разные токены для Content, Feedbacks и Chat API.
               </p>
 
               <div style={{

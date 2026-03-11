@@ -134,14 +134,15 @@ export async function POST(request: NextRequest) {
         const orgId = orgMember?.org_id || null;
 
         // Create store (WB by default via this endpoint)
+        // Use main apiToken as fallback for specialized tokens if not provided
         const newStore = await dbHelpers.createStore({
             id,
             name,
             marketplace: 'wb',
             api_token: apiToken,
-            content_api_token: contentApiToken || null,
-            feedbacks_api_token: feedbacksApiToken || null,
-            chat_api_token: chatApiToken || null,
+            content_api_token: contentApiToken || apiToken,
+            feedbacks_api_token: feedbacksApiToken || apiToken,
+            chat_api_token: chatApiToken || apiToken,
             owner_id: userSettings.id,
             org_id: orgId,
             status: 'active',
