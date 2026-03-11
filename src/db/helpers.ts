@@ -21,7 +21,27 @@ export type ChatTag = 'deletion_candidate' | 'deletion_offered' | 'deletion_agre
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other' | 'review_resolved' | 'refusal' | 'temporarily_hidden';
 export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
+export type StoreStage =
+  | 'contract'
+  | 'access_received'
+  | 'cabinet_connected'
+  | 'complaints_submitted'
+  | 'chats_opened'
+  | 'monitoring'
+  | 'client_paused'
+  | 'client_lost';
 export type Marketplace = 'wb' | 'ozon';
+
+export const STORE_STAGE_LABELS: Record<StoreStage, string> = {
+  contract: 'Договор',
+  access_received: 'Получены доступы',
+  cabinet_connected: 'Кабинет подключён',
+  complaints_submitted: 'Поданы жалобы',
+  chats_opened: 'Открыты чаты',
+  monitoring: 'Текущий контроль',
+  client_paused: 'Клиент на паузе',
+  client_lost: 'Клиент потерян',
+};
 
 export interface User {
   id: string;
@@ -72,6 +92,7 @@ export interface Store {
   owner_id: string;
   org_id?: string | null;
   status: StoreStatus;
+  stage: StoreStage;  // NEW: Business lifecycle stage (Sprint-006)
   product_count?: number; // NEW: Computed product count
   last_product_update_status?: UpdateStatus | null;
   last_product_update_date?: string | null;
@@ -402,7 +423,7 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
     SELECT
       s.id, s.name, s.marketplace, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
       s.ozon_client_id, s.ozon_api_key, s.ozon_subscription,
-      s.owner_id, s.status,
+      s.owner_id, s.org_id, s.status, s.stage,
       s.last_product_update_status, s.last_product_update_date, s.last_product_update_error,
       s.last_review_update_status, s.last_review_update_date, s.last_review_update_error,
       s.last_chat_update_status, s.last_chat_update_date, s.last_chat_update_next, s.last_chat_update_error,
@@ -461,8 +482,8 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
     `INSERT INTO stores (
       id, name, marketplace, api_token, content_api_token, feedbacks_api_token, chat_api_token,
       ozon_client_id, ozon_api_key, ozon_subscription,
-      owner_id, org_id, status, total_reviews, total_chats, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+      owner_id, org_id, status, stage, total_reviews, total_chats, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
     RETURNING *`,
     [
       store.id,
@@ -478,6 +499,7 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
       store.owner_id,
       store.org_id || null,
       store.status || 'active',
+      store.stage || 'cabinet_connected',  // Default stage
       store.total_reviews || 0,
       store.total_chats || 0,
     ]
