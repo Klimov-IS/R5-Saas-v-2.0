@@ -80,15 +80,14 @@ async function main() {
       c.id        AS chat_id,
       c.store_id,
       s.marketplace,
-      r.review_rating,
+      rcl.review_rating,
       (SELECT COUNT(*) FROM chat_messages cm
        WHERE cm.chat_id = c.id AND cm.sender = 'client')::int AS client_msg_count
     FROM chats c
     JOIN stores s ON s.id = c.store_id AND s.status = 'active'
     JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
-    JOIN reviews r ON r.id = rcl.review_id
-    WHERE r.review_rating IS NOT NULL
-      AND r.review_rating BETWEEN 1 AND 4
+    WHERE rcl.review_rating IS NOT NULL
+      AND rcl.review_rating BETWEEN 1 AND 4
       AND c.status != 'closed'
     ORDER BY RANDOM()
   `);
