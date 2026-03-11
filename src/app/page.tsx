@@ -12,7 +12,9 @@ import { AddOzonStoreModal } from '@/components/stores/AddOzonStoreModal';
 import { MarketplaceSelector } from '@/components/stores/MarketplaceSelector';
 import { EditStoreModal } from '@/components/stores/EditStoreModal';
 import { ProgressModal } from '@/components/sync/ProgressModal';
-import type { Store, StoreStatus, DashboardStats } from '@/db/helpers';
+import { StageSelector } from '@/components/ui/StageSelector';
+import type { Store, StoreStatus, StoreStage, DashboardStats } from '@/db/helpers';
+import { STORE_STAGE_LABELS } from '@/db/helpers';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/lib/toast';
 import { useSyncStore } from '@/lib/sync-store';
@@ -79,6 +81,7 @@ export default function Home() {
   const [selectedStatuses, setSelectedStatuses] = useState<StoreStatus[]>(['active']);
   const [sortBy, setSortBy] = useState<string>('date_desc');
   const [updatingStatus, setUpdatingStatus] = useState<Record<string, boolean>>({});
+  const [updatingStage, setUpdatingStage] = useState<Record<string, boolean>>({});  // Sprint 006 Phase 3
   const [syncingProducts, setSyncingProducts] = useState<Record<string, boolean>>({});
   const [syncingReviews, setSyncingReviews] = useState<Record<string, boolean>>({});
   const [syncingChats, setSyncingChats] = useState<Record<string, boolean>>({});
@@ -183,6 +186,37 @@ export default function Home() {
       toast.error('Ошибка обновления статуса', error instanceof Error ? error.message : 'Не удалось обновить статус');
     } finally {
       setUpdatingStatus((prev) => ({ ...prev, [storeId]: false }));
+    }
+  };
+
+  // Handle stage change - Sprint 006 Phase 3
+  const handleStageChange = async (storeId: string, newStage: StoreStage) => {
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+    setUpdatingStage((prev) => ({ ...prev, [storeId]: true }));
+
+    try {
+      const response = await fetch(`/api/stores/${storeId}/stage`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ stage: newStage }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update stage');
+      }
+
+      // Invalidate and refetch stores
+      await queryClient.invalidateQueries({ queryKey: ['stores'] });
+      toast.success('Этап обновлен', `Новый этап: ${STORE_STAGE_LABELS[newStage]}`);
+    } catch (error) {
+      console.error('Error updating stage:', error);
+      toast.error('Ошибка обновления этапа', error instanceof Error ? error.message : 'Не удалось обновить этап');
+    } finally {
+      setUpdatingStage((prev) => ({ ...prev, [storeId]: false }));
     }
   };
 
@@ -622,12 +656,13 @@ export default function Home() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '25%' }}>Магазин</th>
-                    <th style={{ width: '12%' }}>Товары</th>
-                    <th style={{ width: '12%' }}>Отзывы</th>
-                    <th style={{ width: '12%' }}>Диалоги</th>
-                    <th style={{ width: '15%' }}>Статус</th>
-                    <th style={{ width: '24%' }}>Действия</th>
+                    <th style={{ width: '22%' }}>Магазин</th>
+                    <th style={{ width: '10%' }}>Товары</th>
+                    <th style={{ width: '10%' }}>Отзывы</th>
+                    <th style={{ width: '10%' }}>Диалоги</th>
+                    <th style={{ width: '13%' }}>Этап</th>
+                    <th style={{ width: '12%' }}>Статус</th>
+                    <th style={{ width: '23%' }}>Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -702,6 +737,15 @@ export default function Home() {
                           <MessageSquare style={{ width: '14px', height: '14px' }} />
                           {(store.total_chats || 0).toLocaleString('ru-RU')}
                         </span>
+                      </td>
+
+                      {/* Stage Selector - Sprint 006 Phase 3 */}
+                      <td>
+                        <StageSelector
+                          value={store.stage}
+                          onChange={(stage) => handleStageChange(store.id, stage)}
+                          disabled={updatingStage[store.id]}
+                        />
                       </td>
 
                       {/* Status Dropdown */}
