@@ -17,16 +17,58 @@
  *   node scripts/backfill-stores-stage.mjs              # execute
  */
 
-import dotenv from "dotenv";
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pg from "pg";
+import dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '..');
 
+// Try to load .env.production first (on server), fallback to .env.local (local dev)
+const productionEnvPath = '/var/www/wb-reputation/.env.production';
+const localEnvPath = path.join(projectRoot, '.env.local');
+
+let isProduction = false;
+
+if (fs.existsSync(productionEnvPath)) {
+  console.log('[ENV] Loading production environment...');
+  const envFile = fs.readFileSync(productionEnvPath, 'utf8');
+  envFile.split('\n').forEach(line => {
+    line = line.trim();
+    if (!line || line.startsWith('#')) return;
+    const idx = line.indexOf('=');
+    if (idx === -1) return;
+    process.env[line.substring(0, idx).trim()] = line.substring(idx + 1).trim();
+  });
+  isProduction = true;
+} else if (fs.existsSync(localEnvPath)) {
+  console.log('[ENV] Loading local development environment...');
+  dotenv.config({ path: localEnvPath });
+} else {
+  console.error('[ENV] ERROR: No .env file found!');
+  process.exit(1);
+}
+
+// Create pool with appropriate connection method
 const { Pool } = pg;
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const poolConfig = isProduction
+  ? {
+      host: process.env.POSTGRES_HOST,
+      port: process.env.POSTGRES_PORT,
+      database: process.env.POSTGRES_DB,
+      user: process.env.POSTGRES_USER,
+      password: process.env.POSTGRES_PASSWORD,
+      ssl: { rejectUnauthorized: false }
+    }
+  : {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    };
+
+const pool = new Pool(poolConfig);
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
