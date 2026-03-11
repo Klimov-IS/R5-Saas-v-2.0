@@ -145,6 +145,7 @@ export async function POST(request: NextRequest) {
             owner_id: userSettings.id,
             org_id: orgId,
             status: 'active',
+            stage: 'contract',  // Sprint 006: new store starts at contract stage
             total_reviews: 0,
             total_chats: 0,
         });

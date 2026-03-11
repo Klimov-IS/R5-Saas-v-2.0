@@ -523,6 +523,7 @@ export async function updateStore(
     ['chat_api_token', 'chat_api_token'],
     ['owner_id', 'owner_id'],
     ['status', 'status'],
+    ['stage', 'stage'],  // NEW: Sprint 006 Phase 2
     ['last_product_update_status', 'last_product_update_status'],
     ['last_product_update_date', 'last_product_update_date'],
     ['last_product_update_error', 'last_product_update_error'],
