@@ -55,19 +55,16 @@ const pool = new Pool({
 // Target distribution matrix — 100 chats total
 // ---------------------------------------------------------------------------
 const SEGMENTS = [
-  { id: 'wb_1star_discovery',   mp: 'wb',   rMin: 1, rMax: 1, phase: 'discovery',   target: 10 },
-  { id: 'wb_2star_discovery',   mp: 'wb',   rMin: 2, rMax: 2, phase: 'discovery',   target: 10 },
-  { id: 'wb_3star_discovery',   mp: 'wb',   rMin: 3, rMax: 3, phase: 'discovery',   target: 10 },
-  { id: 'wb_4star_discovery',   mp: 'wb',   rMin: 4, rMax: 4, phase: 'discovery',   target: 10 },
-  { id: 'wb_neg_proposal',      mp: 'wb',   rMin: 1, rMax: 3, phase: 'proposal',    target: 10 },
-  { id: 'wb_4star_proposal',    mp: 'wb',   rMin: 4, rMax: 4, phase: 'proposal',    target: 10 },
-  { id: 'wb_neg_resolution',    mp: 'wb',   rMin: 1, rMax: 3, phase: 'resolution',  target: 10 },
-  { id: 'wb_4star_resolution',  mp: 'wb',   rMin: 4, rMax: 4, phase: 'resolution',  target: 5  },
-  { id: 'ozon_discovery',       mp: 'ozon', rMin: 1, rMax: 4, phase: 'discovery',   target: 10 },
-  { id: 'ozon_proposal',        mp: 'ozon', rMin: 1, rMax: 4, phase: 'proposal',    target: 8  },
-  { id: 'ozon_resolution',      mp: 'ozon', rMin: 1, rMax: 4, phase: 'resolution',  target: 7  },
+  { id: 'wb_1star_discovery',   mp: 'wb',   rMin: 1, rMax: 1, phase: 'discovery',   target: 13 },
+  { id: 'wb_2star_discovery',   mp: 'wb',   rMin: 2, rMax: 2, phase: 'discovery',   target: 12 },
+  { id: 'wb_3star_discovery',   mp: 'wb',   rMin: 3, rMax: 3, phase: 'discovery',   target: 12 },
+  { id: 'wb_4star_discovery',   mp: 'wb',   rMin: 4, rMax: 4, phase: 'discovery',   target: 13 },
+  { id: 'wb_neg_proposal',      mp: 'wb',   rMin: 1, rMax: 3, phase: 'proposal',    target: 13 },
+  { id: 'wb_4star_proposal',    mp: 'wb',   rMin: 4, rMax: 4, phase: 'proposal',    target: 12 },
+  { id: 'wb_neg_resolution',    mp: 'wb',   rMin: 1, rMax: 3, phase: 'resolution',  target: 13 },
+  { id: 'wb_4star_resolution',  mp: 'wb',   rMin: 4, rMax: 4, phase: 'resolution',  target: 12 },
 ];
-// Sum: 10+10+10+10+10+10+10+5+10+8+7 = 100
+// Sum: 13+12+12+13+13+12+13+12 = 100 (OZON excluded — no review_chat_links data)
 
 // ---------------------------------------------------------------------------
 // Main
