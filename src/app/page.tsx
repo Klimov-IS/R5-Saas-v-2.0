@@ -693,13 +693,13 @@ export default function Home() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{ width: '22%' }}>Магазин</th>
-                    <th style={{ width: '10%' }}>Товары</th>
-                    <th style={{ width: '10%' }}>Отзывы</th>
-                    <th style={{ width: '10%' }}>Диалоги</th>
+                    <th style={{ width: '20%' }}>Магазин</th>
+                    <th style={{ width: '12%' }}>Товары</th>
+                    <th style={{ width: '12%' }}>Отзывы</th>
+                    <th style={{ width: '12%' }}>Диалоги</th>
                     <th style={{ width: '13%' }}>Этап</th>
                     <th style={{ width: '5%', textAlign: 'center' }}>Вкл</th>
-                    <th style={{ width: '27%' }}>Действия</th>
+                    <th style={{ width: '26%' }}>Действия</th>
                   </tr>
                 </thead>
                 <tbody>
