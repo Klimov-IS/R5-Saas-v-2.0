@@ -3438,44 +3438,49 @@ function loadStoreProgressInBackground(): void {
   const startTime = Date.now();
   const toNum = (v: any) => parseInt(v, 10) || 0;
 
-  // Run 3 queries sequentially to avoid overloading the connection pool
-  // Each query is under 60s individually (products ~50ms, reviews ~30s, dialogues ~30s)
-  Promise.resolve()
-    .then(async () => {
-      const map: StoreProgressMap = {};
+  // Use dedicated client with extended timeout (5 min) — these queries scan 3.2M reviews
+  getClient()
+    .then(async (client) => {
+      try {
+        await client.query('SET statement_timeout = 300000'); // 5 min for background queries
 
-      // 1. Products (fast, ~50ms)
-      const productsResult = await query(PRODUCTS_PROGRESS_SQL);
-      for (const row of productsResult.rows) {
-        map[row.store_id] = {
-          products: { active: toNum(row.active_products), total: toNum(row.total_products) },
-          reviews: { processed: 0, totalInWork: 0 },
-          dialogues: { opened: 0, required: 0 },
-        };
-      }
-      console.log(`[STORE-PROGRESS] Products loaded in ${Date.now() - startTime}ms`);
+        const map: StoreProgressMap = {};
 
-      // 2. Reviews (heavy, ~30s)
-      const reviewsResult = await query(REVIEWS_PROGRESS_SQL);
-      for (const row of reviewsResult.rows) {
-        if (!map[row.store_id]) {
-          map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
+        // 1. Products (fast, ~50ms)
+        const productsResult = await client.query(PRODUCTS_PROGRESS_SQL);
+        for (const row of productsResult.rows) {
+          map[row.store_id] = {
+            products: { active: toNum(row.active_products), total: toNum(row.total_products) },
+            reviews: { processed: 0, totalInWork: 0 },
+            dialogues: { opened: 0, required: 0 },
+          };
         }
-        map[row.store_id].reviews = { processed: toNum(row.processed), totalInWork: toNum(row.total_in_work) };
-      }
-      console.log(`[STORE-PROGRESS] Reviews loaded in ${Date.now() - startTime}ms`);
+        console.log(`[STORE-PROGRESS] Products loaded in ${Date.now() - startTime}ms`);
 
-      // 3. Dialogues (heavy, ~30s)
-      const dialoguesResult = await query(DIALOGUES_PROGRESS_SQL);
-      for (const row of dialoguesResult.rows) {
-        if (!map[row.store_id]) {
-          map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
+        // 2. Reviews (heavy, scans 3.2M reviews)
+        const reviewsResult = await client.query(REVIEWS_PROGRESS_SQL);
+        for (const row of reviewsResult.rows) {
+          if (!map[row.store_id]) {
+            map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
+          }
+          map[row.store_id].reviews = { processed: toNum(row.processed), totalInWork: toNum(row.total_in_work) };
         }
-        map[row.store_id].dialogues = { opened: toNum(row.opened), required: toNum(row.required) };
-      }
+        console.log(`[STORE-PROGRESS] Reviews loaded in ${Date.now() - startTime}ms`);
 
-      storeProgressCache = { data: map, timestamp: Date.now() };
-      console.log(`[STORE-PROGRESS] Cache loaded in ${Date.now() - startTime}ms, stores: ${Object.keys(map).length}`);
+        // 3. Dialogues (heavy, scans 3.2M reviews)
+        const dialoguesResult = await client.query(DIALOGUES_PROGRESS_SQL);
+        for (const row of dialoguesResult.rows) {
+          if (!map[row.store_id]) {
+            map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
+          }
+          map[row.store_id].dialogues = { opened: toNum(row.opened), required: toNum(row.required) };
+        }
+
+        storeProgressCache = { data: map, timestamp: Date.now() };
+        console.log(`[STORE-PROGRESS] Cache loaded in ${Date.now() - startTime}ms, stores: ${Object.keys(map).length}`);
+      } finally {
+        client.release();
+      }
     })
     .catch(err => {
       console.warn('[STORE-PROGRESS] Background query failed:', err.message);
