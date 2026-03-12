@@ -4,7 +4,7 @@
  * Methods:
  *   - getQueue: cross-store chat queue with filters + status counts (PR-07)
  */
-import { getUnifiedChatQueue, getUnifiedChatQueueCount, getUnifiedChatQueueCountsByStatus } from '@/db/telegram-helpers';
+import { getUnifiedChatQueue, getUnifiedChatQueueCount, getUnifiedChatQueueCountsByStatus, getQueueProductsList } from '@/db/telegram-helpers';
 import type { QueueQueryParams, QueueItemDTO, QueueResponse } from '@/core/contracts/tma-queue';
 
 /**
@@ -24,12 +24,12 @@ export async function getQueue(
     return { data: [], totalCount: 0, statusCounts: { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 } };
   }
 
-  const { status, limit, offset, filterStoreIds, filterRatings } = params;
+  const { status, limit, offset, filterStoreIds, filterRatings, filterNmIds } = params;
 
   const [chats, totalCount, statusCounts] = await Promise.all([
-    getUnifiedChatQueue(accessibleStoreIds, limit, offset, status, filterStoreIds, filterRatings),
-    getUnifiedChatQueueCount(accessibleStoreIds, status, filterStoreIds, filterRatings),
-    getUnifiedChatQueueCountsByStatus(accessibleStoreIds, filterStoreIds, filterRatings),
+    getUnifiedChatQueue(accessibleStoreIds, limit, offset, status, filterStoreIds, filterRatings, filterNmIds),
+    getUnifiedChatQueueCount(accessibleStoreIds, status, filterStoreIds, filterRatings, filterNmIds),
+    getUnifiedChatQueueCountsByStatus(accessibleStoreIds, filterStoreIds, filterRatings, filterNmIds),
   ]);
 
   const data: QueueItemDTO[] = chats.map((c: any) => ({
@@ -64,4 +64,20 @@ export async function getQueue(
   }));
 
   return { data, totalCount, statusCounts };
+}
+
+/**
+ * Get list of products (nmIds) with chat counts for filter UI.
+ */
+export async function getQueueProducts(
+  accessibleStoreIds: string[]
+): Promise<{ productNmId: string; productName: string | null; chatCount: number }[]> {
+  if (accessibleStoreIds.length === 0) return [];
+
+  const rows = await getQueueProductsList(accessibleStoreIds);
+  return rows.map(r => ({
+    productNmId: r.product_nm_id,
+    productName: r.product_name,
+    chatCount: r.chat_count,
+  }));
 }

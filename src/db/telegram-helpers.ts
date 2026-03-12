@@ -260,7 +260,8 @@ export async function getUnifiedChatQueue(
   offset: number = 0,
   status?: string,
   filterStoreIds?: string[],
-  filterRatings?: number[]
+  filterRatings?: number[],
+  filterNmIds?: string[]
 ): Promise<QueueChat[]> {
   if (storeIds.length === 0) return [];
 
@@ -278,6 +279,9 @@ export async function getUnifiedChatQueue(
     : '';
   const ratingCondition = (filterRatings && filterRatings.length > 0)
     ? (() => { params.push(filterRatings); return `AND rcl.review_rating = ANY($${params.length}::int[])`; })()
+    : '';
+  const nmIdCondition = (filterNmIds && filterNmIds.length > 0)
+    ? (() => { params.push(filterNmIds); return `AND c.product_nm_id = ANY($${params.length}::text[])`; })()
     : '';
 
   params.push(limit);
@@ -321,6 +325,7 @@ export async function getUnifiedChatQueue(
          )
          ${statusCondition}
          ${ratingCondition}
+         ${nmIdCondition}
      )
      UNION ALL
      (
@@ -360,6 +365,7 @@ export async function getUnifiedChatQueue(
          )
          ${statusCondition}
          ${ratingCondition}
+         ${nmIdCondition}
      )
      ORDER BY last_message_date DESC NULLS LAST
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -375,7 +381,8 @@ export async function getUnifiedChatQueueCount(
   storeIds: string[],
   status?: string,
   filterStoreIds?: string[],
-  filterRatings?: number[]
+  filterRatings?: number[],
+  filterNmIds?: string[]
 ): Promise<number> {
   if (storeIds.length === 0) return 0;
 
@@ -391,6 +398,9 @@ export async function getUnifiedChatQueueCount(
     : '';
   const ratingCondition = (filterRatings && filterRatings.length > 0)
     ? (() => { params.push(filterRatings); return `AND rcl.review_rating = ANY($${params.length}::int[])`; })()
+    : '';
+  const nmIdCondition = (filterNmIds && filterNmIds.length > 0)
+    ? (() => { params.push(filterNmIds); return `AND c.product_nm_id = ANY($${params.length}::text[])`; })()
     : '';
 
   const result = await query<{ count: string }>(
@@ -416,6 +426,7 @@ export async function getUnifiedChatQueueCount(
            )
            ${statusCondition}
            ${ratingCondition}
+           ${nmIdCondition}
        )
        UNION ALL
        (
@@ -438,6 +449,7 @@ export async function getUnifiedChatQueueCount(
            )
            ${statusCondition}
            ${ratingCondition}
+           ${nmIdCondition}
        )
      ) t`,
     params
@@ -452,7 +464,8 @@ export async function getUnifiedChatQueueCount(
 export async function getUnifiedChatQueueCountsByStatus(
   storeIds: string[],
   filterStoreIds?: string[],
-  filterRatings?: number[]
+  filterRatings?: number[],
+  filterNmIds?: string[]
 ): Promise<Record<string, number>> {
   if (storeIds.length === 0) return { inbox: 0, in_progress: 0, awaiting_reply: 0, closed: 0 };
 
@@ -464,6 +477,9 @@ export async function getUnifiedChatQueueCountsByStatus(
   const params: any[] = [effectiveStoreIds];
   const ratingCondition = (filterRatings && filterRatings.length > 0)
     ? (() => { params.push(filterRatings); return `AND rcl.review_rating = ANY($${params.length}::int[])`; })()
+    : '';
+  const nmIdCondition = (filterNmIds && filterNmIds.length > 0)
+    ? (() => { params.push(filterNmIds); return `AND c.product_nm_id = ANY($${params.length}::text[])`; })()
     : '';
 
   const result = await query<{ status: string; count: string }>(
@@ -488,6 +504,7 @@ export async function getUnifiedChatQueueCountsByStatus(
              )
            )
            ${ratingCondition}
+           ${nmIdCondition}
        )
        UNION ALL
        (
@@ -509,6 +526,7 @@ export async function getUnifiedChatQueueCountsByStatus(
              )
            )
            ${ratingCondition}
+           ${nmIdCondition}
        )
      ) t
      GROUP BY status`,
@@ -525,6 +543,75 @@ export async function getUnifiedChatQueueCountsByStatus(
     counts[row.status] = parseInt(row.count, 10);
   });
   return counts;
+}
+
+/**
+ * Get list of products (nmIds) that have chats in the queue.
+ * Used for article filter UI in TG Mini App.
+ */
+export async function getQueueProductsList(
+  storeIds: string[]
+): Promise<{ product_nm_id: string; product_name: string | null; chat_count: number }[]> {
+  if (storeIds.length === 0) return [];
+
+  const result = await query<{ product_nm_id: string; product_name: string | null; chat_count: string }>(
+    `SELECT product_nm_id, product_name, COUNT(*) as chat_count FROM (
+       (
+         SELECT c.product_nm_id, p.name as product_name
+         FROM chats c
+         INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
+         JOIN stores s ON c.store_id = s.id
+         JOIN products p ON p.store_id = c.store_id AND c.product_nm_id = p.wb_product_id
+         JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
+         WHERE c.store_id = ANY($1::text[])
+           AND c.marketplace = 'wb'
+           AND s.is_active = TRUE
+           AND c.status != 'closed'
+           AND (
+             r.id IS NULL
+             OR NOT (
+               r.complaint_status = 'approved'
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
+               OR r.rating_excluded = TRUE
+             )
+           )
+       )
+       UNION ALL
+       (
+         SELECT c.product_nm_id, p.name as product_name
+         FROM chats c
+         LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
+         JOIN stores s ON c.store_id = s.id
+         LEFT JOIN products p ON p.store_id = c.store_id
+           AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)
+         WHERE c.store_id = ANY($1::text[])
+           AND c.marketplace = 'ozon'
+           AND c.product_nm_id IS NOT NULL
+           AND s.is_active = TRUE
+           AND c.status != 'closed'
+           AND (
+             r.id IS NULL
+             OR NOT (
+               r.complaint_status = 'approved'
+               OR r.review_status_wb IN ('excluded', 'unpublished', 'deleted', 'temporarily_hidden')
+               OR r.rating_excluded = TRUE
+             )
+           )
+       )
+     ) t
+     WHERE product_nm_id IS NOT NULL
+     GROUP BY product_nm_id, product_name
+     ORDER BY chat_count DESC`,
+    [storeIds]
+  );
+
+  return result.rows.map(r => ({
+    product_nm_id: r.product_nm_id,
+    product_name: r.product_name,
+    chat_count: parseInt(r.chat_count, 10),
+  }));
 }
 
 /**

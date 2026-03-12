@@ -12,6 +12,7 @@ export interface QueueQueryParams {
   offset: number;
   filterStoreIds?: string[];
   filterRatings?: number[];
+  filterNmIds?: string[];
 }
 
 export interface QueueItemDTO {

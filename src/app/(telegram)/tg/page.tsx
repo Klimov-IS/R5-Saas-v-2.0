@@ -134,6 +134,17 @@ export default function TgQueuePage() {
   });
   const [showRatingFilter, setShowRatingFilter] = useState(false);
 
+  // Product (nmId) filter
+  const [selectedNmIds, setSelectedNmIds] = useState<string[]>(() => {
+    try {
+      const saved = sessionStorage.getItem('tg_nmid_filter');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [showProductFilter, setShowProductFilter] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [productsList, setProductsList] = useState<{ productNmId: string; productName: string | null; chatCount: number }[]>([]);
+
   // Infinite scroll pagination
   const PAGE_SIZE = 50;
   const [hasMore, setHasMore] = useState(true);
@@ -204,6 +215,17 @@ export default function TgQueuePage() {
     } catch {}
   }, [selectedRatings]);
 
+  // Persist nmId filter
+  useEffect(() => {
+    try {
+      if (selectedNmIds.length > 0) {
+        sessionStorage.setItem('tg_nmid_filter', JSON.stringify(selectedNmIds));
+      } else {
+        sessionStorage.removeItem('tg_nmid_filter');
+      }
+    } catch {}
+  }, [selectedNmIds]);
+
   const fetchQueue = useCallback(async (loadMore = false) => {
     try {
       const currentOffset = loadMore ? offsetRef.current : 0;
@@ -224,6 +246,9 @@ export default function TgQueuePage() {
       }
       if (selectedRatings.length > 0) {
         params.set('ratings', selectedRatings.join(','));
+      }
+      if (selectedNmIds.length > 0) {
+        params.set('nmIds', selectedNmIds.join(','));
       }
       const response = await apiFetch(`/api/telegram/queue?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to load queue');
@@ -255,7 +280,7 @@ export default function TgQueuePage() {
       if (!loadMore) setIsLoading(false);
       else setIsLoadingMore(false);
     }
-  }, [apiFetch, activeStatus, selectedStoreIds, selectedRatings]);
+  }, [apiFetch, activeStatus, selectedStoreIds, selectedRatings, selectedNmIds]);
 
   useEffect(() => {
     if (isAuthenticated && isLinked) {
@@ -315,7 +340,7 @@ export default function TgQueuePage() {
     setSelectionMode(false);
     setSelectedIds(new Set());
     setBulkAction(null);
-  }, [activeStatus, selectedStoreIds, selectedRatings]);
+  }, [activeStatus, selectedStoreIds, selectedRatings, selectedNmIds]);
 
   // Haptic feedback helper
   const haptic = useCallback((type: 'success' | 'error' | 'warning') => {
@@ -452,6 +477,35 @@ export default function TgQueuePage() {
   const clearRatingFilter = useCallback(() => {
     setSelectedRatings([]);
   }, []);
+
+  // Product (nmId) filter handlers
+  const toggleNmIdFilter = useCallback((nmId: string) => {
+    setSelectedNmIds(prev => {
+      if (prev.includes(nmId)) return prev.filter(id => id !== nmId);
+      return [...prev, nmId];
+    });
+  }, []);
+
+  const clearNmIdFilter = useCallback(() => {
+    setSelectedNmIds([]);
+  }, []);
+
+  // Fetch products list for filter UI
+  const fetchProducts = useCallback(async () => {
+    try {
+      const response = await apiFetch('/api/telegram/queue?products=true');
+      if (!response.ok) return;
+      const data = await response.json();
+      setProductsList(data.products || []);
+    } catch {}
+  }, [apiFetch]);
+
+  // Load products when filter panel opens
+  useEffect(() => {
+    if (showProductFilter && productsList.length === 0) {
+      fetchProducts();
+    }
+  }, [showProductFilter, productsList.length, fetchProducts]);
 
   // Bulk close modal + overflow menu
   const [showCloseReasonModal, setShowCloseReasonModal] = useState(false);
@@ -597,7 +651,7 @@ export default function TgQueuePage() {
             <>
               {/* Store filter button */}
               <button
-                onClick={() => { setShowStoreFilter(!showStoreFilter); setShowRatingFilter(false); }}
+                onClick={() => { setShowStoreFilter(!showStoreFilter); setShowRatingFilter(false); setShowProductFilter(false); }}
                 style={{
                   backgroundColor: selectedStoreIds.length > 0 ? '#EEF2FF' : 'transparent',
                   border: selectedStoreIds.length > 0 ? '1px solid rgba(37,99,235,0.2)' : 'none',
@@ -618,7 +672,7 @@ export default function TgQueuePage() {
               </button>
               {/* Rating filter button */}
               <button
-                onClick={() => { setShowRatingFilter(!showRatingFilter); setShowStoreFilter(false); }}
+                onClick={() => { setShowRatingFilter(!showRatingFilter); setShowStoreFilter(false); setShowProductFilter(false); }}
                 style={{
                   backgroundColor: selectedRatings.length > 0 ? '#FEF3C7' : 'transparent',
                   border: selectedRatings.length > 0 ? '1px solid rgba(245,158,11,0.3)' : 'none',
@@ -635,6 +689,27 @@ export default function TgQueuePage() {
                 }}
               >
                 ★{selectedRatings.length > 0 ? ` ${selectedRatings.sort().join(',')}` : ''}
+              </button>
+              {/* Product filter button */}
+              <button
+                onClick={() => { setShowProductFilter(!showProductFilter); setShowStoreFilter(false); setShowRatingFilter(false); }}
+                style={{
+                  backgroundColor: selectedNmIds.length > 0 ? '#ECFDF5' : 'transparent',
+                  border: selectedNmIds.length > 0 ? '1px solid rgba(16,185,129,0.3)' : 'none',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  padding: '6px 10px',
+                  color: selectedNmIds.length > 0 ? '#065F46' : '#6B7280',
+                  fontWeight: selectedNmIds.length > 0 ? 600 : 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                  transition: 'all 0.15s ease-out',
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                {selectedNmIds.length > 0 ? ` ${selectedNmIds.length}` : ''}
               </button>
               <button
                 onClick={() => setSelectionMode(true)}
@@ -802,6 +877,106 @@ export default function TgQueuePage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Product (nmId) filter panel */}
+      {showProductFilter && (
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          border: '1px solid #E6E8EC',
+          padding: '14px',
+          marginBottom: '12px',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: '#6B7280' }}>Артикулы</span>
+            <button
+              onClick={clearNmIdFilter}
+              style={{
+                fontSize: '12px',
+                color: selectedNmIds.length > 0 ? '#2563EB' : '#6B7280',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontWeight: 500,
+                transition: 'color 0.15s',
+              }}
+            >
+              Все артикулы
+            </button>
+          </div>
+          {productsList.length > 5 && (
+            <input
+              type="text"
+              placeholder="Поиск по названию или nmId..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                borderRadius: '12px',
+                border: '1px solid #E6E8EC',
+                fontSize: '13px',
+                backgroundColor: '#F7F8FA',
+                color: '#111827',
+                marginBottom: '8px',
+                outline: 'none',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.15s',
+              }}
+            />
+          )}
+          <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+            {productsList.length === 0 ? (
+              <div style={{ padding: '12px', textAlign: 'center', color: '#9CA3AF', fontSize: '13px' }}>
+                Загрузка...
+              </div>
+            ) : (
+              productsList
+                .filter(p =>
+                  !productSearch ||
+                  p.productNmId.includes(productSearch) ||
+                  (p.productName || '').toLowerCase().includes(productSearch.toLowerCase())
+                )
+                .map(product => {
+                  const isChecked = selectedNmIds.includes(product.productNmId);
+                  return (
+                    <label key={product.productNmId} style={{
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '8px 8px', borderRadius: '12px', cursor: 'pointer',
+                      fontSize: '13px', fontWeight: 500, color: '#111827',
+                      transition: 'background-color 0.15s',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleNmIdFilter(product.productNmId)}
+                        style={{ width: '16px', height: '16px', accentColor: '#10B981', borderRadius: '4px', flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '12px', color: '#6B7280', fontWeight: 400 }}>{product.productNmId}</div>
+                        <div style={{
+                          fontSize: '13px', color: '#111827', fontWeight: 500,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {product.productName || 'Без названия'}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: '11px', fontWeight: 600,
+                        padding: '2px 8px', borderRadius: '8px',
+                        backgroundColor: '#F3F4F6', color: '#6B7280',
+                        flexShrink: 0,
+                      }}>
+                        {product.chatCount}
+                      </span>
+                    </label>
+                  );
+                })
+            )}
           </div>
         </div>
       )}

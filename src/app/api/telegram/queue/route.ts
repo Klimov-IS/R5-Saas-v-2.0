@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { authenticateTgApiRequest } from '@/lib/telegram-auth';
 import { getAccessibleStoreIds } from '@/db/auth-helpers';
-import { getQueue } from '@/core/services/queue-service';
+import { getQueue, getQueueProducts } from '@/core/services/queue-service';
 
 /**
  * GET /api/telegram/queue
@@ -12,6 +12,8 @@ import { getQueue } from '@/core/services/queue-service';
  *   - status: chat status filter (default: 'awaiting_reply'). Use 'all' for no filter.
  *   - storeIds: comma-separated store IDs to filter (intersected with accessible).
  *   - ratings: comma-separated review ratings to filter (e.g. '1,2,3').
+ *   - nmIds: comma-separated product nmIds to filter (e.g. '300430599,582539213').
+ *   - products: if 'true', return product list for filter UI instead of queue.
  *   - limit: max items (default 50, max 100).
  *   - offset: pagination offset.
  */
@@ -25,8 +27,16 @@ export async function GET(request: NextRequest) {
     const storeIds = await getAccessibleStoreIds(auth.userId);
 
     const { searchParams } = new URL(request.url);
+
+    // Products list mode — return available products for filter UI
+    if (searchParams.get('products') === 'true') {
+      const products = await getQueueProducts(storeIds);
+      return NextResponse.json({ products });
+    }
+
     const filterStoreIdsParam = searchParams.get('storeIds');
     const ratingsParam = searchParams.get('ratings');
+    const nmIdsParam = searchParams.get('nmIds');
 
     const result = await getQueue(storeIds, {
       status: (searchParams.get('status') || 'awaiting_reply') as any,
@@ -37,6 +47,9 @@ export async function GET(request: NextRequest) {
         : undefined,
       filterRatings: ratingsParam
         ? ratingsParam.split(',').map(Number).filter(n => n >= 1 && n <= 5)
+        : undefined,
+      filterNmIds: nmIdsParam
+        ? nmIdsParam.split(',').filter(Boolean)
         : undefined,
     });
 
