@@ -4,7 +4,6 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Store as StoreIcon, Package, Star, MessageSquare, Plus, RefreshCw, Edit, Search, RotateCcw } from 'lucide-react';
 import { InteractiveKPICard } from '@/components/stores/InteractiveKPICard';
-import { Power } from 'lucide-react';
 import { ActionIcon } from '@/components/stores/ActionIcon';
 import { AddStoreModal } from '@/components/stores/AddStoreModal';
 import { AddOzonStoreModal } from '@/components/stores/AddOzonStoreModal';
@@ -699,8 +698,8 @@ export default function Home() {
                     <th style={{ width: '10%' }}>Отзывы</th>
                     <th style={{ width: '10%' }}>Диалоги</th>
                     <th style={{ width: '13%' }}>Этап</th>
-                    <th style={{ width: '12%' }}>Статус</th>
-                    <th style={{ width: '23%' }}>Действия</th>
+                    <th style={{ width: '5%', textAlign: 'center' }}>Вкл</th>
+                    <th style={{ width: '27%' }}>Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -799,33 +798,24 @@ export default function Home() {
                       </td>
 
                       {/* Active Toggle */}
-                      <td>
-                        <button
-                          onClick={() => {
+                      <td style={{ textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={store.is_active}
+                          disabled={updatingStatus[store.id]}
+                          onChange={() => {
                             if (!store.is_active || window.confirm(`Деактивировать магазин "${store.name}"?\n\nВсе автоматизации будут отключены.`)) {
                               handleToggleActive(store.id, !store.is_active);
                             }
                           }}
-                          disabled={updatingStatus[store.id]}
                           style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 12px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '13px',
-                            fontWeight: 500,
+                            width: 18,
+                            height: 18,
                             cursor: updatingStatus[store.id] ? 'wait' : 'pointer',
-                            opacity: updatingStatus[store.id] ? 0.6 : 1,
-                            backgroundColor: store.is_active ? '#10b98126' : '#6b728026',
-                            color: store.is_active ? '#10b981' : '#6b7280',
-                            transition: 'all 0.15s ease',
+                            accentColor: '#10b981',
                           }}
-                        >
-                          <Power style={{ width: 14, height: 14 }} />
-                          {store.is_active ? 'Активен' : 'Неактивен'}
-                        </button>
+                          title={store.is_active ? 'Активен' : 'Неактивен'}
+                        />
                       </td>
 
                       {/* Actions */}
