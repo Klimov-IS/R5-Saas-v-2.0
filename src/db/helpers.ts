@@ -3334,3 +3334,163 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   dashboardStatsCache = { data: stats, timestamp: Date.now() };
   return stats;
 }
+
+// ============================================================================
+// Store Progress Metrics (per-store progress: products, reviews, dialogues)
+// ============================================================================
+
+export interface StoreProgressMetrics {
+  products: { active: number; total: number };
+  reviews: { processed: number; totalInWork: number };
+  dialogues: { opened: number; required: number };
+}
+
+export type StoreProgressMap = Record<string, StoreProgressMetrics>;
+
+let storeProgressCache: { data: StoreProgressMap; timestamp: number } | null = null;
+let storeProgressLoading = false;
+const STORE_PROGRESS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+const STORE_PROGRESS_SQL = `
+WITH
+  active_store_ids AS (
+    SELECT id FROM stores WHERE status IN ('active', 'trial') AND marketplace = 'wb'
+  ),
+
+  -- Products: active (is_active) / total
+  product_progress AS (
+    SELECT
+      p.store_id,
+      COUNT(*)::int AS total_products,
+      COUNT(*) FILTER (WHERE p.is_active = TRUE)::int AS active_products
+    FROM products p
+    WHERE p.store_id IN (SELECT id FROM active_store_ids)
+    GROUP BY p.store_id
+  ),
+
+  -- Reviews: processed / total_in_work
+  -- total_in_work = 1-2-3★ on active products with submit_complaints + matching complaint_rating_N
+  -- processed = complaint filed (any status) OR WB blocker OR before cutoff date
+  complaint_products AS (
+    SELECT p.id AS product_id, p.store_id,
+           pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3,
+           pr.work_from_date
+    FROM products p
+    INNER JOIN product_rules pr ON pr.product_id = p.id
+    WHERE p.store_id IN (SELECT id FROM active_store_ids)
+      AND p.is_active = TRUE
+      AND pr.submit_complaints = TRUE
+  ),
+  review_progress AS (
+    SELECT
+      cp.store_id,
+      COUNT(*)::int AS total_in_work,
+      COUNT(*) FILTER (
+        WHERE
+          r.complaint_status IN ('sent','approved','rejected','pending','reconsidered')
+          OR r.review_status_wb IN ('excluded','temporarily_hidden','deleted','unpublished')
+          OR r.rating_excluded = TRUE
+          OR r.date < COALESCE(cp.work_from_date, '2023-10-01')
+      )::int AS processed
+    FROM complaint_products cp
+    INNER JOIN reviews r ON r.product_id = cp.product_id
+      AND r.rating BETWEEN 1 AND 3
+    WHERE
+      (r.rating = 1 AND cp.complaint_rating_1 = TRUE)
+      OR (r.rating = 2 AND cp.complaint_rating_2 = TRUE)
+      OR (r.rating = 3 AND cp.complaint_rating_3 = TRUE)
+    GROUP BY cp.store_id
+  ),
+
+  -- Dialogues: opened / required
+  -- required = reviews needing chat (active product + work_in_chats + chat_rating_N + date + no WB blocker + no approved complaint)
+  -- opened = has review_chat_links record with chat_id
+  chat_products AS (
+    SELECT p.id AS product_id, p.store_id,
+           pr.chat_rating_1, pr.chat_rating_2, pr.chat_rating_3, pr.chat_rating_4,
+           pr.work_from_date
+    FROM products p
+    INNER JOIN product_rules pr ON pr.product_id = p.id
+    WHERE p.store_id IN (SELECT id FROM active_store_ids)
+      AND p.is_active = TRUE
+      AND pr.work_in_chats = TRUE
+  ),
+  required_reviews AS (
+    SELECT r.id AS review_id, chp.store_id
+    FROM chat_products chp
+    INNER JOIN reviews r ON r.product_id = chp.product_id
+      AND r.date >= COALESCE(chp.work_from_date, '2023-10-01')
+      AND (r.review_status_wb IS NULL OR r.review_status_wb IN ('unknown', 'visible'))
+      AND r.rating_excluded = FALSE
+      AND r.complaint_status != 'approved'
+    WHERE
+      (r.rating = 1 AND chp.chat_rating_1 = TRUE)
+      OR (r.rating = 2 AND chp.chat_rating_2 = TRUE)
+      OR (r.rating = 3 AND chp.chat_rating_3 = TRUE)
+      OR (r.rating = 4 AND chp.chat_rating_4 = TRUE)
+  ),
+  dialogue_progress AS (
+    SELECT
+      rr.store_id,
+      COUNT(DISTINCT rr.review_id)::int AS required,
+      COUNT(DISTINCT rr.review_id) FILTER (WHERE rcl.chat_id IS NOT NULL)::int AS opened
+    FROM required_reviews rr
+    LEFT JOIN review_chat_links rcl
+      ON rcl.review_id = rr.review_id
+      AND rcl.store_id = rr.store_id
+      AND rcl.chat_id IS NOT NULL
+    GROUP BY rr.store_id
+  )
+
+SELECT
+  s.id AS store_id,
+  COALESCE(pp.total_products, 0) AS products_total,
+  COALESCE(pp.active_products, 0) AS products_active,
+  COALESCE(rp.total_in_work, 0) AS reviews_total_in_work,
+  COALESCE(rp.processed, 0) AS reviews_processed,
+  COALESCE(dp.required, 0) AS dialogues_required,
+  COALESCE(dp.opened, 0) AS dialogues_opened
+FROM stores s
+LEFT JOIN product_progress pp ON pp.store_id = s.id
+LEFT JOIN review_progress rp ON rp.store_id = s.id
+LEFT JOIN dialogue_progress dp ON dp.store_id = s.id
+WHERE s.id IN (SELECT id FROM active_store_ids)
+`;
+
+function loadStoreProgressInBackground(): void {
+  if (storeProgressLoading) return;
+  storeProgressLoading = true;
+
+  const startTime = Date.now();
+  query(STORE_PROGRESS_SQL)
+    .then(result => {
+      const map: StoreProgressMap = {};
+      for (const row of result.rows) {
+        map[row.store_id] = {
+          products: { active: parseInt(row.products_active, 10) || 0, total: parseInt(row.products_total, 10) || 0 },
+          reviews: { processed: parseInt(row.reviews_processed, 10) || 0, totalInWork: parseInt(row.reviews_total_in_work, 10) || 0 },
+          dialogues: { opened: parseInt(row.dialogues_opened, 10) || 0, required: parseInt(row.dialogues_required, 10) || 0 },
+        };
+      }
+      storeProgressCache = { data: map, timestamp: Date.now() };
+      console.log(`[STORE-PROGRESS] Cache loaded in ${Date.now() - startTime}ms, stores: ${Object.keys(map).length}`);
+    })
+    .catch(err => {
+      console.warn('[STORE-PROGRESS] Background query failed:', err.message);
+    })
+    .finally(() => {
+      storeProgressLoading = false;
+    });
+}
+
+export async function getStoreProgress(): Promise<StoreProgressMap> {
+  if (storeProgressCache && Date.now() - storeProgressCache.timestamp < STORE_PROGRESS_CACHE_TTL) {
+    return storeProgressCache.data;
+  }
+
+  // Trigger background load
+  loadStoreProgressInBackground();
+
+  // Return stale data or empty map
+  return storeProgressCache?.data || {};
+}

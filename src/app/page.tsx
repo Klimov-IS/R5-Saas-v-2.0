@@ -13,7 +13,8 @@ import { MarketplaceSelector } from '@/components/stores/MarketplaceSelector';
 import { EditStoreModal } from '@/components/stores/EditStoreModal';
 import { ProgressModal } from '@/components/sync/ProgressModal';
 import { StageSelector } from '@/components/ui/StageSelector';
-import type { Store, StoreStatus, DashboardStats } from '@/db/helpers';
+import { ProgressCell } from '@/components/stores/ProgressCell';
+import type { Store, StoreStatus, DashboardStats, StoreProgressMap } from '@/db/helpers';
 import { type StoreStage, STORE_STAGE_LABELS } from '@/types/stores';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/lib/toast';
@@ -71,6 +72,23 @@ async function fetchDashboardStats(): Promise<DashboardStats> {
   return response.json();
 }
 
+// Fetch store progress metrics
+async function fetchStoreProgress(): Promise<StoreProgressMap> {
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
+
+  const response = await fetch('/api/dashboard/store-progress', {
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch store progress: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export default function Home() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -111,6 +129,13 @@ export default function Home() {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
+  // Fetch store progress metrics (per-store active/processed/opened)
+  const { data: storeProgress = {} } = useQuery<StoreProgressMap>({
+    queryKey: ['storeProgress'],
+    queryFn: fetchStoreProgress,
+    staleTime: 15 * 60 * 1000, // 15 minutes (matches server cache)
+  });
+
   // Calculate totals
   const totalProducts = stores.reduce((sum, store) => sum + (store.product_count || 0), 0);
   const totalReviews = stores.reduce((sum, store) => sum + (store.total_reviews || 0), 0);
@@ -145,18 +170,18 @@ export default function Home() {
         sorted.sort((a, b) => b.name.localeCompare(a.name));
         break;
       case 'products_desc':
-        sorted.sort((a, b) => (b.product_count || 0) - (a.product_count || 0));
+        sorted.sort((a, b) => (storeProgress[b.id]?.products.active ?? b.product_count ?? 0) - (storeProgress[a.id]?.products.active ?? a.product_count ?? 0));
         break;
       case 'reviews_desc':
-        sorted.sort((a, b) => (b.total_reviews || 0) - (a.total_reviews || 0));
+        sorted.sort((a, b) => (storeProgress[b.id]?.reviews.totalInWork ?? 0) - (storeProgress[a.id]?.reviews.totalInWork ?? 0));
         break;
       case 'chats_desc':
-        sorted.sort((a, b) => (b.total_chats || 0) - (a.total_chats || 0));
+        sorted.sort((a, b) => (storeProgress[b.id]?.dialogues.required ?? 0) - (storeProgress[a.id]?.dialogues.required ?? 0));
         break;
     }
 
     return sorted;
-  }, [stores, debouncedSearch, selectedStatuses, sortBy]);
+  }, [stores, debouncedSearch, selectedStatuses, sortBy, storeProgress]);
 
   // Handle status change
   const handleStatusChange = async (storeId: string, newStatus: StoreStatus) => {
@@ -640,9 +665,9 @@ export default function Home() {
               <option value="date_desc">Сортировка: По дате обновления ↓</option>
               <option value="name_asc">По названию A-Z</option>
               <option value="name_desc">По названию Z-A</option>
-              <option value="products_desc">По количеству товаров ↓</option>
-              <option value="reviews_desc">По количеству отзывов ↓</option>
-              <option value="chats_desc">По количеству диалогов ↓</option>
+              <option value="products_desc">По активным товарам ↓</option>
+              <option value="reviews_desc">По отзывам в работе ↓</option>
+              <option value="chats_desc">По необходимым диалогам ↓</option>
             </select>
           </div>
 
@@ -703,40 +728,52 @@ export default function Home() {
                         </div>
                       </td>
 
-                      {/* Products Count */}
+                      {/* Products: active / total */}
                       <td>
-                        <span className="badge badge-purple" style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 'var(--spacing-xs)'
-                        }}>
-                          <Package style={{ width: '14px', height: '14px' }} />
-                          {(store.product_count || 0).toLocaleString('ru-RU')}
-                        </span>
+                        {storeProgress[store.id] ? (
+                          <ProgressCell
+                            icon={Package}
+                            current={storeProgress[store.id].products.active}
+                            total={storeProgress[store.id].products.total}
+                            color="var(--category-products-text, #7c3aed)"
+                          />
+                        ) : (
+                          <span style={{ fontSize: '13px', color: 'var(--color-muted)' }}>
+                            {store.marketplace === 'ozon' ? '—' : '...'}
+                          </span>
+                        )}
                       </td>
 
-                      {/* Reviews Count */}
+                      {/* Reviews: processed / total_in_work */}
                       <td>
-                        <span className="badge badge-gray" style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 'var(--spacing-xs)'
-                        }}>
-                          <Star style={{ width: '14px', height: '14px' }} />
-                          {(store.total_reviews || 0).toLocaleString('ru-RU')}
-                        </span>
+                        {storeProgress[store.id] ? (
+                          <ProgressCell
+                            icon={Star}
+                            current={storeProgress[store.id].reviews.processed}
+                            total={storeProgress[store.id].reviews.totalInWork}
+                            color="var(--category-reviews-text, #d97706)"
+                          />
+                        ) : (
+                          <span style={{ fontSize: '13px', color: 'var(--color-muted)' }}>
+                            {store.marketplace === 'ozon' ? '—' : '...'}
+                          </span>
+                        )}
                       </td>
 
-                      {/* Chats Count */}
+                      {/* Dialogues: opened / required */}
                       <td>
-                        <span className="badge badge-blue" style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 'var(--spacing-xs)'
-                        }}>
-                          <MessageSquare style={{ width: '14px', height: '14px' }} />
-                          {(store.total_chats || 0).toLocaleString('ru-RU')}
-                        </span>
+                        {storeProgress[store.id] ? (
+                          <ProgressCell
+                            icon={MessageSquare}
+                            current={storeProgress[store.id].dialogues.opened}
+                            total={storeProgress[store.id].dialogues.required}
+                            color="var(--category-chats-text, #2563eb)"
+                          />
+                        ) : (
+                          <span style={{ fontSize: '13px', color: 'var(--color-muted)' }}>
+                            {store.marketplace === 'ozon' ? '—' : '...'}
+                          </span>
+                        )}
                       </td>
 
                       {/* Stage Selector - Sprint 006 Phase 3 */}
