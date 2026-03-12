@@ -3431,73 +3431,84 @@ LEFT JOIN review_chat_links rcl
 GROUP BY rr.store_id
 `;
 
-function loadStoreProgressInBackground(): void {
-  if (storeProgressLoading) return;
-  storeProgressLoading = true;
+// Core loading logic — returns populated map, used by both background and blocking paths
+let storeProgressPromise: Promise<StoreProgressMap> | null = null;
 
+async function executeStoreProgressQueries(): Promise<StoreProgressMap> {
   const startTime = Date.now();
   const toNum = (v: any) => parseInt(v, 10) || 0;
+  const client = await getClient();
 
-  // Use dedicated client with extended timeout (5 min) — these queries scan 3.2M reviews
-  getClient()
-    .then(async (client) => {
-      try {
-        await client.query('SET statement_timeout = 600000'); // 10 min safety net for background queries
+  try {
+    await client.query('SET statement_timeout = 600000'); // 10 min safety net
 
-        const map: StoreProgressMap = {};
+    const map: StoreProgressMap = {};
 
-        // 1. Products (fast, ~50ms)
-        const productsResult = await client.query(PRODUCTS_PROGRESS_SQL);
-        for (const row of productsResult.rows) {
-          map[row.store_id] = {
-            products: { active: toNum(row.active_products), total: toNum(row.total_products) },
-            reviews: { processed: 0, totalInWork: 0 },
-            dialogues: { opened: 0, required: 0 },
-          };
-        }
-        console.log(`[STORE-PROGRESS] Products loaded in ${Date.now() - startTime}ms`);
+    // 1. Products (fast, ~50ms)
+    const productsResult = await client.query(PRODUCTS_PROGRESS_SQL);
+    for (const row of productsResult.rows) {
+      map[row.store_id] = {
+        products: { active: toNum(row.active_products), total: toNum(row.total_products) },
+        reviews: { processed: 0, totalInWork: 0 },
+        dialogues: { opened: 0, required: 0 },
+      };
+    }
+    console.log(`[STORE-PROGRESS] Products loaded in ${Date.now() - startTime}ms`);
 
-        // 2. Reviews (heavy, scans 3.2M reviews)
-        const reviewsResult = await client.query(REVIEWS_PROGRESS_SQL);
-        for (const row of reviewsResult.rows) {
-          if (!map[row.store_id]) {
-            map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
-          }
-          map[row.store_id].reviews = { processed: toNum(row.processed), totalInWork: toNum(row.total_in_work) };
-        }
-        console.log(`[STORE-PROGRESS] Reviews loaded in ${Date.now() - startTime}ms`);
-
-        // 3. Dialogues (heavy, scans 3.2M reviews)
-        const dialoguesResult = await client.query(DIALOGUES_PROGRESS_SQL);
-        for (const row of dialoguesResult.rows) {
-          if (!map[row.store_id]) {
-            map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
-          }
-          map[row.store_id].dialogues = { opened: toNum(row.opened), required: toNum(row.required) };
-        }
-
-        storeProgressCache = { data: map, timestamp: Date.now() };
-        console.log(`[STORE-PROGRESS] Cache loaded in ${Date.now() - startTime}ms, stores: ${Object.keys(map).length}`);
-      } finally {
-        client.release();
+    // 2. Reviews (heavy, uses covering index)
+    const reviewsResult = await client.query(REVIEWS_PROGRESS_SQL);
+    for (const row of reviewsResult.rows) {
+      if (!map[row.store_id]) {
+        map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
       }
-    })
-    .catch(err => {
-      console.warn('[STORE-PROGRESS] Background query failed:', err.message);
-    })
-    .finally(() => {
-      storeProgressLoading = false;
-    });
+      map[row.store_id].reviews = { processed: toNum(row.processed), totalInWork: toNum(row.total_in_work) };
+    }
+    console.log(`[STORE-PROGRESS] Reviews loaded in ${Date.now() - startTime}ms`);
+
+    // 3. Dialogues (heavy, uses covering index)
+    const dialoguesResult = await client.query(DIALOGUES_PROGRESS_SQL);
+    for (const row of dialoguesResult.rows) {
+      if (!map[row.store_id]) {
+        map[row.store_id] = { products: { active: 0, total: 0 }, reviews: { processed: 0, totalInWork: 0 }, dialogues: { opened: 0, required: 0 } };
+      }
+      map[row.store_id].dialogues = { opened: toNum(row.opened), required: toNum(row.required) };
+    }
+
+    storeProgressCache = { data: map, timestamp: Date.now() };
+    console.log(`[STORE-PROGRESS] Cache loaded in ${Date.now() - startTime}ms, stores: ${Object.keys(map).length}`);
+    return map;
+  } finally {
+    client.release();
+  }
+}
+
+// Shared load function — deduplicates concurrent calls via single promise
+function loadStoreProgress(): Promise<StoreProgressMap> {
+  if (!storeProgressPromise) {
+    storeProgressPromise = executeStoreProgressQueries()
+      .catch(err => {
+        console.warn('[STORE-PROGRESS] Query failed:', err.message);
+        return storeProgressCache?.data || {};
+      })
+      .finally(() => {
+        storeProgressPromise = null;
+      });
+  }
+  return storeProgressPromise;
 }
 
 export async function getStoreProgress(): Promise<StoreProgressMap> {
+  // Return fresh cache if available
   if (storeProgressCache && Date.now() - storeProgressCache.timestamp < STORE_PROGRESS_CACHE_TTL) {
     return storeProgressCache.data;
   }
 
-  // Trigger background load
-  loadStoreProgressInBackground();
-
-  // Return stale data or empty map
-  return storeProgressCache?.data || {};
+  // Blocking await — guarantees data on every call (both workers)
+  return loadStoreProgress();
 }
+
+// Pre-warm: start loading cache 5s after module init (both PM2 cluster workers)
+setTimeout(() => {
+  console.log('[STORE-PROGRESS] Pre-warming cache...');
+  loadStoreProgress();
+}, 5000);
