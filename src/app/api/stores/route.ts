@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
             name: store.name,
             marketplace: store.marketplace || 'wb',
             is_active: store.is_active,
+            stage: store.stage,
             product_count: typeof store.product_count === 'string'
                 ? parseInt(store.product_count, 10) || 0
                 : store.product_count || 0,
