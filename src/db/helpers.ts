@@ -3442,7 +3442,7 @@ function loadStoreProgressInBackground(): void {
   getClient()
     .then(async (client) => {
       try {
-        await client.query('SET statement_timeout = 300000'); // 5 min for background queries
+        await client.query('SET statement_timeout = 600000'); // 10 min safety net for background queries
 
         const map: StoreProgressMap = {};
 
