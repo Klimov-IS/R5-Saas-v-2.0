@@ -17,7 +17,7 @@ export interface ClientDirectoryConfig extends GoogleSheetsConfig {
 export interface StoreData {
   id: string;
   name: string;
-  status: string;
+  is_active: boolean;
   created_at: Date;
   api_token: string | null;
   content_api_token: string | null;

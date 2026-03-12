@@ -480,7 +480,7 @@ export async function triggerInstantComplaintGeneration(
          AND NOT EXISTS (
            SELECT 1 FROM review_complaints rc WHERE rc.review_id = r.id
          )
-         AND s.status = 'active'
+         AND s.is_active = TRUE
          AND p.is_active = true
          AND pr.submit_complaints = true
          AND (

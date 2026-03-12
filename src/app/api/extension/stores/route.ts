@@ -129,9 +129,9 @@ export async function GET(request: NextRequest) {
       query<{
         id: string;
         name: string;
-        status: string;
+        is_active: boolean;
       }>(
-        `SELECT s.id, s.name, s.status
+        `SELECT s.id, s.name, s.is_active
         FROM stores s
         WHERE s.owner_id = $1
         ORDER BY s.name ASC`,
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
       queryWithTimeout<{ store_id: string }>(
         `SELECT s.id as store_id
         FROM stores s
-        WHERE s.owner_id = $1 AND s.status = 'active'
+        WHERE s.owner_id = $1 AND s.is_active = TRUE
         AND EXISTS (
           SELECT 1 FROM products p
           JOIN product_rules pr ON pr.product_id = p.id
@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
       queryWithTimeout<{ store_id: string }>(
         `SELECT s.id as store_id
         FROM stores s
-        WHERE s.owner_id = $1 AND s.status = 'active'
+        WHERE s.owner_id = $1 AND s.is_active = TRUE
         AND (
           EXISTS (
             SELECT 1 FROM reviews r
@@ -256,7 +256,7 @@ export async function GET(request: NextRequest) {
     const stores = storesResult.rows.map(row => ({
       id: row.id,
       name: row.name,
-      isActive: row.status === 'active',
+      isActive: row.is_active,
       draftComplaintsCount: draftComplaintsSet.has(row.id) ? 1 : 0,
       pendingChatsCount: pendingChatsSet.has(row.id) ? 1 : 0,
       pendingStatusParsesCount: statusParsesSet.has(row.id) ? 1 : 0,

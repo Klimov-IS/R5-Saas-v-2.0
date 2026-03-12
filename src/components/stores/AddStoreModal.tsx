@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X, Loader2 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { generateFirebaseId } from '@/lib/utils';
-import type { StoreStatus } from '@/db/helpers';
+// Store status is now boolean is_active
 
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
@@ -23,7 +23,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
     content_api_token: '',
     feedbacks_api_token: '',
     chat_api_token: '',
-    status: 'active' as StoreStatus,
+    is_active: true,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -74,7 +74,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
           contentApiToken: formData.content_api_token.trim(),
           feedbacksApiToken: formData.feedbacks_api_token.trim(),
           chatApiToken: formData.chat_api_token.trim(),
-          status: formData.status,
+          is_active: formData.is_active,
           owner_id: 'default', // TODO: Replace with actual user ID from auth
           total_reviews: 0,
           total_chats: 0,
@@ -103,7 +103,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
         content_api_token: '',
         feedbacks_api_token: '',
         chat_api_token: '',
-        status: 'active',
+        is_active: true,
       });
       setErrors({});
       onClose();
@@ -475,46 +475,23 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
             {/* Status */}
             <div>
               <label style={{
-                display: 'block',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
                 fontSize: '14px',
                 fontWeight: 500,
                 color: 'hsl(var(--foreground))',
-                marginBottom: '6px'
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
               }}>
-                Статус
+                <input
+                  type="checkbox"
+                  checked={formData.is_active}
+                  onChange={(e) => handleChange('is_active', e.target.checked)}
+                  disabled={isSubmitting}
+                  style={{ width: 18, height: 18, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
+                />
+                Магазин активен
               </label>
-              <select
-                value={formData.status}
-                onChange={(e) => handleChange('status', e.target.value)}
-                disabled={isSubmitting}
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  outline: 'none',
-                  transition: 'all 0.2s',
-                  backgroundColor: 'hsl(var(--card))',
-                  color: 'hsl(var(--foreground))',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                  opacity: isSubmitting ? 0.6 : 1
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = 'hsl(var(--primary))';
-                  e.currentTarget.style.boxShadow = '0 0 0 3px hsla(var(--primary), 0.1)';
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = 'hsl(var(--border))';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                <option value="active">Активен</option>
-                <option value="trial">Тестовый</option>
-                <option value="paused">На паузе</option>
-                <option value="stopped">Остановлен</option>
-                <option value="archived">Архивный</option>
-              </select>
             </div>
           </form>
 

@@ -44,7 +44,7 @@ export async function createBackfillJob(input: CreateBackfillJobInput): Promise<
        AND r.rating IN (1, 2, 3)
        AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
        AND r.is_product_active = TRUE
-       AND s.status = 'active'
+       AND s.is_active = TRUE
        AND NOT EXISTS (
          SELECT 1 FROM review_complaints c WHERE c.review_id = r.id
        )
@@ -395,7 +395,7 @@ export async function getReviewsForBackfill(
       AND r.rating IN (1, 2, 3)
       AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
       AND r.is_product_active = TRUE
-      AND s.status = 'active'
+      AND s.is_active = TRUE
       AND NOT EXISTS (
         SELECT 1 FROM review_complaints c WHERE c.review_id = r.id
       )

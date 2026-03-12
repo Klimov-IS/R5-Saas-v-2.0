@@ -310,7 +310,7 @@ export async function getUnifiedChatQueue(
        JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
        WHERE c.store_id = ANY($1::text[])
          AND c.marketplace = 'wb'
-         AND s.status = 'active'
+         AND s.is_active = TRUE
          AND (
            r.id IS NULL
            OR NOT (
@@ -349,7 +349,7 @@ export async function getUnifiedChatQueue(
        WHERE c.store_id = ANY($1::text[])
          AND c.marketplace = 'ozon'
          AND c.product_nm_id IS NOT NULL
-         AND s.status = 'active'
+         AND s.is_active = TRUE
          AND (
            r.id IS NULL
            OR NOT (
@@ -405,7 +405,7 @@ export async function getUnifiedChatQueueCount(
          JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'wb'
-           AND s.status = 'active'
+           AND s.is_active = TRUE
            AND (
              r.id IS NULL
              OR NOT (
@@ -427,7 +427,7 @@ export async function getUnifiedChatQueueCount(
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'ozon'
            AND c.product_nm_id IS NOT NULL
-           AND s.status = 'active'
+           AND s.is_active = TRUE
            AND (
              r.id IS NULL
              OR NOT (
@@ -478,7 +478,7 @@ export async function getUnifiedChatQueueCountsByStatus(
          JOIN product_rules pr ON p.id = pr.product_id AND pr.work_in_chats = TRUE
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'wb'
-           AND s.status = 'active'
+           AND s.is_active = TRUE
            AND (
              r.id IS NULL
              OR NOT (
@@ -499,7 +499,7 @@ export async function getUnifiedChatQueueCountsByStatus(
          WHERE c.store_id = ANY($1::text[])
            AND c.marketplace = 'ozon'
            AND c.product_nm_id IS NOT NULL
-           AND s.status = 'active'
+           AND s.is_active = TRUE
            AND (
              r.id IS NULL
              OR NOT (

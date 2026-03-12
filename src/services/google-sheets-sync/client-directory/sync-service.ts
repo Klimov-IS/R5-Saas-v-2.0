@@ -48,7 +48,7 @@ const CLIENTS_FOLDER_ID = '1GelGC6stQVoc5OaJuachXNZtuJvOevyK';
 async function getAllStores(): Promise<StoreData[]> {
   const result = await query<StoreData>(
     `SELECT
-      id, name, status, created_at,
+      id, name, is_active, created_at,
       api_token, content_api_token, feedbacks_api_token, chat_api_token
     FROM stores
     ORDER BY name`

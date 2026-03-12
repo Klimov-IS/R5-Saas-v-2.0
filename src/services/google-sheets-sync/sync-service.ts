@@ -76,7 +76,7 @@ export function getSecondaryGoogleSheetsConfigs(): GoogleSheetsConfig[] {
  */
 async function getActiveStores(): Promise<Store[]> {
   const result = await query<Store>(
-    `SELECT * FROM stores WHERE status = 'active' ORDER BY name`
+    `SELECT * FROM stores WHERE is_active = TRUE ORDER BY name`
   );
   return result.rows;
 }

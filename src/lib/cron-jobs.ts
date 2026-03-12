@@ -904,7 +904,7 @@ export function startAutoSequenceProcessor() {
                  SELECT 1 FROM chat_auto_sequences cas
                  WHERE cas.chat_id = chats.id AND cas.status = 'active'
                )
-               AND store_id IN (SELECT id FROM stores WHERE status = 'active')
+               AND store_id IN (SELECT id FROM stores WHERE is_active = TRUE)
                AND status_updated_at < NOW() - INTERVAL '5 minutes'
              RETURNING id, last_message_sender`
           );

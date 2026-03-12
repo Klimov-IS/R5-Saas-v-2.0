@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
             id: store.id,
             name: store.name,
             marketplace: store.marketplace || 'wb',
-            status: store.status,
+            is_active: store.is_active,
             product_count: typeof store.product_count === 'string'
                 ? parseInt(store.product_count, 10) || 0
                 : store.product_count || 0,
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
             chat_api_token: chatApiToken || apiToken,
             owner_id: userSettings.id,
             org_id: orgId,
-            status: 'active',
+            is_active: true,
             stage: 'contract',  // Sprint 006: new store starts at contract stage
             total_reviews: 0,
             total_chats: 0,

@@ -86,9 +86,9 @@ export async function GET(request: NextRequest) {
     const storesResult = await query<{
       id: string;
       name: string;
-      status: string;
+      is_active: boolean;
     }>(
-      `SELECT s.id, s.name, s.status
+      `SELECT s.id, s.name, s.is_active
        FROM stores s
        WHERE s.owner_id = $1
          AND s.marketplace = 'wb'
@@ -112,14 +112,14 @@ export async function GET(request: NextRequest) {
         const chatEnabled = parseInt(chatEnabledResult.rows[0]?.count || '0', 10) > 0;
 
         let pendingChatsCount = 0;
-        if (chatEnabled && store.status === 'active') {
+        if (chatEnabled && store.is_active) {
           pendingChatsCount = await getPendingChatsCountOptimized(store.id);
         }
 
         return {
           id: store.id,
           name: store.name,
-          isActive: store.status === 'active',
+          isActive: store.is_active,
           chatEnabled,
           pendingChatsCount,
         };

@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
     }>(
       `
       SELECT
-        (SELECT COUNT(*) FROM stores WHERE status = 'active') as active_stores,
+        (SELECT COUNT(*) FROM stores WHERE is_active = TRUE) as active_stores,
         (SELECT COUNT(*) FROM products WHERE is_active = true) as active_products
       `
     );

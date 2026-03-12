@@ -34,13 +34,7 @@ function formatNumber(n: number): string {
   return n.toLocaleString('ru-RU');
 }
 
-const statusLabels: Record<string, { label: string; className: string }> = {
-  active: { label: 'Активен', className: 'status-active' },
-  trial: { label: 'Триал', className: 'status-active' },
-  paused: { label: 'Пауза', className: 'status-paused' },
-  stopped: { label: 'Остановлен', className: 'status-stopped' },
-  archived: { label: 'Архив', className: 'status-stopped' },
-};
+// Status is now boolean is_active
 
 const strategyLabels: Record<string, string> = {
   upgrade_to_5: 'Вывод на 5 звёзд',
@@ -84,7 +78,7 @@ export default function CabinetPage() {
 
   const d = result.data;
   const { store, metrics, ratingBreakdown, complaints, rules, ai, telegram } = d;
-  const statusInfo = statusLabels[store.status] || statusLabels.active;
+  const statusLabel = store.is_active ? 'Активен' : 'Неактивен';
   const totalReviews = Object.values(ratingBreakdown).reduce((a, b) => a + b, 0);
   const avgRating = totalReviews > 0
     ? (Object.entries(ratingBreakdown).reduce((s, [r, c]) => s + Number(r) * c, 0) / totalReviews).toFixed(1)
@@ -126,19 +120,14 @@ export default function CabinetPage() {
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '6px 14px', borderRadius: 20,
             fontSize: 13, fontWeight: 600,
-            ...(store.status === 'active' || store.status === 'trial'
-              ? { background: '#d1fae5', color: '#059669' }
-              : store.status === 'paused'
-                ? { background: '#fef3c7', color: '#d97706' }
-                : { background: '#fee2e2', color: '#ef4444' }
-            ),
+            background: store.is_active ? '#d1fae5' : '#f3f4f6',
+            color: store.is_active ? '#059669' : '#6b7280',
           }}>
             <span style={{
               width: 8, height: 8, borderRadius: '50%',
-              background: store.status === 'active' || store.status === 'trial' ? '#10b981'
-                : store.status === 'paused' ? '#f59e0b' : '#ef4444',
+              background: store.is_active ? '#10b981' : '#9ca3af',
             }} />
-            {statusInfo.label}
+            {statusLabel}
           </span>
           <div style={{ fontSize: 12, color: 'var(--color-muted)', textAlign: 'right', lineHeight: 1.6 }}>
             <SyncLine label="Товары" sync={store.syncs.products} />

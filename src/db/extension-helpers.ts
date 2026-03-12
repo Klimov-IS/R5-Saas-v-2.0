@@ -496,7 +496,7 @@ export async function getUserStores(userId: string, options?: { marketplace?: st
       marketplace: string;
       total_reviews: number;
     }>(
-      `SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) AND status = 'active'${marketplaceFilter} ORDER BY name ASC`,
+      `SELECT id, name, marketplace, total_reviews FROM stores WHERE id = ANY($1::text[]) AND is_active = TRUE${marketplaceFilter} ORDER BY name ASC`,
       [storeIds]
     );
     return result.rows;
@@ -509,7 +509,7 @@ export async function getUserStores(userId: string, options?: { marketplace?: st
     marketplace: string;
     total_reviews: number;
   }>(
-    `SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 AND status = 'active'${marketplaceFilter} ORDER BY name ASC`,
+    `SELECT id, name, marketplace, total_reviews FROM stores WHERE owner_id = $1 AND is_active = TRUE${marketplaceFilter} ORDER BY name ASC`,
     [userId]
   );
 

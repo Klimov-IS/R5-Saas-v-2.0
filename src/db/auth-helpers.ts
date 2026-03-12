@@ -227,7 +227,7 @@ export async function getAccessibleStoreIds(userId: string): Promise<string[]> {
   if (!member) return [];
 
   const result = await query<{ id: string }>(
-    'SELECT id FROM stores WHERE org_id = $1 AND status = \'active\'',
+    'SELECT id FROM stores WHERE org_id = $1 AND is_active = TRUE',
     [member.org_id]
   );
   return result.rows.map(r => r.id);
@@ -324,7 +324,7 @@ export async function registerFromInvite(data: {
     // 5. Auto-assign all active org stores to manager
     if (data.invite.role === 'manager') {
       const storesResult = await client.query(
-        `SELECT id FROM stores WHERE org_id = $1 AND status = 'active'`,
+        `SELECT id FROM stores WHERE org_id = $1 AND is_active = TRUE`,
         [data.invite.org_id]
       );
       for (const store of storesResult.rows) {

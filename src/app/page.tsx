@@ -4,8 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Store as StoreIcon, Package, Star, MessageSquare, Plus, RefreshCw, Edit, Search, RotateCcw } from 'lucide-react';
 import { InteractiveKPICard } from '@/components/stores/InteractiveKPICard';
-import { StatusMultiSelect } from '@/components/stores/StatusMultiSelect';
-import { StatusDropdown } from '@/components/stores/StatusDropdown';
+import { Power } from 'lucide-react';
 import { ActionIcon } from '@/components/stores/ActionIcon';
 import { AddStoreModal } from '@/components/stores/AddStoreModal';
 import { AddOzonStoreModal } from '@/components/stores/AddOzonStoreModal';
@@ -14,7 +13,7 @@ import { EditStoreModal } from '@/components/stores/EditStoreModal';
 import { ProgressModal } from '@/components/sync/ProgressModal';
 import { StageSelector } from '@/components/ui/StageSelector';
 import { ProgressCell } from '@/components/stores/ProgressCell';
-import type { Store, StoreStatus, DashboardStats, StoreProgressMap } from '@/db/helpers';
+import type { Store, DashboardStats, StoreProgressMap } from '@/db/helpers';
 import { type StoreStage, STORE_STAGE_LABELS } from '@/types/stores';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/lib/toast';
@@ -96,7 +95,7 @@ export default function Home() {
 
   // State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStatuses, setSelectedStatuses] = useState<StoreStatus[]>(['active']);
+  const [showInactive, setShowInactive] = useState(false);
   const [sortBy, setSortBy] = useState<string>('date_desc');
   const [updatingStatus, setUpdatingStatus] = useState<Record<string, boolean>>({});
   const [updatingStage, setUpdatingStage] = useState<Record<string, boolean>>({});  // Sprint 006 Phase 3
@@ -152,9 +151,9 @@ export default function Home() {
       );
     }
 
-    // Filter by status
-    if (selectedStatuses.length > 0 && selectedStatuses.length < 5) {
-      filtered = filtered.filter((store) => selectedStatuses.includes(store.status));
+    // Filter by active status
+    if (!showInactive) {
+      filtered = filtered.filter((store) => store.is_active);
     }
 
     // Sort
@@ -181,10 +180,10 @@ export default function Home() {
     }
 
     return sorted;
-  }, [stores, debouncedSearch, selectedStatuses, sortBy, storeProgress]);
+  }, [stores, debouncedSearch, showInactive, sortBy, storeProgress]);
 
-  // Handle status change
-  const handleStatusChange = async (storeId: string, newStatus: StoreStatus) => {
+  // Handle active toggle
+  const handleToggleActive = async (storeId: string, newValue: boolean) => {
     const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
     setUpdatingStatus((prev) => ({ ...prev, [storeId]: true }));
@@ -196,7 +195,7 @@ export default function Home() {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ is_active: newValue }),
       });
 
       if (!response.ok) {
@@ -205,7 +204,7 @@ export default function Home() {
 
       // Invalidate and refetch stores
       await queryClient.invalidateQueries({ queryKey: ['stores'] });
-      toast.success('Статус обновлен', `Новый статус: ${newStatus}`);
+      toast.success('Статус обновлен', newValue ? 'Магазин активирован' : 'Магазин деактивирован');
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error('Ошибка обновления статуса', error instanceof Error ? error.message : 'Не удалось обновить статус');
@@ -364,7 +363,7 @@ export default function Home() {
     const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
     // Filter active stores
-    const activeStores = stores.filter(s => s.status === 'active' || s.status === 'trial');
+    const activeStores = stores.filter(s => s.is_active);
 
     if (activeStores.length === 0) {
       toast.error('Нет активных магазинов', 'Добавьте хотя бы один активный магазин');
@@ -548,7 +547,7 @@ export default function Home() {
           <InteractiveKPICard
             icon={StoreIcon}
             label="Активных клиентов"
-            value={dashboardStats?.stores.active ?? stores.filter(s => s.status === 'active' || s.status === 'trial').length}
+            value={dashboardStats?.stores.active ?? stores.filter(s => s.is_active).length}
             subtitle={dashboardStats ? `+${dashboardStats.stores.newThisMonth} за месяц` : undefined}
             subtitleColor={dashboardStats && dashboardStats.stores.newThisMonth > 0 ? 'var(--color-success, #22c55e)' : undefined}
             actionIcon={Plus}
@@ -649,11 +648,25 @@ export default function Home() {
               />
             </div>
 
-            {/* Status Multi-Select */}
-            <StatusMultiSelect
-              selectedStatuses={selectedStatuses}
-              onChange={setSelectedStatuses}
-            />
+            {/* Show inactive toggle */}
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: 'var(--color-muted)',
+              userSelect: 'none',
+            }}>
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+              Показать неактивные
+            </label>
 
             {/* Sort Dropdown */}
             <select
@@ -785,15 +798,34 @@ export default function Home() {
                         />
                       </td>
 
-                      {/* Status Dropdown */}
+                      {/* Active Toggle */}
                       <td>
-                        <StatusDropdown
-                          currentStatus={store.status}
-                          storeId={store.id}
-                          storeName={store.name}
-                          onChange={handleStatusChange}
-                          isUpdating={updatingStatus[store.id]}
-                        />
+                        <button
+                          onClick={() => {
+                            if (!store.is_active || window.confirm(`Деактивировать магазин "${store.name}"?\n\nВсе автоматизации будут отключены.`)) {
+                              handleToggleActive(store.id, !store.is_active);
+                            }
+                          }}
+                          disabled={updatingStatus[store.id]}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            cursor: updatingStatus[store.id] ? 'wait' : 'pointer',
+                            opacity: updatingStatus[store.id] ? 0.6 : 1,
+                            backgroundColor: store.is_active ? '#10b98126' : '#6b728026',
+                            color: store.is_active ? '#10b981' : '#6b7280',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <Power style={{ width: 14, height: 14 }} />
+                          {store.is_active ? 'Активен' : 'Неактивен'}
+                        </button>
                       </td>
 
                       {/* Actions */}

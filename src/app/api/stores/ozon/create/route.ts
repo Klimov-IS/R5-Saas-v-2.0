@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
       ozon_subscription: subscription,
       owner_id: userSettings.id,
       org_id: orgId,
-      status: 'active',
+      is_active: true,
       stage: 'contract',  // Sprint 006: new store starts at contract stage
       total_reviews: 0,
       total_chats: 0,

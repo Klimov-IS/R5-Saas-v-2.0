@@ -23,7 +23,7 @@ export type UpdateStatus = "idle" | "pending" | "success" | "error";
 export type ChatTag = 'deletion_candidate' | 'deletion_offered' | 'deletion_agreed' | 'deletion_confirmed';
 export type ChatStatus = 'inbox' | 'in_progress' | 'awaiting_reply' | 'closed';
 export type CompletionReason = 'review_deleted' | 'review_upgraded' | 'no_reply' | 'old_dialog' | 'not_our_issue' | 'spam' | 'negative' | 'other' | 'review_resolved' | 'refusal' | 'temporarily_hidden';
-export type StoreStatus = 'active' | 'paused' | 'stopped' | 'trial' | 'archived';
+// StoreStatus removed — replaced by is_active: boolean (migration 032)
 export type Marketplace = 'wb' | 'ozon';
 
 export interface User {
@@ -74,8 +74,8 @@ export interface Store {
   ozon_subscription?: string | null;
   owner_id: string;
   org_id?: string | null;
-  status: StoreStatus;
-  stage: StoreStage;  // NEW: Business lifecycle stage (Sprint-006)
+  is_active: boolean;
+  stage: StoreStage;  // Business lifecycle stage (Sprint-006)
   product_count?: number; // NEW: Computed product count
   last_product_update_status?: UpdateStatus | null;
   last_product_update_date?: string | null;
@@ -406,7 +406,7 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
     SELECT
       s.id, s.name, s.marketplace, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
       s.ozon_client_id, s.ozon_api_key, s.ozon_subscription,
-      s.owner_id, s.org_id, s.status, s.stage,
+      s.owner_id, s.org_id, s.is_active, s.stage,
       s.last_product_update_status, s.last_product_update_date, s.last_product_update_error,
       s.last_review_update_status, s.last_review_update_date, s.last_review_update_error,
       s.last_chat_update_status, s.last_chat_update_date, s.last_chat_update_next, s.last_chat_update_error,
@@ -449,13 +449,13 @@ export async function getAllStores(marketplace?: Marketplace): Promise<Store[]> 
   // Only return active stores for CRON jobs and automated operations
   if (marketplace) {
     const result = await query<Store>(
-      "SELECT * FROM stores WHERE status = 'active' AND marketplace = $1 ORDER BY name",
+      "SELECT * FROM stores WHERE is_active = TRUE AND marketplace = $1 ORDER BY name",
       [marketplace]
     );
     return result.rows;
   }
   const result = await query<Store>(
-    "SELECT * FROM stores WHERE status = 'active' ORDER BY name"
+    "SELECT * FROM stores WHERE is_active = TRUE ORDER BY name"
   );
   return result.rows;
 }
@@ -465,7 +465,7 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
     `INSERT INTO stores (
       id, name, marketplace, api_token, content_api_token, feedbacks_api_token, chat_api_token,
       ozon_client_id, ozon_api_key, ozon_subscription,
-      owner_id, org_id, status, stage, total_reviews, total_chats, created_at, updated_at
+      owner_id, org_id, is_active, stage, total_reviews, total_chats, created_at, updated_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
     RETURNING *`,
     [
@@ -481,7 +481,7 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
       store.ozon_subscription || null,
       store.owner_id,
       store.org_id || null,
-      store.status || 'active',
+      store.is_active !== false,  // Default: true
       store.stage || 'cabinet_connected',  // Default stage
       store.total_reviews || 0,
       store.total_chats || 0,
@@ -505,8 +505,8 @@ export async function updateStore(
     ['feedbacks_api_token', 'feedbacks_api_token'],
     ['chat_api_token', 'chat_api_token'],
     ['owner_id', 'owner_id'],
-    ['status', 'status'],
-    ['stage', 'stage'],  // NEW: Sprint 006 Phase 2
+    ['is_active', 'is_active'],
+    ['stage', 'stage'],
     ['last_product_update_status', 'last_product_update_status'],
     ['last_product_update_date', 'last_product_update_date'],
     ['last_product_update_error', 'last_product_update_error'],
@@ -3197,7 +3197,7 @@ function loadReviewStatsInBackground(): void {
              pr.work_from_date
       FROM products p
       INNER JOIN product_rules pr ON pr.product_id = p.id
-      WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial'))
+      WHERE p.store_id IN (SELECT id FROM stores WHERE is_active = TRUE)
         AND p.is_active = TRUE
         AND pr.submit_complaints = TRUE
     )
@@ -3250,12 +3250,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const fastSql = `
     WITH
     active_store_ids AS (
-      SELECT id FROM stores WHERE status IN ('active', 'trial')
+      SELECT id FROM stores WHERE is_active = TRUE
     ),
     store_stats AS (
       SELECT
-        COUNT(*) FILTER (WHERE status IN ('active', 'trial')) AS active_stores,
-        COUNT(*) FILTER (WHERE status IN ('active', 'trial') AND created_at >= date_trunc('month', CURRENT_DATE)) AS new_stores_this_month,
+        COUNT(*) FILTER (WHERE is_active = TRUE) AS active_stores,
+        COUNT(*) FILTER (WHERE is_active = TRUE AND created_at >= date_trunc('month', CURRENT_DATE)) AS new_stores_this_month,
         COUNT(*) AS total_stores
       FROM stores
     ),
@@ -3359,7 +3359,7 @@ SELECT
   COUNT(*)::int AS total_products,
   COUNT(*) FILTER (WHERE p.is_active = TRUE)::int AS active_products
 FROM products p
-WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial') AND marketplace = 'wb')
+WHERE p.store_id IN (SELECT id FROM stores WHERE is_active = TRUE AND marketplace = 'wb')
 GROUP BY p.store_id
 `;
 
@@ -3370,7 +3370,7 @@ WITH complaint_products AS (
          pr.work_from_date
   FROM products p
   INNER JOIN product_rules pr ON pr.product_id = p.id
-  WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial') AND marketplace = 'wb')
+  WHERE p.store_id IN (SELECT id FROM stores WHERE is_active = TRUE AND marketplace = 'wb')
     AND p.is_active = TRUE
     AND pr.submit_complaints = TRUE
 )
@@ -3401,7 +3401,7 @@ WITH chat_products AS (
          pr.work_from_date
   FROM products p
   INNER JOIN product_rules pr ON pr.product_id = p.id
-  WHERE p.store_id IN (SELECT id FROM stores WHERE status IN ('active', 'trial') AND marketplace = 'wb')
+  WHERE p.store_id IN (SELECT id FROM stores WHERE is_active = TRUE AND marketplace = 'wb')
     AND p.is_active = TRUE
     AND pr.work_in_chats = TRUE
 ),

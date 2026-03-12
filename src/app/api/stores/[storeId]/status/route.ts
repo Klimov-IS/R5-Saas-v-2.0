@@ -2,14 +2,13 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
-import type { StoreStatus } from '@/db/helpers';
 import { triggerAsyncSync } from '@/services/google-sheets-sync';
 
 /**
  * PATCH /api/stores/[storeId]/status
- * Update store status
+ * Toggle store active status
  *
- * Body: { status: 'active' | 'paused' | 'stopped' | 'trial' | 'archived' }
+ * Body: { is_active: boolean }
  *
  * Used for quick status changes from the stores management page.
  * Supports optimistic updates on the frontend.
@@ -46,15 +45,14 @@ export async function PATCH(
 
     // Parse request body
     const body = await request.json();
-    const { status } = body;
+    const { is_active } = body;
 
-    // Validate status
-    const validStatuses: StoreStatus[] = ['active', 'paused', 'stopped', 'trial', 'archived'];
-    if (!status || !validStatuses.includes(status)) {
+    // Validate
+    if (typeof is_active !== 'boolean') {
       return NextResponse.json(
         {
-          error: 'Invalid status value',
-          details: `Status must be one of: ${validStatuses.join(', ')}`
+          error: 'Invalid value',
+          details: 'is_active must be a boolean (true or false)'
         },
         { status: 400 }
       );
@@ -72,7 +70,7 @@ export async function PATCH(
     }
 
     // Update status
-    const updatedStore = await dbHelpers.updateStore(storeId, { status });
+    const updatedStore = await dbHelpers.updateStore(storeId, { is_active });
 
     if (!updatedStore) {
       return NextResponse.json(

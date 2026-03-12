@@ -41,16 +41,10 @@ function formatApiStatus(token: string | null): string {
 }
 
 /**
- * Format store status for display
+ * Format store active status for display
  */
-function formatStatus(status: string): string {
-  const statusMap: Record<string, string> = {
-    'active': 'Активен',
-    'inactive': 'Неактивен',
-    'pending': 'Ожидание',
-    'suspended': 'Приостановлен'
-  };
-  return statusMap[status] || status;
+function formatStatus(isActive: boolean): string {
+  return isActive ? 'Активен' : 'Неактивен';
 }
 
 /**
@@ -66,7 +60,7 @@ export function formatClientRow(
     store.name,
     existingInn, // Preserve existing INN (filled manually)
     formatDate(store.created_at),
-    formatStatus(store.status),
+    formatStatus(store.is_active),
     formatApiStatus(store.api_token),
     formatApiStatus(store.content_api_token),
     formatApiStatus(store.feedbacks_api_token),
