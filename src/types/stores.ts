@@ -20,11 +20,11 @@ export type StoreStage =
  */
 export const STORE_STAGE_LABELS: Record<StoreStage, string> = {
   contract: 'Договор',
-  access_received: 'Получены доступы',
+  access_received: 'Доступ получен',
   cabinet_connected: 'Кабинет подключён',
-  complaints_submitted: 'Поданы жалобы',
-  chats_opened: 'Открыты чаты',
-  monitoring: 'Текущий контроль',
-  client_paused: 'Клиент на паузе',
-  client_lost: 'Клиент потерян',
+  complaints_submitted: 'Подаем жалобы',
+  chats_opened: 'Открываем чаты',
+  monitoring: 'Кабинет на контроле',
+  client_paused: 'На паузе',
+  client_lost: 'Потеря',
 };
