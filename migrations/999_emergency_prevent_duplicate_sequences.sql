@@ -23,8 +23,7 @@ WITH duplicates AS (
 UPDATE chat_auto_sequences
 SET
   status = 'stopped',
-  stopped_at = NOW(),
-  stopped_reason = 'duplicate_cleanup_migration',
+  stop_reason = 'duplicate_cleanup_migration',
   updated_at = NOW()
 WHERE id IN (
   SELECT UNNEST(sequence_ids[2:]) -- Keep first, stop rest
