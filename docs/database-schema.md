@@ -4,7 +4,7 @@
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
 **Marketplaces:** Wildberries, OZON
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-13
 
 ---
 
@@ -1101,9 +1101,31 @@ CREATE TABLE chat_auto_sequences (
 -- Indexes
 CREATE INDEX idx_auto_sequences_pending ON chat_auto_sequences(next_send_at) WHERE status = 'active';
 CREATE INDEX idx_auto_sequences_chat ON chat_auto_sequences(chat_id, status);
+
+-- Database Protection (Migration 999, 2026-03-13): Prevent duplicate active sequences
+CREATE UNIQUE INDEX idx_unique_active_sequence_per_chat ON chat_auto_sequences(chat_id)
+  WHERE status = 'active';
 ```
 
-**Key helpers:** `createAutoSequence`, `getPendingSequences`, `advanceSequence`, `stopSequence`, `completeSequence`
+**Key helpers:** `createAutoSequence`, `getPendingSequences`, `advanceSequence`, `stopSequence`, `completeSequence`, `start_auto_sequence_safe()` (migration 999)
+
+**Database Protection (Emergency Migration 999):**
+- **UNIQUE INDEX:** `idx_unique_active_sequence_per_chat` - Prevents multiple active sequences for same chat at database level
+- **Helper function:** `start_auto_sequence_safe(chat_id, store_id, owner_id, sequence_type, messages, max_steps, next_send_at)` - Automatically stops existing active sequence before creating new one
+- **Monitoring view:** `v_duplicate_sequences` - Shows chats with multiple active sequences (should always return 0 rows)
+
+**Created:** 2026-03-13 during emergency deployment to fix duplicate auto-sequence sends
+
+**Verification:**
+```sql
+-- Should return 0 rows (no duplicates)
+SELECT * FROM v_duplicate_sequences;
+
+-- Check index exists
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'chat_auto_sequences'
+  AND indexname = 'idx_unique_active_sequence_per_chat';
+```
 
 ---
 
@@ -1647,6 +1669,7 @@ Key migrations:
 24. `027_chat_audit_trail.sql` - `status_changed_by` TEXT + `closure_type` VARCHAR(20) on chats, `chat_status_history` table (immutable audit log for every status/tag change, `change_source` tracking)
 25. `028_schema_integrity_improvements.sql` - FK constraints on store_faq/store_guides/chat_auto_sequences, stores.status CHECK, questions.marketplace + product_nm_id TEXT, performance indexes
 26. `029_drop_dead_columns.sql` - Drop 14 dead columns: reviews (draft_reply_thread_id, complaint_generated_at, complaint_reason_id, complaint_category), chats (sent_no_reply_messages x2), user_settings (no_reply_messages x2, no_reply_trigger_phrase2, assistant_* x5)
+27. **`999_emergency_prevent_duplicate_sequences.sql`** - **EMERGENCY (2026-03-13):** Database-level duplicate prevention for auto-sequences. Created UNIQUE INDEX `idx_unique_active_sequence_per_chat` on (chat_id) WHERE status='active', helper function `start_auto_sequence_safe()`, monitoring view `v_duplicate_sequences`, released 2 stale processing locks. Context: Fixed 3× duplicate message sends (2 main app cluster instances + 1 cron process sending same messages). Deployed during emergency sprint. See [Emergency Sprint Docs](../docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/) for full context.
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
