@@ -105,6 +105,12 @@ NEXT_PUBLIC_API_URL=http://158.160.229.16:3000
 # Port
 PORT=3000
 
+# 🚨 CRITICAL: CRON Jobs Configuration (Added 2026-03-13)
+# DO NOT set this variable in production!
+# CRON jobs run ONLY in wb-reputation-cron process (see Step 4.5)
+# Setting this to 'true' will cause duplicate sends (main app has 2 instances in cluster mode)
+# ENABLE_CRON_IN_MAIN_APP=false  # ← DO NOT UNCOMMENT in production!
+
 # Deepseek AI (optional - если будете использовать AI)
 # DEEPSEEK_API_KEY=your-key-here
 ```
@@ -176,6 +182,74 @@ pm2 save
 pm2 status
 pm2 logs wb-reputation --lines 50
 ```
+
+### 4.5 Запустить CRON процесс (ВАЖНО! ⚠️)
+
+**🚨 CRITICAL:** CRON jobs должны запускаться ТОЛЬКО в отдельном процессе!
+
+**Почему:**
+- Main app (`wb-reputation`) работает в cluster mode с 2 instances
+- Если CRON запустится в каждом instance → дубликаты (2× sends)
+- Поэтому CRON запускается отдельно в `wb-reputation-cron` процессе
+
+**Запуск CRON процесса:**
+
+```bash
+# Создать конфигурацию для CRON процесса
+cat > ecosystem-cron.config.js << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'wb-reputation-cron',
+    script: 'scripts/start-cron.js',
+    cwd: '/var/www/wb-reputation',
+    instances: 1,
+    exec_mode: 'fork',
+    env: {
+      NODE_ENV: 'production',
+      ENABLE_CRON_IN_MAIN_APP: 'true'  // ← Only here!
+    },
+    error_file: '/var/www/wb-reputation/logs/cron-error.log',
+    out_file: '/var/www/wb-reputation/logs/cron-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    autorestart: true,
+    max_memory_restart: '500M'
+  }]
+};
+EOF
+
+# Запустить CRON процесс
+pm2 start ecosystem-cron.config.js
+pm2 save
+```
+
+**Проверка:**
+
+```bash
+# Должны увидеть оба процесса
+pm2 list
+
+# Ожидаемый вывод:
+# ┌─────┬──────────────────────┬─────────┬─────────┐
+# │ id  │ name                 │ mode    │ status  │
+# ├─────┼──────────────────────┼─────────┼─────────┤
+# │ 0   │ wb-reputation        │ cluster │ online  │ ← 2 instances
+# │ 1   │ wb-reputation        │ cluster │ online  │
+# │ 2   │ wb-reputation-cron   │ fork    │ online  │ ← 1 instance
+# └─────┴──────────────────────┴─────────┴─────────┘
+
+# Проверить логи CRON процесса
+pm2 logs wb-reputation-cron --lines 50
+
+# Должны увидеть:
+# [START-CRON] ✅ Cron jobs initialized successfully!
+```
+
+**⚠️ ВАЖНО:** Main app логи должны показывать:
+```
+[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)
+```
+
+Если видите "Starting cron jobs..." в main app → **ПРОБЛЕМА!** Проверьте `.env.production`.
 
 ## 🌐 Шаг 5: Настройка Nginx
 
@@ -286,7 +360,7 @@ npm ci --production=false
 # Rebuild application
 npm run build
 
-# ⚠️ ВАЖНО: Restart BOTH PM2 processes (main app + cron jobs)
+# ⚠️ ВАЖНО: Restart ALL PM2 processes
 pm2 restart all
 
 # Alternative: restart each process separately
@@ -295,15 +369,25 @@ pm2 restart all
 # Check status
 pm2 status
 
-# Verify CRON jobs started
-sleep 10
-pm2 logs wb-reputation --lines 50 | grep CRON
+# Verify main app: CRON should be DISABLED
+pm2 logs wb-reputation --lines 50 --nostream | grep INIT
+
+# Expected output:
+# [INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)
+
+# Verify CRON process: jobs should be RUNNING
+pm2 logs wb-reputation-cron --lines 50 --nostream | grep CRON
+
+# Expected output:
+# [START-CRON] ✅ Cron jobs initialized successfully!
 ```
 
 **⚠️ Критически важно:**
 - ВСЕГДА используйте `pm2 restart all` после deploy
-- Это перезапускает как main app, так и CRON jobs процесс
-- Если перезапустить только `wb-reputation`, CRON jobs остановятся!
+- Это перезапускает ВСЕ процессы: main app (2 instances) + CRON процесс
+- Main app: CRON должен быть отключен (DISABLED)
+- CRON process: CRON jobs должны быть запущены (initialized successfully)
+- Если в main app видите "Starting cron jobs" → **ПРОБЛЕМА!** См. Troubleshooting ниже
 
 ### 🤖 Автоматический deploy (рекомендуется)
 
@@ -356,6 +440,12 @@ pm2 reload wb-reputation
 
 # Monitor resources
 pm2 monit
+
+# CRON process commands
+pm2 logs wb-reputation-cron         # View CRON logs
+pm2 logs wb-reputation-cron --err   # Only CRON errors
+pm2 restart wb-reputation-cron      # Restart CRON
+pm2 stop wb-reputation-cron         # Stop CRON (emergencies only!)
 ```
 
 ### Nginx команды
@@ -454,6 +544,46 @@ cd /var/www/wb-reputation
 npx tsx scripts/test-db-connection.ts
 ```
 
+### CRON jobs запускаются дважды (дубликаты)
+
+**Проблема:** Сообщения отправляются 2-3 раза клиентам.
+
+**Диагностика:**
+```bash
+# Проверить main app логи
+pm2 logs wb-reputation --lines 100 --nostream | grep "CRON\|INIT"
+
+# ❌ ПЛОХО: "Starting cron jobs" в main app
+# ✅ ХОРОШО: "CRON jobs DISABLED in main app"
+
+# Проверить сколько процессов запускают CRON
+pm2 list | grep -E "wb-reputation|cron"
+```
+
+**Решение:**
+```bash
+# 1. Убедитесь что в .env.production НЕТ строки:
+# ENABLE_CRON_IN_MAIN_APP=true
+
+# 2. Перезапустить все процессы
+pm2 restart all
+
+# 3. Проверить логи снова
+pm2 logs wb-reputation --lines 20 --nostream | grep INIT
+# Должно быть: "CRON jobs DISABLED"
+```
+
+**Если проблема остается:**
+```bash
+# Emergency: остановить все CRON
+pm2 stop wb-reputation-cron
+cd /var/www/wb-reputation
+node scripts/EMERGENCY-stop-auto-sequences.mjs
+
+# Запустить только CRON процесс
+pm2 start wb-reputation-cron
+```
+
 ### Проверить использование ресурсов
 
 ```bash
@@ -466,6 +596,100 @@ df -h
 # PM2 monitoring
 pm2 monit
 ```
+
+## 🚨 Emergency Scripts (Добавлено 2026-03-13)
+
+В случае критических проблем с рассылками используйте emergency scripts.
+
+### 1. Остановить все активные рассылки
+
+**Когда использовать:**
+- Клиенты получают дубликаты сообщений
+- Рассылка отправляет слишком много сообщений
+- Нужно срочно остановить все auto-sequences
+
+**Команда:**
+```bash
+cd /var/www/wb-reputation
+node scripts/EMERGENCY-stop-auto-sequences.mjs
+```
+
+**Что делает:**
+- Останавливает все активные sequences (status = 'stopped')
+- Переводит чаты из `awaiting_reply` → `inbox`/`in_progress`
+- Логирует количество остановленных sequences
+
+**Ожидаемый вывод:**
+```
+🚨 ========== EMERGENCY AUTO-SEQUENCE STOP ==========
+⚠️  Found 47 active sequences to stop...
+✅ Successfully stopped 47 sequences:
+   - no_reply_followup: 32 sequences
+   - no_reply_followup_4star: 15 sequences
+```
+
+### 2. Проверить дубликаты и rapid sends
+
+**Когда использовать:**
+- После emergency stop
+- Для мониторинга качества рассылок
+- Для проверки после deployment
+
+**Команда:**
+```bash
+cd /var/www/wb-reputation
+node scripts/AUDIT-check-duplicate-sends.mjs
+```
+
+**Что проверяет:**
+- Duplicate messages (одинаковый текст в один чат)
+- Multiple active sequences per chat (должно быть max 1)
+- Rapid sends (< 5 min между сообщениями)
+- Stale processing locks (> 10 min)
+
+**Ожидаемый вывод (здоровая система):**
+```
+✅ No duplicate messages found in last 24 hours
+✅ No duplicate active sequences found
+✅ No rapid sends detected (< 5 min apart)
+⚠️  Found 2 stale processing locks (> 10 min)
+```
+
+### 3. Проверить статус sequences
+
+**Команда:**
+```bash
+cd /var/www/wb-reputation
+node scripts/check-sequences-status.mjs
+```
+
+**Что показывает:**
+- Distribution by status (active, stopped, completed)
+- Recently stopped sequences (last 24h)
+- Stop reasons
+
+### 4. Автоматический deployment с проверками
+
+**Рекомендуется для обновлений:**
+```bash
+cd /var/www/wb-reputation
+bash scripts/DEPLOY-EMERGENCY-FIX.sh
+```
+
+**Что делает:**
+1. Останавливает active sequences (безопасность)
+2. Останавливает CRON процесс
+3. Запускает audit (before)
+4. Билдит новую версию
+5. Рестартует main app
+6. Запускает CRON процесс
+7. Проверяет успешность
+
+**⚠️ Используйте только если:**
+- Deployment связан с изменениями в CRON или auto-sequences
+- Нужна дополнительная безопасность
+
+Для обычных deployment используйте стандартный `scripts/deploy.sh`.
 
 ## 📝 Полезные логи
 
@@ -488,18 +712,50 @@ sudo journalctl -u nginx -f
 - [ ] Сервер настроен (Node.js, PM2, Nginx)
 - [ ] Проект склонирован из GitHub
 - [ ] `.env.production` создан с корректными данными
+- [ ] **⚠️ ENABLE_CRON_IN_MAIN_APP НЕ установлена** (или закомментирована)
 - [ ] Зависимости установлены (`npm ci`)
 - [ ] Проект собран (`npm run build`)
-- [ ] PM2 запущен и сохранен (`pm2 start` + `pm2 save`)
+- [ ] **Main app запущен** (`pm2 start ecosystem.config.js`)
+- [ ] **CRON процесс запущен** (`pm2 start ecosystem-cron.config.js`)
+- [ ] PM2 сохранен (`pm2 save`)
+- [ ] **Проверка: Main app CRON disabled** (см. логи)
+- [ ] **Проверка: CRON process initialized** (см. логи)
 - [ ] Nginx настроен и перезагружен
 - [ ] Приложение доступно по IP: http://158.160.229.16
 - [ ] Логи проверены (нет критических ошибок)
+- [ ] **Emergency scripts протестированы** (AUDIT-check-duplicate-sends.mjs)
 - [ ] Firewall настроен (опционально)
+
+## 📚 Related Documents
+
+### Emergency Response (2026-03-13)
+- **[Sprint Emergency CRON Fix](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/README.md)** - Полный спринт с исправлением дубликатов
+- **[Deployment Report](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/DEPLOYMENT-REPORT-2026-03-13.md)** - Отчет о deployment 2026-03-13
+- **[Architecture Audit](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/documentation/ARCHITECTURE-AUDIT-2026-03-13.md)** - Audit системы
+- **[Sequence Restart Analysis](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SEQUENCE-RESTART-ANALYSIS.md)** - Анализ перезапуска sequences
+
+### Documentation
+- **Database Schema:** `docs/database-schema.md` (требует обновления)
+- **CRON Jobs:** `docs/CRON_JOBS.md` (будет создан)
+- **Troubleshooting:** `docs/TROUBLESHOOTING.md` (будет создан)
+
+### Scripts
+- **Emergency Scripts:** `scripts/EMERGENCY-*.mjs`
+- **Audit Scripts:** `scripts/AUDIT-*.mjs`
+- **Check Scripts:** `scripts/check-*.mjs`
 
 ## 🆘 Поддержка
 
 Если возникли проблемы:
-1. Проверьте PM2 логи: `pm2 logs wb-reputation`
+1. Проверьте PM2 логи: `pm2 logs wb-reputation` и `pm2 logs wb-reputation-cron`
 2. Проверьте Nginx логи: `sudo tail -f /var/log/nginx/error.log`
 3. Проверьте системные ресурсы: `htop`
-4. Перезапустите приложение: `pm2 restart wb-reputation`
+4. Запустите audit: `node scripts/AUDIT-check-duplicate-sends.mjs`
+5. Перезапустите процессы: `pm2 restart all`
+
+**Emergency:** Если рассылки дублируются, см. секцию "Emergency Scripts" выше.
+
+---
+
+**Последнее обновление:** 2026-03-13
+**Версия:** 2.0 (добавлена секция про CRON процесс и emergency scripts)
