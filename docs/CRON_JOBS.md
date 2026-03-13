@@ -1,6 +1,65 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-13
+**Emergency Deployment:** 2026-03-13 (CRON architecture changed)
+
+---
+
+## 🚨 CRITICAL: CRON Architecture (Updated 2026-03-13)
+
+### NEW: Separate CRON Process (Production)
+
+**Problem Solved:** Duplicate auto-sequence messages (3× sends from 2 main app instances + 1 cron process)
+
+**Solution:** CRON jobs now run in a **dedicated separate process** (`wb-reputation-cron`)
+
+**Production Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PM2 Processes                                               │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ wb-reputation (cluster, 2 instances)                     │
+│    → CRON: DISABLED (via ENABLE_CRON_IN_MAIN_APP check)    │
+│    → Handles: HTTP requests only                            │
+│                                                              │
+│ ✅ wb-reputation-cron (fork, 1 instance)                    │
+│    → CRON: ENABLED (via scripts/start-cron.js)             │
+│    → Handles: All CRON jobs (single source of truth)        │
+│                                                              │
+│ ✅ wb-reputation-tg-bot (fork, 1 instance)                  │
+│    → Telegram bot long-polling                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Environment Variable (NEW):**
+```bash
+# 🚨 DO NOT SET IN PRODUCTION!
+# ENABLE_CRON_IN_MAIN_APP=true  # ← Only for local dev!
+
+# In production, CRON runs ONLY in wb-reputation-cron process
+```
+
+**Code Protection:** [src/lib/init-server.ts:29-36](../src/lib/init-server.ts#L29-L36)
+```typescript
+const enableCronInMainApp = process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
+
+if (!enableCronInMainApp) {
+  console.log('[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)');
+  initialized = true;
+  return;
+}
+```
+
+**Verification:**
+```bash
+# Should see ONLY ONE log entry per job execution (not 3)
+pm2 logs wb-reputation-cron | grep "Auto-sequence"
+```
+
+**Related Documents:**
+- [DEPLOYMENT.md Section 4.5](../DEPLOYMENT.md#45-запустить-cron-процесс)
+- [Emergency Sprint Plan](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SPRINT-PLAN.md)
+- [Deployment Report 2026-03-13](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/DEPLOYMENT-REPORT-2026-03-13.md)
 
 ---
 
@@ -253,45 +312,86 @@ export async function getAllStores(): Promise<Store[]> {
 
 ---
 
-## How CRON Auto-Start Works
+## How CRON Auto-Start Works (Updated 2026-03-13)
 
-### 1. Next.js Instrumentation Hook
+### Architecture: Two Paths
 
-When the Next.js server starts, it automatically runs [instrumentation.ts](../instrumentation.ts):
+#### Path A: Main App (wb-reputation) - CRON DISABLED
 
+**Production:** CRON jobs are **DISABLED** in main app
+
+1. Next.js server starts → [instrumentation.ts](../instrumentation.ts) runs
+2. Calls `initializeServer()` from [src/lib/init-server.ts](../src/lib/init-server.ts)
+3. **Checks `ENABLE_CRON_IN_MAIN_APP`** environment variable
+4. If `false` or undefined → **SKIP CRON initialization** (default in production)
+5. Logs: `[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)`
+
+**Code:** [src/lib/init-server.ts:29-36](../src/lib/init-server.ts#L29-L36)
 ```typescript
-export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    console.log('[INSTRUMENTATION] 🚀 Server starting, initializing cron jobs...');
+const enableCronInMainApp = process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
 
-    const { initializeServer } = await import('./src/lib/init-server');
-    initializeServer();
-
-    console.log('[INSTRUMENTATION] ✅ Cron jobs initialized successfully');
-  }
-}
-```
-
-### 2. Server Initialization
-
-[src/lib/init-server.ts](../src/lib/init-server.ts) runs once per server start:
-
-```typescript
-export function initializeServer() {
-  if (initialized) {
-    console.log('[INIT] ⏭️  Server already initialized, skipping...');
-    return;
-  }
-
-  console.log('[INIT] 🚀 Initializing server...');
-
-  // Start cron jobs
-  startDailyReviewSync();
-
+if (!enableCronInMainApp) {
+  console.log('[INIT] ⚠️  CRON jobs DISABLED in main app');
   initialized = true;
-  console.log('[INIT] ✅ Server initialized successfully');
+  return; // ← EXIT without starting CRON
 }
 ```
+
+#### Path B: CRON Process (wb-reputation-cron) - CRON ENABLED
+
+**Production:** CRON jobs run **ONLY** in dedicated `wb-reputation-cron` process
+
+1. PM2 starts `scripts/start-cron.js`
+2. Sets `ENABLE_CRON_IN_MAIN_APP=true` in environment
+3. Imports and calls `initializeServer()` → registers all CRON jobs
+4. Logs: `[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)`
+   - Message says "main app" but actually running in dedicated cron process
+   - This is correct - reuses same init code
+5. All 12 CRON jobs start in **single process** (no duplicates)
+
+**PM2 Config:** [ecosystem-cron.config.js](../ecosystem-cron.config.js)
+```javascript
+{
+  name: 'wb-reputation-cron',
+  script: './scripts/start-cron.js',
+  instances: 1,
+  exec_mode: 'fork',
+  env: {
+    ENABLE_CRON_IN_MAIN_APP: 'true', // ← Force CRON ON
+    NODE_ENV: 'production'
+  }
+}
+```
+
+**Start Script:** [scripts/start-cron.js](../scripts/start-cron.js)
+```javascript
+process.env.ENABLE_CRON_IN_MAIN_APP = 'true';
+const { initializeServer } = require('../src/lib/init-server');
+initializeServer();
+```
+
+---
+
+### Local Development
+
+**Option 1: Use dedicated CRON process (recommended)**
+```bash
+# Terminal 1: Main app
+npm run dev
+
+# Terminal 2: CRON process
+node scripts/start-cron.js
+```
+
+**Option 2: Enable CRON in main app (quick testing)**
+```bash
+# .env.local
+ENABLE_CRON_IN_MAIN_APP=true
+
+npm run dev
+```
+
+⚠️ **Warning:** Do NOT set `ENABLE_CRON_IN_MAIN_APP=true` in production `.env`!
 
 ### 3. CRON Job Registration
 
@@ -314,11 +414,11 @@ export function startDailyReviewSync() {
 
 ---
 
-## Deployment Impact
+## Deployment Impact (Updated 2026-03-13)
 
 ### Does CRON Auto-Start After Deployment?
 
-**YES.** When you deploy:
+**YES, but in separate process.** When you deploy:
 
 ```bash
 # Deploy with update-app.sh
@@ -327,13 +427,44 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
 ```
 
 **What Happens:**
-1. `pm2 reload wb-reputation` → restarts Node.js processes
-2. Next.js server restarts
-3. `instrumentation.ts` runs automatically
-4. CRON jobs initialize
-5. Jobs wait for scheduled time (8:00 AM MSK)
 
-**No manual intervention required!**
+**Main App (wb-reputation):**
+1. `pm2 reload wb-reputation` → restarts 2 instances
+2. Next.js server restarts
+3. `instrumentation.ts` runs
+4. CRON initialization **SKIPPED** (ENABLE_CRON_IN_MAIN_APP not set)
+5. Logs: `[INIT] ⚠️  CRON jobs DISABLED in main app`
+
+**CRON Process (wb-reputation-cron):**
+1. Already running (not restarted during main app deploy)
+2. **OR** manually start if not running: `pm2 start wb-reputation-cron`
+3. CRON jobs continue running without interruption
+4. **Rolling restart** if needed: `pm2 restart wb-reputation-cron`
+
+**Important:** After code changes to CRON logic, restart CRON process:
+```bash
+# On production server
+pm2 restart wb-reputation-cron
+
+# Verify CRON initialized
+pm2 logs wb-reputation-cron --lines 50 | grep "CRON.*started"
+```
+
+**Verification After Deploy:**
+```bash
+# Check all processes are online
+pm2 list
+
+# Verify main app has CRON disabled
+pm2 logs wb-reputation --lines 20 | grep "CRON"
+# Should see: "CRON jobs DISABLED in main app"
+
+# Verify CRON process has jobs running
+pm2 logs wb-reputation-cron --lines 20 | grep "CRON"
+# Should see: "✅ Daily review sync job started successfully"
+```
+
+**No manual intervention required** (assuming wb-reputation-cron already running)
 
 ---
 
@@ -369,7 +500,7 @@ cron.schedule('...', async () => {
 
 ---
 
-## Monitoring CRON Jobs
+## Monitoring CRON Jobs (Updated 2026-03-13)
 
 ### Check CRON Initialization (Production)
 
@@ -377,34 +508,60 @@ cron.schedule('...', async () => {
 # SSH into server
 ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
-# View PM2 logs (look for [INSTRUMENTATION] and [INIT] logs)
-pm2 logs wb-reputation | grep -E "\[INSTRUMENTATION\]|\[INIT\]|\[CRON\]"
+# ✅ View CRON process logs (correct process)
+pm2 logs wb-reputation-cron | grep -E "\[INIT\]|\[CRON\]"
+
+# ✅ Verify main app has CRON disabled
+pm2 logs wb-reputation | grep "CRON jobs DISABLED"
 ```
 
-**Expected Output:**
+**Expected Output (wb-reputation-cron):**
 ```
-[INSTRUMENTATION] 🚀 Server starting, initializing cron jobs...
-[INIT] 🚀 Initializing server at 2026-01-15T10:30:00.000Z
+[INIT] 🚀 Initializing server at 2026-03-13T12:35:00.000Z
 [INIT] Environment: production
-[INIT] Starting cron jobs...
-[CRON] Scheduling daily review sync: 0 5 * * *
-[CRON] Mode: PRODUCTION (8:00 AM MSK)
+[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)
+[CRON] Scheduling daily review sync: 0 * * * *
 [CRON] ✅ Daily review sync job started successfully
-[INIT] ✅ Server initialized successfully (45ms)
-[INSTRUMENTATION] ✅ Cron jobs initialized successfully
+[CRON] ✅ Auto-sequence processor job started
+[CRON] ✅ Resolved-review closer job started
+...
+[INIT] ✅ Server initialized successfully (125ms)
+```
+
+**Expected Output (wb-reputation main app):**
+```
+[INIT] 🚀 Initializing server at 2026-03-13T12:35:00.000Z
+[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)
+[INIT] 💡 To enable in main app (local dev only): set ENABLE_CRON_IN_MAIN_APP=true
 ```
 
 ### Monitor CRON Execution
 
 ```bash
-# Watch logs in real-time
-pm2 logs wb-reputation
+# Watch CRON process logs in real-time
+pm2 logs wb-reputation-cron
 
-# Filter only CRON logs
-pm2 logs wb-reputation | grep "\[CRON\]"
+# Filter only CRON execution logs
+pm2 logs wb-reputation-cron | grep "\[CRON\]"
 
-# Check specific date/time
-pm2 logs wb-reputation --lines 1000 | grep "2026-01-15T05:00"
+# Check specific job execution
+pm2 logs wb-reputation-cron --lines 500 | grep "Auto-sequence"
+
+# Check for errors
+pm2 logs wb-reputation-cron --err --lines 100
+```
+
+### Verify No Duplicates
+
+```bash
+# Run audit script
+cd /var/www/wb-reputation
+node scripts/AUDIT-check-duplicate-sends.mjs
+
+# Expected output:
+# ✅ No duplicate messages found
+# ✅ No duplicate active sequences
+# ✅ No rapid sends detected
 ```
 
 ### Check Job Status (API Endpoint)
@@ -452,29 +609,91 @@ curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=ful
 
 ## Troubleshooting
 
+### 🚨 Duplicate Auto-Sequence Sends (NEW - Added 2026-03-13)
+
+**Symptom:** Clients receive same auto-sequence message 2-3 times within minutes
+
+**Root Cause:** CRON running in multiple processes simultaneously:
+- 2× main app instances (cluster mode) + 1× cron process = 3× sends
+
+**Diagnostic:**
+```bash
+# Check how many times auto-sequence ran
+pm2 logs wb-reputation-cron --lines 200 | grep -A 2 "Auto-sequence"
+
+# ❌ BAD: See 3 entries at same timestamp
+[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+
+# ✅ GOOD: See 1 entry
+[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+```
+
+**Fix:**
+1. **Verify CRON disabled in main app:**
+   ```bash
+   # Should show "CRON jobs DISABLED"
+   pm2 logs wb-reputation --lines 50 | grep "CRON jobs"
+   ```
+
+2. **Check environment variable:**
+   ```bash
+   # Should NOT see ENABLE_CRON_IN_MAIN_APP=true
+   pm2 env 0 | grep ENABLE_CRON
+   ```
+
+3. **If duplicates still occur:**
+   ```bash
+   # Emergency stop all sequences
+   cd /var/www/wb-reputation
+   node scripts/EMERGENCY-stop-auto-sequences.mjs
+
+   # Restart CRON process
+   pm2 restart wb-reputation-cron
+
+   # Wait 30 min, verify single execution
+   pm2 logs wb-reputation-cron | grep "Auto-sequence"
+   ```
+
+4. **Audit for damage:**
+   ```bash
+   node scripts/AUDIT-check-duplicate-sends.mjs
+   ```
+
+---
+
 ### CRON Jobs Not Starting
 
 **Symptom:** No `[CRON]` logs after server restart
 
+**IMPORTANT:** Check **wb-reputation-cron** process (not main app!)
+
 **Check:**
 ```bash
-# 1. Verify instrumentation.ts is being executed
-pm2 logs wb-reputation | grep "INSTRUMENTATION"
+# 1. Verify CRON process is running
+pm2 list | grep cron
 
-# 2. Check for errors in initialization
-pm2 logs wb-reputation --err | grep -E "INIT|CRON"
+# 2. Check CRON process logs
+pm2 logs wb-reputation-cron | grep "INIT"
 
-# 3. Verify Next.js config allows instrumentation
-cat next.config.mjs | grep experimental
+# 3. Verify main app has CRON DISABLED
+pm2 logs wb-reputation | grep "CRON jobs DISABLED"
 ```
 
-**Expected in `next.config.mjs`:**
-```javascript
-const nextConfig = {
-  experimental: {
-    instrumentationHook: true,  // Must be true
-  },
-};
+**Expected in wb-reputation-cron logs:**
+```
+[INIT] 🚀 Initializing server at 2026-03-13T12:35:00.000Z
+[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)
+[CRON] ✅ Daily review sync job started successfully
+[CRON] ✅ Auto-sequence processor job started
+...
+```
+
+**If CRON process not in PM2:**
+```bash
+cd /var/www/wb-reputation
+pm2 start ecosystem-cron.config.js
 ```
 
 ### CRON Job Running But Failing
@@ -700,11 +919,147 @@ pm2 show wb-reputation
 
 | Task | Command |
 |------|---------|
-| Check CRON initialization | `pm2 logs wb-reputation \| grep CRON` |
-| View CRON execution logs | `pm2 logs wb-reputation \| grep "daily review sync"` |
-| Restart server (re-init CRON) | `pm2 reload wb-reputation` |
+| Check CRON initialization | `pm2 logs wb-reputation-cron \| grep CRON` (changed 2026-03-13) |
+| View CRON execution logs | `pm2 logs wb-reputation-cron \| grep "Auto-sequence"` |
+| Restart CRON process | `pm2 restart wb-reputation-cron` |
 | Test job manually | Trigger API endpoint directly |
-| Check job schedule | View `src/lib/cron-jobs.ts:54-56` |
+| Check job schedule | View `src/lib/cron-jobs.ts` |
+| Check duplicate sends | `node scripts/AUDIT-check-duplicate-sends.mjs` |
+| Emergency stop sequences | `node scripts/EMERGENCY-stop-auto-sequences.mjs` |
+
+---
+
+## Emergency Scripts (Added 2026-03-13)
+
+### 1. EMERGENCY-stop-auto-sequences.mjs
+
+**Purpose:** Immediately stop all active auto-sequences and transition chats to safe state.
+
+**Usage:**
+```bash
+cd /var/www/wb-reputation
+node scripts/EMERGENCY-stop-auto-sequences.mjs
+```
+
+**What It Does:**
+1. Finds all active sequences (`status = 'active'`)
+2. Sets `status = 'stopped'`, `stop_reason = 'emergency_stop_YYYY-MM-DD'`
+3. Transitions chats from `awaiting_reply` → `inbox` or `in_progress` (based on existing `tag`)
+4. Logs affected chat IDs and sequences
+
+**When to Use:**
+- Duplicate sends detected
+- CRON malfunction
+- Need to pause all automation immediately
+
+**Source:** [scripts/EMERGENCY-stop-auto-sequences.mjs](../scripts/EMERGENCY-stop-auto-sequences.mjs)
+
+**Example Output:**
+```
+🚨 EMERGENCY: Stopping all active auto-sequences
+
+Found 2,075 active sequences to stop
+✅ Stopped 2,075 sequences
+✅ Updated chat statuses:
+   - awaiting_reply → inbox: 1,200 chats
+   - awaiting_reply → in_progress: 875 chats
+
+Stop reason: emergency_stop_2026-03-13
+All sequences stopped successfully!
+```
+
+---
+
+### 2. AUDIT-check-duplicate-sends.mjs
+
+**Purpose:** Audit database for duplicate message sends and active sequences.
+
+**Usage:**
+```bash
+cd /var/www/wb-reputation
+node scripts/AUDIT-check-duplicate-sends.mjs
+```
+
+**What It Checks:**
+1. **Duplicate messages** - same chat, sender, text within 30 minutes
+2. **Duplicate active sequences** - multiple active sequences for same chat
+3. **Rapid sends** - auto-sequence messages sent <5 minutes apart
+4. **Stale processing locks** - sequences stuck in processing state
+
+**Source:** [scripts/AUDIT-check-duplicate-sends.mjs](../scripts/AUDIT-check-duplicate-sends.mjs)
+
+**Example Output:**
+```
+🔍 Auditing for duplicate auto-sequence sends...
+
+✅ No duplicate messages found in last 24 hours
+✅ No duplicate active sequences found
+✅ No rapid sends detected (all ≥5min apart)
+⚠️  Found 2 stale processing locks (released)
+
+Audit complete!
+```
+
+---
+
+### 3. Database Migration 999 (Emergency Protection)
+
+**Applied:** 2026-03-13 during emergency deployment
+
+**What It Created:**
+
+1. **UNIQUE INDEX:** `idx_unique_active_sequence_per_chat`
+   - Prevents multiple active sequences for same chat at database level
+   - Constraint: `(chat_id) WHERE status = 'active'`
+
+2. **Helper Function:** `start_auto_sequence_safe()`
+   - Safe wrapper for creating sequences
+   - Automatically stops existing active sequence before creating new one
+   - Usage: `SELECT start_auto_sequence_safe($1, $2, $3, $4, $5, $6, $7);`
+
+3. **Monitoring View:** `v_duplicate_sequences`
+   - Shows chats with multiple active sequences (should always return 0 rows)
+   - Query: `SELECT * FROM v_duplicate_sequences;`
+
+**Migration File:** [migrations/999_emergency_prevent_duplicate_sequences.sql](../migrations/999_emergency_prevent_duplicate_sequences.sql)
+
+**Verification:**
+```sql
+-- Should return 0 rows (no duplicates)
+SELECT * FROM v_duplicate_sequences;
+
+-- Check index exists
+SELECT indexname FROM pg_indexes
+WHERE tablename = 'chat_auto_sequences'
+  AND indexname = 'idx_unique_active_sequence_per_chat';
+```
+
+---
+
+### 4. Sequence Restart Analysis
+
+After emergency stop (2026-03-13), 2,075 sequences were stopped.
+
+**Distribution by current_step:**
+| Step | Count | Already Sent | Next Message |
+|------|-------|--------------|--------------|
+| 0 | 43 | 0 messages | messages[0] (1st) |
+| 1 | 706 | 1 message | messages[1] (2nd) |
+| 2 | 1,007 | 2 messages | messages[2] (3rd) |
+| 3 | 28 | 3 messages | messages[3] (4th) |
+| 4 | 114 | 4 messages | messages[4] (5th) |
+| 5 | 50 | 5 messages | messages[5] (6th) |
+| 6 | 127 | 6 messages | messages[6] (7th) |
+
+**Status:** ⏸️ POSTPONED - see [SEQUENCE-RESTART-ANALYSIS.md](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SEQUENCE-RESTART-ANALYSIS.md)
+
+**Decision:** Do NOT restart stopped sequences. Create new sequences manually from TG Mini App as needed.
+
+**Why:**
+- 85% of stopped sequences had only 0-2 messages sent (low progress)
+- New sequences (20) already created post-emergency
+- No risk of spam or unexpected messages to clients
+- Full control over which chats get new sequences
 
 ---
 
