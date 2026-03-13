@@ -215,6 +215,7 @@ async function restartSequencesByStore(storeId) {
         try {
           const nextSendAt = getNextSendTime();
 
+          // Update sequence status
           await pool.query(`
             UPDATE chat_auto_sequences
             SET
@@ -224,6 +225,14 @@ async function restartSequencesByStore(storeId) {
               updated_at = NOW()
             WHERE id = $2
           `, [nextSendAt, seq.id]);
+
+          // Update chat status to awaiting_reply (for TG Mini App visibility)
+          await pool.query(`
+            UPDATE chats
+            SET status = 'awaiting_reply',
+                updated_at = NOW()
+            WHERE id = $1
+          `, [seq.chat_id]);
 
           restarted++;
           console.log(`✅ Restarted: ${seq.client_name} (step ${seq.current_step}/${seq.max_steps}, next send: ${nextSendAt})`);
