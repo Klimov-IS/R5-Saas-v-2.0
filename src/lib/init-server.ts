@@ -17,9 +17,27 @@ export function initializeServer() {
   console.log('[INIT] 🚀 Initializing server at', new Date().toISOString());
   console.log('[INIT] Environment:', process.env.NODE_ENV || 'development');
 
+  // 🚨 CRITICAL FIX (2026-03-13): CRON jobs MUST run in separate process only!
+  //
+  // Problem: ecosystem.config.js runs main app with `instances: 2` (cluster mode)
+  // → instrumentation.ts calls initializeServer() in EACH instance
+  // → 2 main app instances + 1 wb-reputation-cron process = 3× duplicate sends!
+  //
+  // Solution: ONLY run cron jobs if ENABLE_CRON_IN_MAIN_APP=true (for local dev)
+  // Production uses dedicated wb-reputation-cron process (scripts/start-cron.js)
+
+  const enableCronInMainApp = process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
+
+  if (!enableCronInMainApp) {
+    console.log('[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)');
+    console.log('[INIT] 💡 To enable in main app (local dev only): set ENABLE_CRON_IN_MAIN_APP=true');
+    initialized = true;
+    return;
+  }
+
   try {
-    // Start cron jobs
-    console.log('[INIT] Starting cron jobs...');
+    // Start cron jobs (only if explicitly enabled)
+    console.log('[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)');
     startDailyReviewSync(); // Hourly review sync + auto-complaint generation
     startAdaptiveDialogueSync(); // Adaptive dialogue sync (5min work / 15min morning-evening / 60min night)
     startDailyProductSync(); // Daily product sync (7:00 AM MSK)
