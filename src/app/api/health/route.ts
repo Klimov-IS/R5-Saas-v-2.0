@@ -16,6 +16,8 @@ import { isInitialized, isCronRunning } from '@/lib/init-server';
 import { query } from '@/db/client';
 import { rateLimiter } from '@/lib/rate-limiter';
 
+export const dynamic = 'force-dynamic';
+
 const startTime = Date.now();
 
 interface ServiceStatus {
