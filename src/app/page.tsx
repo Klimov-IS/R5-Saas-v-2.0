@@ -774,7 +774,9 @@ export default function Home() {
 
                       {/* Dialogues: opened / required */}
                       <td>
-                        {storeProgress[store.id] ? (
+                        {storeProgress[store.id] &&
+                         (storeProgress[store.id].dialogues.opened > 0 ||
+                          storeProgress[store.id].dialogues.required > 0) ? (
                           <ProgressCell
                             icon={MessageSquare}
                             current={storeProgress[store.id].dialogues.opened}
@@ -782,9 +784,7 @@ export default function Home() {
                             color="var(--category-chats-text, #2563eb)"
                           />
                         ) : (
-                          <span style={{ fontSize: '13px', color: 'var(--color-muted)' }}>
-                            {store.marketplace === 'ozon' ? '—' : '...'}
-                          </span>
+                          <span style={{ fontSize: '13px', color: 'var(--color-muted)' }}>—</span>
                         )}
                       </td>
 

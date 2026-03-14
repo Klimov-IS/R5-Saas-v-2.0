@@ -87,14 +87,18 @@ export async function GET(request: NextRequest) {
       id: string;
       name: string;
       is_active: boolean;
+      stage: string;
     }>(
-      `SELECT s.id, s.name, s.is_active
+      `SELECT s.id, s.name, s.is_active, s.stage
        FROM stores s
        WHERE s.owner_id = $1
          AND s.marketplace = 'wb'
        ORDER BY s.name ASC`,
       [user.id]
     );
+
+    // Stage guard: chat tasks only for stores at 'chats_opened' or 'monitoring'
+    const chatAllowedStages = ['chats_opened', 'monitoring'];
 
     // 5. Check which stores have chat-enabled products and count pending chats
     const stores = await Promise.all(
@@ -112,7 +116,8 @@ export async function GET(request: NextRequest) {
         const chatEnabled = parseInt(chatEnabledResult.rows[0]?.count || '0', 10) > 0;
 
         let pendingChatsCount = 0;
-        if (chatEnabled && store.is_active) {
+        // Stage guard: only count pending chats for stores at chat-allowed stages
+        if (chatEnabled && store.is_active && chatAllowedStages.includes(store.stage)) {
           pendingChatsCount = await getPendingChatsCountOptimized(store.id);
         }
 

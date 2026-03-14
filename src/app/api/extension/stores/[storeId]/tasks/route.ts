@@ -62,9 +62,9 @@ export async function GET(
       );
     }
 
-    // 2. Verify store access
-    const storeResult = await query(
-      'SELECT id, owner_id FROM stores WHERE id = $1',
+    // 2. Verify store access and get stage
+    const storeResult = await query<{ id: string; owner_id: string; stage: string }>(
+      'SELECT id, owner_id, stage FROM stores WHERE id = $1',
       [storeId]
     );
     if (!storeResult.rows[0]) {
@@ -79,6 +79,10 @@ export async function GET(
         { status: 403 }
       );
     }
+
+    // Stage guard: chat tasks only for stores at 'chats_opened' or 'monitoring'
+    const chatAllowedStages = ['chats_opened', 'monitoring'];
+    const chatTasksAllowed = chatAllowedStages.includes(storeResult.rows[0].stage);
 
     // 3. Run all queries in parallel (4 data + 1 counts)
     const [statusParsesResult, chatOpensResult, chatLinksResult, complaintsResult, totalCountsResult] = await Promise.all([
@@ -130,8 +134,9 @@ export async function GET(
 
       // ── Query B: chatOpens (type: "open") ──
       // Reviews where complaint was rejected, chat is available, no existing link.
+      // Stage guard: only for stores at 'chats_opened' or 'monitoring'
       // Sorted by date ASC = oldest rejected complaints first.
-      query<{
+      chatTasksAllowed ? query<{
         id: string;
         wb_product_id: string;
         rating: number;
@@ -171,12 +176,13 @@ export async function GET(
          ORDER BY r.id, r.date ASC
          LIMIT 200`,
         [storeId]
-      ),
+      ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
       // ── Query C: chatLinks (type: "link") ──
       // Reviews where chat is already opened but not linked in our DB.
+      // Stage guard: only for stores at 'chats_opened' or 'monitoring'
       // Sorted by date ASC = oldest unlinked chats first.
-      query<{
+      chatTasksAllowed ? query<{
         id: string;
         wb_product_id: string;
         rating: number;
@@ -212,7 +218,7 @@ export async function GET(
          ORDER BY p.wb_product_id, r.date ASC
          LIMIT 200`,
         [storeId]
-      ),
+      ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
       // ── Query D: complaints ──
       // Reviews with ready AI complaint drafts (existing logic from complaints endpoint).
