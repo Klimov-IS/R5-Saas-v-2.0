@@ -35,6 +35,12 @@ export async function maybeStartAutoSequence(
   storeId: string
 ): Promise<boolean> {
   try {
+    // Guard: skip if store is inactive
+    const store = await dbHelpers.getStoreById(storeId);
+    if (!store || !store.is_active) {
+      return false;
+    }
+
     // 1. Get review_chat_link to determine rating
     const rcl = await findLinkByChatId(chatId);
     if (!rcl) {

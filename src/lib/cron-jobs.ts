@@ -699,6 +699,15 @@ export function startAutoSequenceProcessor() {
           // Check stop condition 2: chat status still valid?
           const chat = await dbHelpers.getChatById(seq.chat_id);
           const seqStore = await dbHelpers.getStoreById(seq.store_id);
+
+          // Check stop condition: store deactivated?
+          if (!seqStore || !seqStore.is_active) {
+            if (!dryRun) await dbHelpers.stopSequence(seq.id, 'store_deactivated');
+            stopped++;
+            console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (store ${seq.store_id} inactive)${dryRun ? ' [DRY RUN]' : ''}`);
+            continue;
+          }
+
           if (!chat || (chat.status !== 'awaiting_reply' && chat.status !== 'in_progress' && chat.status !== 'inbox')) {
             if (!dryRun) await dbHelpers.stopSequence(seq.id, 'status_changed');
             stopped++;
@@ -1451,6 +1460,7 @@ export function startResolvedReviewCloser() {
              OR r.review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')
              OR r.rating_excluded = TRUE
            )
+           AND c.store_id IN (SELECT id FROM stores WHERE is_active = TRUE)
          LIMIT 500`
       );
 

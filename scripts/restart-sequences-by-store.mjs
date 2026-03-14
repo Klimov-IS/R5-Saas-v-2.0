@@ -57,7 +57,7 @@ async function restartSequencesByStore(storeId) {
   try {
     // 1. Get store info
     const storeResult = await pool.query(
-      `SELECT id, name FROM stores WHERE id = $1`,
+      `SELECT id, name, is_active FROM stores WHERE id = $1`,
       [storeId]
     );
 
@@ -67,6 +67,13 @@ async function restartSequencesByStore(storeId) {
     }
 
     const store = storeResult.rows[0];
+
+    // Safety: block restart for deactivated stores
+    if (store.is_active === false) {
+      console.error(`❌ Store "${store.name}" is DEACTIVATED (is_active=false). Aborting.`);
+      process.exit(1);
+    }
+
     console.log(`📦 Store: ${store.name}`);
     console.log(`   ID: ${store.id}`);
     console.log(`   Min progress filter: step >= ${MIN_PROGRESS_STEP}\n`);

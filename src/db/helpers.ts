@@ -2909,9 +2909,10 @@ export async function getLatestSequenceForChat(chatId: string): Promise<ChatAuto
  */
 export async function getPendingSequences(limit: number = 50): Promise<ChatAutoSequence[]> {
   const result = await query<ChatAutoSequence>(
-    `SELECT * FROM chat_auto_sequences
-     WHERE status = 'active' AND next_send_at <= NOW()
-     ORDER BY next_send_at ASC
+    `SELECT cas.* FROM chat_auto_sequences cas
+     INNER JOIN stores s ON s.id = cas.store_id AND s.is_active = TRUE
+     WHERE cas.status = 'active' AND cas.next_send_at <= NOW()
+     ORDER BY cas.next_send_at ASC
      LIMIT $1`,
     [limit]
   );

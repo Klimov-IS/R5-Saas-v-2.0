@@ -41,6 +41,9 @@ export async function sendSequenceMessage(
   if (!store) {
     return { sent: false, error: 'Store not found' };
   }
+  if (!store.is_active) {
+    return { sent: false, error: 'permanent', errorMessage: 'Store is inactive (is_active=false)' };
+  }
 
   // Send message via shared marketplace dispatch (no replySign — helper fetches it for WB)
   const result = await sendMessageToMarketplace({
