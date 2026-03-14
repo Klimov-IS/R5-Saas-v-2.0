@@ -6,8 +6,12 @@ module.exports = {
       script: "node_modules/next/dist/bin/next",
       args: "start",
       cwd: "/var/www/wb-reputation",
-      instances: 2,
-      exec_mode: "cluster",
+      // CHANGED 2026-03-14: fork mode (was cluster/2)
+      // Cluster mode caused CRON duplication — in-memory cronJobsStarted flag
+      // exists per-instance, so health check could trigger CRON in both instances.
+      // Fork mode eliminates this. 4GB RAM is sufficient for 1 instance.
+      instances: 1,
+      exec_mode: "fork",
       env: {
         NODE_ENV: "production",
         PORT: 3000
