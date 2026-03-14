@@ -114,6 +114,10 @@ export async function GET(
            AND p.work_status = 'active'
            AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
            AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+           AND NOT EXISTS (
+             SELECT 1 FROM review_complaints rc
+             WHERE rc.review_id = r.id AND rc.status = 'draft'
+           )
            AND (
              (pr.submit_complaints = TRUE AND (
                (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
@@ -272,6 +276,10 @@ export async function GET(
              AND p.work_status = 'active'
              AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
              AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+             AND NOT EXISTS (
+               SELECT 1 FROM review_complaints rc2
+               WHERE rc2.review_id = r.id AND rc2.status = 'draft'
+             )
              AND (
                (pr.submit_complaints = TRUE AND (
                  (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR

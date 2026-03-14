@@ -175,6 +175,10 @@ export async function GET(request: NextRequest) {
             AND r.marketplace = 'wb'
             AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
             AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+            AND NOT EXISTS (
+              SELECT 1 FROM review_complaints rc
+              WHERE rc.review_id = r.id AND rc.status = 'draft'
+            )
             AND r.rating = ANY(ARRAY_REMOVE(ARRAY[
               CASE WHEN (pr.submit_complaints AND pr.complaint_rating_1) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_1) THEN 1 END,
               CASE WHEN (pr.submit_complaints AND pr.complaint_rating_2) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_2) THEN 2 END,

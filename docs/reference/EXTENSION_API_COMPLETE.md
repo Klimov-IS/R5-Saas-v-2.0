@@ -2,7 +2,7 @@
 
 > **Backend API для интеграции с Chrome Extension (R5 Complaints System)**
 
-**Версия:** 2.2.2
+**Версия:** 2.2.3
 **Дата обновления:** 2026-03-14
 **Статус:** Production Ready
 
@@ -306,6 +306,8 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
 > **Stage guard (v2.2.0+):** Если `stores.stage` не в `['chats_opened', 'monitoring']`, массивы `chatOpens` и `chatLinks` всегда пусты (SQL-запросы не выполняются), а `totalCounts` для чатов = 0. `statusParses` для chat-only рейтингов (без `submit_complaints`) также исключаются до этапа чатов (Sprint 009). `complaints` возвращаются независимо от этапа.
 >
 > **Date filter (v2.2.2):** `statusParses` и `totalCounts.statusParses` исключают отзывы до `product_rules.work_from_date` (по умолчанию `2023-10-01`). Отзывы до этой даты не могут иметь жалоб и чатов — парсинг бесполезен.
+>
+> **Draft exclusion (v2.2.3):** Отзывы с draft-жалобами (`review_complaints.status = 'draft'`) исключены из `statusParses`. Расширение и так зайдёт на страницу ради подачи жалобы и спарсит статус как побочный эффект. После подачи жалобы (статус → sent/rejected) отзыв вернётся в statusParses если chat_status всё ещё неизвестен.
 
 **Response 200:**
 
@@ -786,6 +788,13 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 ---
 
 ## Changelog
+
+### v2.2.3 (2026-03-14)
+
+**Sprint 011: Exclude Draft Complaints from statusParses**
+
+- **Draft exclusion:** Отзывы с draft-жалобами (`review_complaints.status = 'draft'`) исключены из `statusParses` и `totalCounts.statusParses`. Расширение и так посетит страницу для подачи жалобы и спарсит статус. Значительно уменьшает пул задач statusParses для новых кабинетов.
+- Затронутые endpoints: `GET /stores` (Q2), `GET /stores/{storeId}/tasks` (Query A, Query E)
 
 ### v2.2.2 (2026-03-14)
 
