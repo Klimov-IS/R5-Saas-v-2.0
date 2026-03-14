@@ -804,16 +804,15 @@ export function startAutoSequenceProcessor() {
                   await dbHelpers.updateChatWithAudit(
                     seq.chat_id,
                     {
-                      status: 'closed' as dbHelpers.ChatStatus,
+                      status: 'in_progress' as dbHelpers.ChatStatus,
                       status_updated_at: new Date().toISOString(),
-                      completion_reason: 'no_reply' as dbHelpers.CompletionReason,
                     },
                     { changedBy: null, source: 'cron_sequence' },
                     freshChat || undefined
                   );
                 }
 
-                console.log(`[CRON] 🛑 Sequence ${seq.id}: completed → ${is30d ? 'chat closed (last msg was stop)' : 'stop message sent + chat closed'}`);
+                console.log(`[CRON] 🛑 Sequence ${seq.id}: completed → in_progress (${is30d ? 'last msg was stop' : 'stop message sent'})`);
               } catch (stopErr: any) {
                 console.error(`[CRON] Failed to complete sequence ${seq.id}:`, stopErr.message);
               }
@@ -855,7 +854,22 @@ export function startAutoSequenceProcessor() {
           if (!sendResult.sent) {
             if (sendResult.error === 'permanent') {
               // Permanent error — stop the sequence to prevent infinite retries
-              await dbHelpers.stopSequence(seq.id, sendResult.errorMessage?.includes('replySign') ? 'missing_reply_sign' : 'send_failed');
+              const stopReason = sendResult.errorMessage?.includes('replySign') ? 'missing_reply_sign' : 'send_failed';
+              await dbHelpers.stopSequence(seq.id, stopReason);
+              // Fix chat status: awaiting_reply → in_progress (sequence stopped, seller was last sender)
+              try {
+                const currentChat = await dbHelpers.getChatById(seq.chat_id);
+                if (currentChat && currentChat.status === 'awaiting_reply') {
+                  await dbHelpers.updateChatWithAudit(
+                    seq.chat_id,
+                    { status: 'in_progress' as dbHelpers.ChatStatus, status_updated_at: new Date().toISOString() },
+                    { changedBy: null, source: 'cron_sequence' },
+                    currentChat
+                  );
+                }
+              } catch (statusErr: any) {
+                console.error(`[CRON] Failed to update chat status after send_failed for seq ${seq.id}:`, statusErr.message);
+              }
               console.error(`[CRON] 🛑 Sequence ${seq.id}: PERMANENTLY stopped - ${sendResult.errorMessage}`);
               stopped++;
             } else {
@@ -915,6 +929,25 @@ export function startAutoSequenceProcessor() {
           }
         } catch (cleanupErr: any) {
           console.error(`[CRON] Cleanup stale awaiting_reply failed:`, cleanupErr.message);
+        }
+
+        // Enforce queue rules: in_progress with client reply → inbox
+        try {
+          const inProgressClientResult = await query(
+            `UPDATE chats
+             SET status = 'inbox',
+                 status_updated_at = NOW()
+             WHERE status = 'in_progress'
+               AND last_message_sender = 'client'
+               AND store_id IN (SELECT id FROM stores WHERE is_active = TRUE)
+               AND status_updated_at < NOW() - INTERVAL '5 minutes'
+             RETURNING id`
+          );
+          if (inProgressClientResult.rows.length > 0) {
+            console.log(`[CRON] 🔧 Fixed ${inProgressClientResult.rows.length} in_progress chats with client reply → inbox`);
+          }
+        } catch (cleanupErr: any) {
+          console.error(`[CRON] Cleanup in_progress+client failed:`, cleanupErr.message);
         }
       }
 
