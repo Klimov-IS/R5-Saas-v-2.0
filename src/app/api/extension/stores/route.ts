@@ -173,6 +173,7 @@ export async function GET(request: NextRequest) {
             AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
             AND r.rating_excluded = FALSE
             AND r.marketplace = 'wb'
+            AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
             AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
             AND r.rating = ANY(ARRAY_REMOVE(ARRAY[
               CASE WHEN (pr.submit_complaints AND pr.complaint_rating_1) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_1) THEN 1 END,

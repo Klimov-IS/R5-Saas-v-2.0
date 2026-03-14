@@ -112,6 +112,7 @@ export async function GET(
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
            AND p.work_status = 'active'
+           AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
            AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
            AND (
              (pr.submit_complaints = TRUE AND (
@@ -269,6 +270,7 @@ export async function GET(
            WHERE r.store_id = $1
              AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted') AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
              AND p.work_status = 'active'
+             AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
              AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
              AND (
                (pr.submit_complaints = TRUE AND (
