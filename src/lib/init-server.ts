@@ -1,21 +1,42 @@
 /**
  * Server initialization
  * This file runs once when the Next.js server starts (via instrumentation.ts)
+ *
+ * Two separate flags:
+ * - initialized: server startup completed (instrumentation.ts ran)
+ * - cronJobsStarted: CRON schedulers are actually running
+ *
+ * In production:
+ * 1. instrumentation.ts → initializeServer() → sets initialized=true, CRON stays off
+ * 2. start-cron.js → POST /api/cron/trigger → initializeServer({ forceCron: true }) → starts CRON
  */
 
 import { startDailyReviewSync, startAdaptiveDialogueSync, startDailyProductSync, startBackfillWorker, startGoogleSheetsSync, startClientDirectorySync, startAutoSequenceProcessor, startRollingReviewFullSync, startMiddayReviewCatchup, startChatStatusTransition, startOzonHourlyFullSync, startResolvedReviewCloser } from './cron-jobs';
 
 let initialized = false;
+let cronJobsStarted = false;
 
-export function initializeServer() {
-  if (initialized) {
-    console.log('[INIT] ⏭️  Server already initialized, skipping...');
+interface InitOptions {
+  /** Force-start CRON jobs regardless of ENABLE_CRON_IN_MAIN_APP (used by /api/cron/trigger) */
+  forceCron?: boolean;
+}
+
+export function initializeServer(options?: InitOptions) {
+  const { forceCron = false } = options || {};
+
+  // If already initialized AND (not forcing cron OR cron already running) — skip
+  if (initialized && (!forceCron || cronJobsStarted)) {
+    console.log('[INIT] ⏭️  Server already initialized' + (cronJobsStarted ? ' (CRON running)' : ' (CRON not running)'));
     return;
   }
 
   const startTime = Date.now();
-  console.log('[INIT] 🚀 Initializing server at', new Date().toISOString());
-  console.log('[INIT] Environment:', process.env.NODE_ENV || 'development');
+
+  if (!initialized) {
+    console.log('[INIT] 🚀 Initializing server at', new Date().toISOString());
+    console.log('[INIT] Environment:', process.env.NODE_ENV || 'development');
+    initialized = true;
+  }
 
   // 🚨 CRITICAL FIX (2026-03-13): CRON jobs MUST run in separate process only!
   //
@@ -23,21 +44,28 @@ export function initializeServer() {
   // → instrumentation.ts calls initializeServer() in EACH instance
   // → 2 main app instances + 1 wb-reputation-cron process = 3× duplicate sends!
   //
-  // Solution: ONLY run cron jobs if ENABLE_CRON_IN_MAIN_APP=true (for local dev)
-  // Production uses dedicated wb-reputation-cron process (scripts/start-cron.js)
+  // Solution:
+  // - instrumentation.ts calls initializeServer() → CRON stays off
+  // - start-cron.js calls /api/cron/trigger → initializeServer({ forceCron: true }) → starts CRON
+  // - For local dev: set ENABLE_CRON_IN_MAIN_APP=true
 
-  const enableCronInMainApp = process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
+  const enableCron = forceCron || process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
 
-  if (!enableCronInMainApp) {
-    console.log('[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)');
+  if (!enableCron) {
+    console.log('[INIT] ⚠️  CRON jobs DISABLED in main app (waiting for /api/cron/trigger)');
     console.log('[INIT] 💡 To enable in main app (local dev only): set ENABLE_CRON_IN_MAIN_APP=true');
-    initialized = true;
+    return;
+  }
+
+  if (cronJobsStarted) {
+    console.log('[INIT] ⏭️  CRON jobs already running, skipping');
     return;
   }
 
   try {
-    // Start cron jobs (only if explicitly enabled)
-    console.log('[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)');
+    const source = forceCron ? 'via /api/cron/trigger (dedicated process)' : 'IN MAIN APP (local dev)';
+    console.log(`[INIT] 🚀 Starting CRON jobs ${source}`);
+
     startDailyReviewSync(); // Hourly review sync + auto-complaint generation
     startAdaptiveDialogueSync(); // Adaptive dialogue sync (5min work / 15min morning-evening / 60min night)
     startDailyProductSync(); // Daily product sync (7:00 AM MSK)
@@ -51,20 +79,25 @@ export function initializeServer() {
     startOzonHourlyFullSync();   // OZON hourly full scan — safety net for chats read in OZON dashboard (9:00-20:00 MSK)
     startResolvedReviewCloser(); // Auto-close chats with resolved reviews (every 30 min, :15/:45)
 
-    initialized = true;
+    cronJobsStarted = true;
     const duration = Date.now() - startTime;
-    console.log(`[INIT] ✅ Server initialized successfully (${duration}ms)`);
+    console.log(`[INIT] ✅ CRON jobs started successfully (${duration}ms)`);
   } catch (error) {
-    console.error('[INIT] ❌ Failed to initialize server:', error);
+    console.error('[INIT] ❌ Failed to start CRON jobs:', error);
     console.error('[INIT] Stack:', error instanceof Error ? error.stack : 'No stack trace');
-    // Don't throw - let server start even if cron fails
-    // throw error;
   }
 }
 
 /**
- * Get initialization status
+ * Server startup completed (instrumentation.ts ran)
  */
 export function isInitialized(): boolean {
   return initialized;
+}
+
+/**
+ * CRON schedulers are actually running
+ */
+export function isCronRunning(): boolean {
+  return cronJobsStarted;
 }

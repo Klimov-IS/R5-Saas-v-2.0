@@ -1,25 +1,30 @@
 /**
- * Manual cron job starter via HTTP
+ * CRON process manager — triggers and monitors CRON jobs in the main Next.js app.
  *
- * This script triggers cron job initialization via the /api/cron/trigger endpoint.
- * It waits for Next.js server to be ready, then makes a POST request to initialize cron jobs.
+ * Architecture:
+ * - Main app (cluster, 2 instances) does NOT start CRON (to avoid duplicates)
+ * - This script (fork, 1 instance) triggers CRON via POST /api/cron/trigger
+ * - Every 5 minutes, healthCheck verifies CRON is still running
+ * - If main app restarts (losing in-memory CRON state), healthCheck re-triggers
  *
- * Run this with: node scripts/start-cron.js
- * Or add to PM2 ecosystem as a separate process.
+ * Run: node scripts/start-cron.js
+ * PM2: managed by ecosystem-cron.config.js
  */
 
-// Load environment variables
 require('dotenv').config({ path: '.env.production' });
 
-console.log('[START-CRON] 🚀 Starting manual cron job initialization...');
+const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+let consecutiveFailures = 0;
+const MAX_FAILURES_BEFORE_EXIT = 10;
+
+console.log('[START-CRON] 🚀 CRON process manager starting...');
 console.log('[START-CRON] 📅 Timestamp:', new Date().toISOString());
-console.log('[START-CRON] 🔧 Environment loaded:', {
+console.log('[START-CRON] 🔧 Environment:', {
   NODE_ENV: process.env.NODE_ENV,
   API_KEY: process.env.NEXT_PUBLIC_API_KEY ? '✅ Set' : '❌ Missing',
   BASE_URL: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
 });
 
-// Wait for Next.js server to be ready
 async function waitForServer(url, maxAttempts = 30, delayMs = 2000) {
   console.log(`[START-CRON] ⏳ Waiting for Next.js server at ${url}...`);
 
@@ -43,7 +48,6 @@ async function waitForServer(url, maxAttempts = 30, delayMs = 2000) {
   throw new Error('Server did not become ready in time');
 }
 
-// Trigger cron initialization via API
 async function triggerCronJobs() {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const apiKey = process.env.NEXT_PUBLIC_API_KEY;
@@ -53,8 +57,7 @@ async function triggerCronJobs() {
   }
 
   const url = `${baseUrl}/api/cron/trigger`;
-
-  console.log(`[START-CRON] 📡 Triggering cron jobs at ${url}...`);
+  console.log(`[START-CRON] 📡 POST ${url}`);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -64,43 +67,75 @@ async function triggerCronJobs() {
     },
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Failed to trigger cron jobs: ${response.status} ${text}`);
-  }
-
   const data = await response.json();
-  console.log('[START-CRON] ✅ Response:', data);
+  console.log('[START-CRON] Response:', JSON.stringify(data));
+
+  if (!response.ok && !data.cronRunning) {
+    throw new Error(`Trigger failed: ${response.status} ${JSON.stringify(data)}`);
+  }
 
   return data;
 }
 
-// Main function
+/**
+ * Health check: GET /api/cron/trigger → check cronRunning.
+ * If CRON died (e.g. main app restarted), re-trigger it.
+ */
+async function healthCheck() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+
+  try {
+    const response = await fetch(`${baseUrl}/api/cron/trigger`, {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Health check HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.cronRunning) {
+      consecutiveFailures = 0;
+      console.log('[START-CRON] 💓 Health OK: CRON running |', new Date().toISOString());
+    } else {
+      console.log('[START-CRON] ⚠️  CRON not running! Re-triggering...');
+      await triggerCronJobs();
+      consecutiveFailures = 0;
+      console.log('[START-CRON] ✅ CRON re-triggered successfully');
+    }
+  } catch (error) {
+    consecutiveFailures++;
+    console.error(`[START-CRON] ❌ Health check failed (${consecutiveFailures}/${MAX_FAILURES_BEFORE_EXIT}):`, error.message);
+
+    if (consecutiveFailures >= MAX_FAILURES_BEFORE_EXIT) {
+      console.error('[START-CRON] 💀 Too many consecutive failures, exiting (PM2 will restart)');
+      process.exit(1);
+    }
+  }
+}
+
 async function start() {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
-    // Wait for Next.js server to be ready
     await waitForServer(baseUrl);
 
-    // Give it a bit more time to fully initialize
-    console.log('[START-CRON] ⏳ Waiting 3 more seconds for server to fully initialize...');
+    console.log('[START-CRON] ⏳ Waiting 3s for server to fully initialize...');
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    // Trigger cron jobs
     await triggerCronJobs();
 
-    console.log('[START-CRON] ✅ Cron jobs initialized successfully!');
-    console.log('[START-CRON] 🔄 Process will keep running for heartbeat monitoring...');
+    console.log('[START-CRON] ✅ CRON jobs triggered!');
+    console.log(`[START-CRON] 🔄 Health check every ${HEALTH_CHECK_INTERVAL / 1000}s`);
 
-    // Keep process alive with heartbeat
-    setInterval(() => {
-      console.log('[START-CRON] 💓 Heartbeat:', new Date().toISOString());
-    }, 60000 * 5); // Every 5 minutes
+    // Health check with auto-retrigger instead of empty heartbeat
+    setInterval(healthCheck, HEALTH_CHECK_INTERVAL);
 
   } catch (error) {
-    console.error('[START-CRON] ❌ Failed to start cron jobs:', error);
-    console.error('[START-CRON] 📋 Stack:', error.stack);
+    console.error('[START-CRON] ❌ Failed to start:', error);
+    console.error('[START-CRON] Stack:', error.stack);
     process.exit(1);
   }
 }

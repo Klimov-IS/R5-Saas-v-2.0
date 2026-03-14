@@ -225,6 +225,27 @@ export async function logTelegramNotificationAtomic(data: {
 }
 
 /**
+ * Update tg_message_id on recently inserted notification log entries.
+ * Called after tgSendMessage() returns a message_id.
+ * Updates all entries for this (user, chat) that were inserted in the last 5 minutes and lack tg_message_id.
+ */
+export async function updateNotificationMessageId(
+  telegramUserId: string,
+  chatId: string,
+  tgMessageId: number
+): Promise<void> {
+  await query(
+    `UPDATE telegram_notifications_log
+     SET tg_message_id = $1
+     WHERE telegram_user_id = $2
+       AND chat_id = $3
+       AND tg_message_id IS NULL
+       AND sent_at > NOW() - INTERVAL '5 minutes'`,
+    [tgMessageId, telegramUserId, chatId]
+  );
+}
+
+/**
  * Check if notification was sent recently (dedup)
  */
 export async function wasNotificationSentRecently(

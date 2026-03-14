@@ -15,6 +15,7 @@ import {
   getTelegramUsersForStore,
   wasNotificationSentRecently,
   logTelegramNotificationAtomic,
+  updateNotificationMessageId,
 } from '@/db/telegram-helpers';
 import type { SuccessEvent } from './success-detector';
 
@@ -196,7 +197,12 @@ export async function sendTelegramNotifications(
         }]],
       };
 
-      await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+      const messageId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+      if (messageId) {
+        for (const chatId of loggedChatIds) {
+          await updateNotificationMessageId(tgUser.id, chatId, messageId);
+        }
+      }
     } catch (err: any) {
       console.error(`[TG-NOTIF] Error sending digest to TG ${tgUser.telegram_id}: ${err.message}`);
     }
@@ -249,7 +255,10 @@ export async function sendSuccessNotification(
         }]],
       };
 
-      await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+      const messageId = await tgSendMessage(tgUser.chat_id, text, replyMarkup);
+      if (messageId) {
+        await updateNotificationMessageId(tgUser.id, data.chatId, messageId);
+      }
     } catch (err: any) {
       console.error(`[TG-NOTIF] Error sending success to TG ${tgUser.telegram_id}: ${err.message}`);
     }

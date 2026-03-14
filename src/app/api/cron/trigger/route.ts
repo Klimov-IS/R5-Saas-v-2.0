@@ -1,16 +1,20 @@
 /**
  * Manually trigger cron job initialization
- * Useful if instrumentation hook doesn't work in production
+ *
+ * Called by scripts/start-cron.js (dedicated wb-reputation-cron process).
+ * Uses forceCron: true to bypass ENABLE_CRON_IN_MAIN_APP check.
+ *
+ * POST — start CRON jobs (idempotent: safe to call multiple times)
+ * GET  — health check: returns initialized + cronRunning status
  */
 
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifyApiKey } from '@/lib/server-utils';
-import { initializeServer, isInitialized } from '@/lib/init-server';
+import { initializeServer, isInitialized, isCronRunning } from '@/lib/init-server';
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify API key
     const authResult = await verifyApiKey(request);
     if (!authResult.authorized) {
       return NextResponse.json({
@@ -19,29 +23,31 @@ export async function POST(request: NextRequest) {
       }, { status: 401 });
     }
 
-    console.log('[API CRON TRIGGER] 🔧 Manual cron initialization requested');
+    console.log('[API CRON TRIGGER] 🔧 CRON trigger requested');
 
-    // Check if already initialized
-    if (isInitialized()) {
-      console.log('[API CRON TRIGGER] ⚠️  Cron jobs already initialized');
+    if (isCronRunning()) {
+      console.log('[API CRON TRIGGER] ⚠️  CRON jobs already running');
       return NextResponse.json({
-        message: 'Cron jobs are already initialized',
+        message: 'Cron jobs are already running',
         initialized: true,
+        cronRunning: true,
         timestamp: new Date().toISOString()
       }, { status: 200 });
     }
 
-    // Initialize cron jobs
-    console.log('[API CRON TRIGGER] 🚀 Initializing cron jobs...');
-    initializeServer();
+    // Force CRON initialization regardless of ENABLE_CRON_IN_MAIN_APP
+    console.log('[API CRON TRIGGER] 🚀 Starting CRON jobs (forceCron: true)...');
+    initializeServer({ forceCron: true });
 
-    console.log('[API CRON TRIGGER] ✅ Cron jobs initialized successfully');
+    const cronRunning = isCronRunning();
+    console.log(`[API CRON TRIGGER] ${cronRunning ? '✅' : '❌'} CRON jobs ${cronRunning ? 'started' : 'failed to start'}`);
 
     return NextResponse.json({
-      message: 'Cron jobs initialized successfully',
-      initialized: true,
+      message: cronRunning ? 'Cron jobs started successfully' : 'Failed to start cron jobs',
+      initialized: isInitialized(),
+      cronRunning,
       timestamp: new Date().toISOString()
-    }, { status: 200 });
+    }, { status: cronRunning ? 200 : 500 });
 
   } catch (error: any) {
     console.error('[API CRON TRIGGER] ❌ Error:', error);
@@ -55,7 +61,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify API key
     const authResult = await verifyApiKey(request);
     if (!authResult.authorized) {
       return NextResponse.json({
@@ -64,13 +69,17 @@ export async function GET(request: NextRequest) {
       }, { status: 401 });
     }
 
-    const initialized = isInitialized();
+    const init = isInitialized();
+    const cronRunning = isCronRunning();
 
     return NextResponse.json({
-      initialized,
-      message: initialized
-        ? 'Cron jobs are initialized and running'
-        : 'Cron jobs are NOT initialized',
+      initialized: init,
+      cronRunning,
+      message: cronRunning
+        ? 'CRON jobs are running'
+        : init
+          ? 'Server initialized but CRON jobs NOT running'
+          : 'Server NOT initialized',
       timestamp: new Date().toISOString()
     }, { status: 200 });
 
