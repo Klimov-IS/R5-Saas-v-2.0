@@ -2,7 +2,7 @@
 
 > **Backend API для интеграции с Chrome Extension (R5 Complaints System)**
 
-**Версия:** 2.2.0
+**Версия:** 2.2.2
 **Дата обновления:** 2026-03-14
 **Статус:** Production Ready
 
@@ -247,6 +247,8 @@ Authorization: Bearer wbrm_<token>
 
 > **Stage guard (v2.2.0):** `pendingChatsCount` возвращается `0` для магазинов, чей этап ниже `chats_opened`. Чат-задачи доступны только на этапах `chats_opened` и `monitoring`. См. раздел [Этапы работы с кабинетом](#этапы-работы-с-кабинетом-store-lifecycle).
 
+> **Date filter (v2.2.2):** `pendingStatusParsesCount` учитывает `product_rules.work_from_date` — отзывы до этой даты (по умолчанию `2023-10-01`) не включаются в счётчик. Аналогично в `statusParses` и `totalCounts` в `/tasks`.
+
 **Производительность (2026-03-02):**
 - 3 параллельных запроса через `Promise.all`, ~2s на 76 магазинов / 2.7M отзывов
 - Q1 (drafts): subquery scoped к `store_id IN (owner's stores)` — 165ms
@@ -302,6 +304,8 @@ Returns active products for a store (only `work_status = 'active'`).
 Returns all extension tasks grouped by article. Main endpoint for the status checker extension.
 
 > **Stage guard (v2.2.0+):** Если `stores.stage` не в `['chats_opened', 'monitoring']`, массивы `chatOpens` и `chatLinks` всегда пусты (SQL-запросы не выполняются), а `totalCounts` для чатов = 0. `statusParses` для chat-only рейтингов (без `submit_complaints`) также исключаются до этапа чатов (Sprint 009). `complaints` возвращаются независимо от этапа.
+>
+> **Date filter (v2.2.2):** `statusParses` и `totalCounts.statusParses` исключают отзывы до `product_rules.work_from_date` (по умолчанию `2023-10-01`). Отзывы до этой даты не могут иметь жалоб и чатов — парсинг бесполезен.
 
 **Response 200:**
 
@@ -782,6 +786,13 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 ---
 
 ## Changelog
+
+### v2.2.2 (2026-03-14)
+
+**Sprint 010: work_from_date Filter**
+
+- **Date filter на statusParses:** Отзывы до `product_rules.work_from_date` (default `2023-10-01`) исключены из `statusParses`, `totalCounts.statusParses` и `pendingStatusParsesCount`. Устраняет бесполезный парсинг старых отзывов, по которым нельзя ни подать жалобу, ни открыть чат.
+- Затронутые endpoints: `GET /stores` (Q2), `GET /stores/{storeId}/tasks` (Query A, Query E)
 
 ### v2.2.1 (2026-03-14)
 
