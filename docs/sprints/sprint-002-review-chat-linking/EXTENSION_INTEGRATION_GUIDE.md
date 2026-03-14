@@ -1,6 +1,6 @@
 # Гайд для разработчиков расширения: Chat Workflow API
 
-> **Статус API:** Задеплоен в прод (2026-02-16)
+> **Статус API:** Задеплоен в прод (2026-02-16), обновлено 2026-03-14
 > **Base URL:** `https://rating5.ru`
 > **Auth:** `Authorization: Bearer {api_key}` (тот же токен, что для жалоб)
 
@@ -11,10 +11,16 @@
 Бэкенд предоставляет 6 API endpoints для chat-workflow расширения.
 Расширение открывает чаты из страницы отзывов WB и сообщает бэкенду связку **отзыв ↔ чат**.
 
+### Предварительное условие: этап кабинета
+
+> **С v2.2.0 (Sprint 008):** Чат-задачи доступны **только** для кабинетов на этапе `chats_opened` или `monitoring`. Если магазин на более раннем этапе (например, `complaints_submitted`), API вернёт `pendingChatsCount: 0` и пустые массивы `chatOpens`/`chatLinks`. Это гарантирует, что расширение не откроет чаты до согласования с клиентом.
+
 ### Полный flow
 
 ```
-1. GET  /chat/stores              → какие магазины доступны
+0. Проверка: stores.stage IN ('chats_opened', 'monitoring')
+   └─ Если нет → чат-задачи не выдаются, flow не запускается
+1. GET  /chat/stores              → какие магазины доступны (pendingChatsCount > 0)
 2. GET  /chat/stores/{id}/rules   → какие отзывы обрабатывать
 3. Расширение парсит страницу WB, находит подходящие отзывы
 4. Кликает "Открыть чат" → WB открывает новую вкладку
@@ -83,6 +89,8 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 **Логика:** Показывайте в UI расширения только магазины где `isActive = true` и `chatEnabled = true`.
 
+> **Stage guard (v2.2.0):** `pendingChatsCount` возвращается `0` для магазинов, чей этап (`stores.stage`) ниже `chats_opened`. Чат-задачи подсчитываются только для этапов `chats_opened` и `monitoring`.
+
 ---
 
 ## Endpoint 2: GET /api/extension/chat/stores/{storeId}/rules
@@ -147,10 +155,11 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 ### Критерии отбора отзыва (логика в расширении)
 
 Открываем чат **только если одновременно**:
-1. `nmId` отзыва совпадает с артикулом из правил
-2. `isActive = true` И `chatEnabled = true`
-3. Звёзды отзыва входят в `starsAllowed`
-4. Статус жалобы на странице WB = **«Жалоба отклонена»** (маппится на `requiredComplaintStatus = "rejected"`)
+1. **Этап кабинета** — `stores.stage` IN `('chats_opened', 'monitoring')` (проверяется бэкендом, задачи не выдаются если этап ниже)
+2. `nmId` отзыва совпадает с артикулом из правил
+3. `isActive = true` И `chatEnabled = true`
+4. Звёзды отзыва входят в `starsAllowed`
+5. Статус жалобы на странице WB = **«Жалоба отклонена»** (маппится на `requiredComplaintStatus = "rejected"`)
 
 ---
 

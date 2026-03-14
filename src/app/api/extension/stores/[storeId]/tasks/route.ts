@@ -89,6 +89,7 @@ export async function GET(
       // ── Query A: statusParses ──
       // Reviews that haven't been parsed by extension yet (chat_status unknown/null).
       // Only reviews matching product rules (complaint or chat ratings).
+      // Chat-only ratings are included ONLY if store stage allows chat tasks.
       // Sorted by date ASC = oldest first (priority: parse stale reviews first).
       query<{
         id: string;
@@ -120,7 +121,7 @@ export async function GET(
                (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
              ))
              OR
-             (pr.work_in_chats = TRUE AND (
+             ($2 = TRUE AND pr.work_in_chats = TRUE AND (
                (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
                (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
                (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
@@ -129,7 +130,7 @@ export async function GET(
            )
          ORDER BY p.wb_product_id, r.date ASC
          LIMIT 500`,
-        [storeId]
+        [storeId, chatTasksAllowed]
       ),
 
       // ── Query B: chatOpens (type: "open") ──
@@ -253,6 +254,8 @@ export async function GET(
 
       // ── Query E: real total counts (no LIMIT) ──
       // Allows extension to track true progress when pool > LIMIT
+      // Chat-only ratings in statusParses gated by $2 (chatTasksAllowed)
+      // Chat counts (opens/links) gated by $2 — returns 0 if chat tasks not allowed
       query<{
         status_parses_total: string;
         chat_opens_total: string;
@@ -275,7 +278,7 @@ export async function GET(
                  (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
                ))
                OR
-               (pr.work_in_chats = TRUE AND (
+               ($2 = TRUE AND pr.work_in_chats = TRUE AND (
                  (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
                  (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
                  (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
@@ -283,53 +286,55 @@ export async function GET(
                ))
              )
           ) as status_parses_total,
-          (SELECT COUNT(DISTINCT r.id) FROM reviews r
-           JOIN review_complaints rc ON rc.review_id = r.id
-           JOIN products p ON r.product_id = p.id
-           JOIN product_rules pr ON pr.product_id = p.id
-           WHERE r.store_id = $1
-             AND rc.status = 'rejected' AND pr.work_in_chats = TRUE
-             AND r.chat_status_by_review = 'available'
-             AND r.review_status_wb IN ('visible', 'unknown') AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
-             AND p.work_status = 'active'
-             AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
-             AND (
-               (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-               (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-               (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
-               (r.rating = 4 AND pr.chat_rating_4 = TRUE)
-             )
-             AND NOT EXISTS (
-               SELECT 1 FROM review_chat_links rcl
-               WHERE rcl.store_id = r.store_id
-                 AND rcl.review_nm_id = p.wb_product_id
-                 AND rcl.review_rating = r.rating
-                 AND rcl.review_date BETWEEN r.date - interval '2 minutes'
-                                          AND r.date + interval '2 minutes'
-             )
-          ) as chat_opens_total,
-          (SELECT COUNT(*) FROM reviews r
-           JOIN products p ON r.product_id = p.id
-           JOIN product_rules pr ON pr.product_id = p.id
-           WHERE r.store_id = $1
-             AND r.chat_status_by_review = 'opened' AND pr.work_in_chats = TRUE
-             AND r.review_status_wb != 'deleted' AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
-             AND p.work_status = 'active'
-             AND (
-               (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-               (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-               (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
-               (r.rating = 4 AND pr.chat_rating_4 = TRUE)
-             )
-             AND NOT EXISTS (
-               SELECT 1 FROM review_chat_links rcl
-               WHERE rcl.store_id = r.store_id
-                 AND rcl.review_nm_id = p.wb_product_id
-                 AND rcl.review_rating = r.rating
-                 AND rcl.review_date BETWEEN r.date - interval '2 minutes'
-                                          AND r.date + interval '2 minutes'
-             )
-          ) as chat_links_total,
+          (CASE WHEN $2 = TRUE THEN
+            (SELECT COUNT(DISTINCT r.id) FROM reviews r
+             JOIN review_complaints rc ON rc.review_id = r.id
+             JOIN products p ON r.product_id = p.id
+             JOIN product_rules pr ON pr.product_id = p.id
+             WHERE r.store_id = $1
+               AND rc.status = 'rejected' AND pr.work_in_chats = TRUE
+               AND r.chat_status_by_review = 'available'
+               AND r.review_status_wb IN ('visible', 'unknown') AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
+               AND p.work_status = 'active'
+               AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
+               AND (
+                 (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+                 (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+                 (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+                 (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM review_chat_links rcl
+                 WHERE rcl.store_id = r.store_id
+                   AND rcl.review_nm_id = p.wb_product_id
+                   AND rcl.review_rating = r.rating
+                   AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                            AND r.date + interval '2 minutes'
+               ))
+          ELSE 0 END) as chat_opens_total,
+          (CASE WHEN $2 = TRUE THEN
+            (SELECT COUNT(*) FROM reviews r
+             JOIN products p ON r.product_id = p.id
+             JOIN product_rules pr ON pr.product_id = p.id
+             WHERE r.store_id = $1
+               AND r.chat_status_by_review = 'opened' AND pr.work_in_chats = TRUE
+               AND r.review_status_wb != 'deleted' AND r.rating_excluded = FALSE AND r.marketplace = 'wb'
+               AND p.work_status = 'active'
+               AND (
+                 (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+                 (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+                 (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+                 (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM review_chat_links rcl
+                 WHERE rcl.store_id = r.store_id
+                   AND rcl.review_nm_id = p.wb_product_id
+                   AND rcl.review_rating = r.rating
+                   AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                            AND r.date + interval '2 minutes'
+               ))
+          ELSE 0 END) as chat_links_total,
           (SELECT COUNT(*) FROM review_complaints rc
            JOIN reviews r ON r.id = rc.review_id
            JOIN products p ON r.product_id = p.id
@@ -339,7 +344,7 @@ export async function GET(
              AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
              AND r.rating_excluded = FALSE
           ) as complaints_total`,
-        [storeId]
+        [storeId, chatTasksAllowed]
       ),
     ]);
 

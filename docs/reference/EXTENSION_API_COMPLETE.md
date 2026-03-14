@@ -2,8 +2,8 @@
 
 > **Backend API для интеграции с Chrome Extension (R5 Complaints System)**
 
-**Версия:** 2.1.0
-**Дата обновления:** 2026-02-20
+**Версия:** 2.2.0
+**Дата обновления:** 2026-03-14
 **Статус:** Production Ready
 
 ---
@@ -53,6 +53,33 @@ WB Reputation Manager работает в паре с Chrome Extension для а
 │  └─────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Этапы работы с кабинетом (Store Lifecycle)
+
+Каждый магазин проходит последовательные этапы работы. API учитывает текущий этап и **не выдаёт задачи по чатам**, если кабинет ещё не дошёл до соответствующего этапа.
+
+### Порядок этапов
+
+| # | Stage | Описание | Чат-задачи |
+|---|-------|----------|:----------:|
+| 0 | `contract` | Договор | — |
+| 1 | `access_received` | Доступ получен | — |
+| 2 | `cabinet_connected` | Кабинет подключён | — |
+| 3 | `complaints_submitted` | Подаём жалобы | — |
+| 4 | `chats_opened` | Открываем чаты | **Да** |
+| 5 | `monitoring` | Кабинет на контроле | **Да** |
+| — | `client_paused` | На паузе | — |
+| — | `client_lost` | Потеря | — |
+
+### Правило stage guard (Sprint 008)
+
+Задачи по открытию чатов (`chatOpens`, `chatLinks`) возвращаются **только** для кабинетов на этапе `chats_opened` или `monitoring`. Для кабинетов на более ранних этапах (например, `complaints_submitted`) — массивы `chatOpens` и `chatLinks` всегда пусты, а `pendingChatsCount = 0`.
+
+Это гарантирует, что расширение не откроет чаты до согласования с клиентом.
+
+> **Жалобы и парсинг статусов** — `complaints` доступны на любом этапе. `statusParses` доступны на любом этапе для рейтингов, подходящих под жалобы (`submit_complaints`). Рейтинги, подходящие **только** под чат-правила (`work_in_chats` без `submit_complaints`), попадают в `statusParses` только при `stage IN ('chats_opened', 'monitoring')`. (Sprint 009)
 
 ---
 
@@ -218,6 +245,8 @@ Authorization: Bearer wbrm_<token>
 
 > **Важно:** Все счётчики учитывают только активные магазины (`status = 'active'`), активные товары (`work_status = 'active'`) и применяют фильтры `product_rules` (рейтинги, флаги `submit_complaints`/`work_in_chats`). 5★ отзывы полностью исключены. Если товар поставлен на стоп — его данные не считаются.
 
+> **Stage guard (v2.2.0):** `pendingChatsCount` возвращается `0` для магазинов, чей этап ниже `chats_opened`. Чат-задачи доступны только на этапах `chats_opened` и `monitoring`. См. раздел [Этапы работы с кабинетом](#этапы-работы-с-кабинетом-store-lifecycle).
+
 **Производительность (2026-03-02):**
 - 3 параллельных запроса через `Promise.all`, ~2s на 76 магазинов / 2.7M отзывов
 - Q1 (drafts): subquery scoped к `store_id IN (owner's stores)` — 165ms
@@ -271,6 +300,8 @@ Returns active products for a store (only `work_status = 'active'`).
 #### GET /api/extension/stores/{storeId}/tasks
 
 Returns all extension tasks grouped by article. Main endpoint for the status checker extension.
+
+> **Stage guard (v2.2.0+):** Если `stores.stage` не в `['chats_opened', 'monitoring']`, массивы `chatOpens` и `chatLinks` всегда пусты (SQL-запросы не выполняются), а `totalCounts` для чатов = 0. `statusParses` для chat-only рейтингов (без `submit_complaints`) также исключаются до этапа чатов (Sprint 009). `complaints` возвращаются независимо от этапа.
 
 **Response 200:**
 
@@ -752,6 +783,25 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 
 ## Changelog
 
+### v2.2.1 (2026-03-14)
+
+**Sprint 009: 4-Star Chat Optimization & Stage Guard Completion**
+
+- **Stage guard на statusParses:** Chat-only рейтинги (без `submit_complaints`) исключаются из `statusParses` когда этап ниже `chats_opened`. Устраняет бесполезный парсинг 4★ отзывов до этапа чатов.
+- **Stage guard на `GET /stores`:** `pendingChatsCount` (Q3) + chat-only `statusParses` (Q2) теперь проверяют `s.stage`
+- **Stage guard на totalCounts:** `chat_opens_total` и `chat_links_total` = 0 если этап ниже `chats_opened`
+- Завершает полное покрытие stage guard для всех endpoint'ов расширения
+
+### v2.2.0 (2026-03-14)
+
+**Sprint 008: Stage Enforcement**
+
+- **Stage guard для чат-задач:** `chatOpens`, `chatLinks` и `pendingChatsCount` возвращаются только для магазинов на этапе `chats_opened` или `monitoring`. Для более ранних этапов (`contract` → `complaints_submitted`) — пустые массивы / 0.
+- Затронутые endpoints:
+  - `GET /api/extension/stores/{storeId}/tasks` — `chatOpens` и `chatLinks` пусты если этап ниже `chats_opened`
+  - `GET /api/extension/chat/stores` — `pendingChatsCount` = 0 если этап ниже `chats_opened`
+- Утилита `isStageAtLeast()` в `src/types/stores.ts`
+
 ### v2.1.0 (2026-02-20)
 
 **Data Collection Pipeline**
@@ -839,5 +889,5 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 
 ---
 
-**Последнее обновление:** 2026-03-04
+**Последнее обновление:** 2026-03-14
 **Автор:** R5 Backend Team

@@ -130,8 +130,9 @@ export async function GET(request: NextRequest) {
         id: string;
         name: string;
         is_active: boolean;
+        stage: string;
       }>(
-        `SELECT s.id, s.name, s.is_active
+        `SELECT s.id, s.name, s.is_active, s.stage
         FROM stores s
         WHERE s.owner_id = $1
         ORDER BY s.name ASC`,
@@ -157,6 +158,7 @@ export async function GET(request: NextRequest) {
       ),
 
       // ── Q2: stores with pending status parses (EXISTS — stops at first match) ──
+      // Chat-only ratings gated by stage: included only if store at 'chats_opened' or 'monitoring'
       queryWithTimeout<{ store_id: string }>(
         `SELECT s.id as store_id
         FROM stores s
@@ -173,20 +175,22 @@ export async function GET(request: NextRequest) {
             AND r.marketplace = 'wb'
             AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
             AND r.rating = ANY(ARRAY_REMOVE(ARRAY[
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_1) OR (pr.work_in_chats AND pr.chat_rating_1) THEN 1 END,
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_2) OR (pr.work_in_chats AND pr.chat_rating_2) THEN 2 END,
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_3) OR (pr.work_in_chats AND pr.chat_rating_3) THEN 3 END,
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_4) OR (pr.work_in_chats AND pr.chat_rating_4) THEN 4 END
+              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_1) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_1) THEN 1 END,
+              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_2) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_2) THEN 2 END,
+              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_3) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_3) THEN 3 END,
+              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_4) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_4) THEN 4 END
             ], NULL))
         )`,
         [user.id]
       ),
 
       // ── Q3: stores with pending chats (EXISTS — stops at first match) ──
+      // Stage guard: only count for stores at 'chats_opened' or 'monitoring'
       queryWithTimeout<{ store_id: string }>(
         `SELECT s.id as store_id
         FROM stores s
         WHERE s.owner_id = $1 AND s.is_active = TRUE
+        AND s.stage IN ('chats_opened', 'monitoring')
         AND (
           EXISTS (
             SELECT 1 FROM reviews r
