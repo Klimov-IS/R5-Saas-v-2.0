@@ -80,7 +80,7 @@ export async function GET() {
   // 3. Active sequences count
   try {
     const seqResult = await query(
-      `SELECT COUNT(*) as active FROM auto_sequences WHERE status = 'active'`
+      `SELECT COUNT(*) as active FROM chat_auto_sequences WHERE status = 'active'`
     );
     services.sequences = {
       status: 'healthy',
