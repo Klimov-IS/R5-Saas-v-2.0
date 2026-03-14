@@ -12,7 +12,7 @@
 
 import { NextResponse } from 'next/server';
 import { getJobsStatus } from '@/lib/cron-jobs';
-import { isInitialized } from '@/lib/init-server';
+import { isInitialized, isCronRunning } from '@/lib/init-server';
 import { query } from '@/db/client';
 import { rateLimiter } from '@/lib/rate-limiter';
 
@@ -56,10 +56,13 @@ export async function GET() {
   // 2. Cron jobs status
   try {
     const cronStatus = getJobsStatus();
+    const cronRunning = isCronRunning();
     services.cronJobs = {
-      status: isInitialized() ? 'healthy' : 'degraded',
-      message: isInitialized() ? 'Running' : 'Not initialized',
+      status: cronRunning ? 'healthy' : 'degraded',
+      message: cronRunning ? 'Running' : isInitialized() ? 'Server initialized but CRON not running' : 'Not initialized',
       details: {
+        initialized: isInitialized(),
+        cronRunning,
         totalJobs: cronStatus.totalJobs,
         runningJobs: cronStatus.runningJobs,
         jobs: cronStatus.allJobs,
@@ -72,7 +75,20 @@ export async function GET() {
     };
   }
 
-  // 3. Rate limiter check (simple health check)
+  // 3. Active sequences count
+  try {
+    const seqResult = await query(
+      `SELECT COUNT(*) as active FROM auto_sequences WHERE status = 'active'`
+    );
+    services.sequences = {
+      status: 'healthy',
+      details: { active: parseInt(seqResult.rows[0]?.active || '0', 10) },
+    };
+  } catch {
+    // non-critical, skip
+  }
+
+  // 4. Rate limiter check (simple health check)
   try {
     const testKey = '__health_check__';
     const rateLimitCheck = rateLimiter.check(testKey);

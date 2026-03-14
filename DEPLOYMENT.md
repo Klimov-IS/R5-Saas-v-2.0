@@ -131,37 +131,40 @@ npm run build
 
 ## 🚀 Шаг 4: Запуск с PM2
 
-### 4.1 Создать PM2 ecosystem файл
+### 4.1 PM2 ecosystem файл
 
-```bash
-nano ecosystem.config.js
-```
-
-Вставьте:
+Файл `ecosystem.config.js` уже включён в репозиторий. Он содержит все 3 процесса:
 
 ```javascript
+// ecosystem.config.js (уже в репозитории)
 module.exports = {
-  apps: [{
-    name: 'wb-reputation',
-    script: 'node_modules/next/dist/bin/next',
-    args: 'start',
-    cwd: '/var/www/wb-reputation',
-    instances: 2,
-    exec_mode: 'cluster',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
+  apps: [
+    {
+      name: "wb-reputation",          // Main Next.js app + CRON (after trigger)
+      script: "node_modules/next/dist/bin/next",
+      args: "start",
+      instances: 1,
+      exec_mode: "fork",              // Fork mode (не cluster!) — см. docs/CRON_JOBS.md
+      // ...
     },
-    error_file: '/var/www/wb-reputation/logs/error.log',
-    out_file: '/var/www/wb-reputation/logs/out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    merge_logs: true,
-    autorestart: true,
-    max_memory_restart: '1G',
-    watch: false
-  }]
+    {
+      name: "wb-reputation-tg-bot",   // Telegram bot
+      script: "scripts/start-telegram-bot.js",
+      // ...
+    },
+    {
+      name: "wb-reputation-cron",     // CRON manager: triggers + monitors CRON via HTTP
+      script: "scripts/start-cron.js",
+      // ...
+    }
+  ]
 };
 ```
+
+**Почему fork mode (1 instance), а не cluster (2 instances):**
+- `cronJobsStarted` — in-memory флаг, не расшарен между instance'ами cluster
+- При cluster mode health check мог попасть на instance без CRON → re-trigger в другом → дубли
+- Fork mode исключает эту проблему. 4GB RAM достаточно для 1 instance
 
 ### 4.2 Создать директорию для логов
 
@@ -183,73 +186,46 @@ pm2 status
 pm2 logs wb-reputation --lines 50
 ```
 
-### 4.5 Запустить CRON процесс (ВАЖНО! ⚠️)
+### 4.5 Как работает CRON (архитектура)
 
-**🚨 CRITICAL:** CRON jobs должны запускаться ТОЛЬКО в отдельном процессе!
+**CRON jobs запускаются ТОЛЬКО в main app (`wb-reputation`), но триггерятся через HTTP:**
 
-**Почему:**
-- Main app (`wb-reputation`) работает в cluster mode с 2 instances
-- Если CRON запустится в каждом instance → дубликаты (2× sends)
-- Поэтому CRON запускается отдельно в `wb-reputation-cron` процессе
+1. PM2 запускает `wb-reputation` → CRON остаётся ВЫКЛЮЧЕН (ждёт trigger)
+2. PM2 запускает `wb-reputation-cron` → POST `/api/cron/trigger` → `forceCron: true` → CRON ВКЛЮЧЁН
+3. Каждые 5 мин: health check → если CRON упал → re-trigger
 
-**Запуск CRON процесса:**
-
-```bash
-# Создать конфигурацию для CRON процесса
-cat > ecosystem-cron.config.js << 'EOF'
-module.exports = {
-  apps: [{
-    name: 'wb-reputation-cron',
-    script: 'scripts/start-cron.js',
-    cwd: '/var/www/wb-reputation',
-    instances: 1,
-    exec_mode: 'fork',
-    env: {
-      NODE_ENV: 'production',
-      ENABLE_CRON_IN_MAIN_APP: 'true'  // ← Only here!
-    },
-    error_file: '/var/www/wb-reputation/logs/cron-error.log',
-    out_file: '/var/www/wb-reputation/logs/cron-out.log',
-    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    autorestart: true,
-    max_memory_restart: '500M'
-  }]
-};
-EOF
-
-# Запустить CRON процесс
-pm2 start ecosystem-cron.config.js
-pm2 save
-```
-
-**Проверка:**
+**Проверка (после `pm2 start ecosystem.config.js`):**
 
 ```bash
-# Должны увидеть оба процесса
+# Должны увидеть 3 процесса
 pm2 list
 
 # Ожидаемый вывод:
 # ┌─────┬──────────────────────┬─────────┬─────────┐
 # │ id  │ name                 │ mode    │ status  │
 # ├─────┼──────────────────────┼─────────┼─────────┤
-# │ 0   │ wb-reputation        │ cluster │ online  │ ← 2 instances
-# │ 1   │ wb-reputation        │ cluster │ online  │
-# │ 2   │ wb-reputation-cron   │ fork    │ online  │ ← 1 instance
+# │ 0   │ wb-reputation        │ fork    │ online  │ ← Main app (1 instance)
+# │ 1   │ wb-reputation-tg-bot │ fork    │ online  │ ← Telegram bot
+# │ 2   │ wb-reputation-cron   │ fork    │ online  │ ← CRON manager
 # └─────┴──────────────────────┴─────────┴─────────┘
 
-# Проверить логи CRON процесса
-pm2 logs wb-reputation-cron --lines 50
+# Проверить логи CRON manager
+pm2 logs wb-reputation-cron --lines 20 --nostream
 
 # Должны увидеть:
-# [START-CRON] ✅ Cron jobs initialized successfully!
+# [START-CRON] ✅ CRON jobs triggered!
+# [START-CRON] 💓 Health OK: CRON running
+
+# Проверить main app
+pm2 logs wb-reputation --lines 30 --nostream | grep -E "INIT|CRON"
+
+# Должны увидеть:
+# [INIT] CRON jobs DISABLED in main app (waiting for /api/cron/trigger)
+# [INIT] Starting CRON jobs via /api/cron/trigger (dedicated process)
+# [INIT] ✅ CRON jobs started successfully
 ```
 
-**⚠️ ВАЖНО:** Main app логи должны показывать:
-```
-[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)
-```
-
-Если видите "Starting cron jobs..." в main app → **ПРОБЛЕМА!** Проверьте `.env.production`.
+**Подробнее:** см. `docs/CRON_JOBS.md`
 
 ## 🌐 Шаг 5: Настройка Nginx
 
@@ -360,34 +336,46 @@ npm ci --production=false
 # Rebuild application
 npm run build
 
-# ⚠️ ВАЖНО: Restart ALL PM2 processes
+# Restart ALL PM2 processes
 pm2 restart all
-
-# Alternative: restart each process separately
-# pm2 restart wb-reputation && pm2 restart wb-reputation-cron
-
-# Check status
-pm2 status
-
-# Verify main app: CRON should be DISABLED
-pm2 logs wb-reputation --lines 50 --nostream | grep INIT
-
-# Expected output:
-# [INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)
-
-# Verify CRON process: jobs should be RUNNING
-pm2 logs wb-reputation-cron --lines 50 --nostream | grep CRON
-
-# Expected output:
-# [START-CRON] ✅ Cron jobs initialized successfully!
 ```
 
-**⚠️ Критически важно:**
-- ВСЕГДА используйте `pm2 restart all` после deploy
-- Это перезапускает ВСЕ процессы: main app (2 instances) + CRON процесс
-- Main app: CRON должен быть отключен (DISABLED)
-- CRON process: CRON jobs должны быть запущены (initialized successfully)
-- Если в main app видите "Starting cron jobs" → **ПРОБЛЕМА!** См. Troubleshooting ниже
+### ✅ Post-Deploy Verification Checklist
+
+**Проверить в течение 5 минут после `pm2 restart all`:**
+
+```bash
+# 1. Все 3 процесса online
+pm2 list
+# → wb-reputation (fork, online), wb-reputation-tg-bot (fork, online), wb-reputation-cron (fork, online)
+
+# 2. CRON triggered успешно
+pm2 logs wb-reputation-cron --lines 20 --nostream | grep -E "triggered|Health"
+# → [START-CRON] ✅ CRON jobs triggered!
+# → [START-CRON] 💓 Health OK: CRON running
+
+# 3. Health check API
+curl -s localhost:3000/api/health | python3 -m json.tool
+# → "status": "healthy", "cronJobs": { "cronRunning": true }
+
+# 4. Dialogue sync работает
+pm2 logs wb-reputation --lines 50 --nostream | grep "dialogue sync"
+# → Свежие записи адаптивного sync
+
+# 5. Нет критических ошибок
+pm2 logs wb-reputation --lines 50 --nostream | grep -i "error\|failed" | grep -v "backfill"
+# → Пусто или некритичные ошибки
+
+# 6. TG bot работает
+pm2 logs wb-reputation-tg-bot --lines 10 --nostream
+# → Heartbeat или poll entries
+```
+
+**Если CRON не запустился:** `pm2 restart wb-reputation-cron` (auto-retrigger через 3s)
+
+**Timing:**
+- `pm2 restart all` → CRON downtime ~6s (cron manager auto-retriggers)
+- `pm2 restart wb-reputation` → CRON downtime ~5min (health check detects)
 
 ### 🤖 Автоматический deploy (рекомендуется)
 
@@ -757,5 +745,5 @@ sudo journalctl -u nginx -f
 
 ---
 
-**Последнее обновление:** 2026-03-13
-**Версия:** 2.0 (добавлена секция про CRON процесс и emergency scripts)
+**Последнее обновление:** 2026-03-14
+**Версия:** 2.1 (fork mode, CRON trigger architecture, post-deploy checklist)

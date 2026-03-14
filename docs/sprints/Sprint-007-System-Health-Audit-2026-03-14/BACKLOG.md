@@ -281,21 +281,19 @@ After `pm2 restart all`, verify within 5 minutes:
 |----------|-------|-----------|-------------|
 | P0 | 1 task | 1/1 DONE | 30 min |
 | P1 | 4 tasks | 4/4 DONE | ~1.5 hours |
-| P2 | 4 tasks | 0/4 | ~2.5 hours |
+| P2 | 4 tasks | 4/4 DONE | ~2.5 hours |
 | P3 | 2 tasks | 0/2 | ~8 hours |
-| **Total** | **11 tasks** | **5/11** | **~12.5 hours** |
+| **Total** | **11 tasks** | **9/11** | **~12.5 hours** |
 
 **Completed (2026-03-14):**
 - TASK-001 (P0) — switched to fork mode, deployed, verified
 - TASK-002 (P1) — CRON_JOBS.md updated with new architecture
 - TASK-003 (P1) — CLAUDE.md updated with CRON internals
-- TASK-004 (P1) — Telegram admin alerting added to start-cron.js
+- TASK-004 (P1) — Telegram admin alerting added to start-cron.js (TELEGRAM_ADMIN_CHAT_ID=789263961 configured)
 - TASK-005 (P1) — Backfill worker now falls back to NEXT_PUBLIC_API_KEY
+- TASK-006 (P2) — pm2-logrotate: retain=15, max_size=50M (750MB, ~36h retention)
+- TASK-007 (P2) — /api/health updated with isCronRunning() + active sequences count
+- TASK-008 (P2) — DEPLOYMENT.md updated: fork mode, post-deploy checklist
+- TASK-009 (P2) — RESOLUTION-2026-03-14.md added to Sprint-Emergency
 
-**Note for TASK-004:** Requires `TELEGRAM_ADMIN_CHAT_ID` env var on production server. Without it, alerts silently skip. Add via:
-```bash
-# On production server, add to .env.production:
-TELEGRAM_ADMIN_CHAT_ID=<admin-chat-id>
-```
-
-**Remaining (P2+P3):** as capacity allows
+**Remaining (P3):** TASK-010 (no longer needed with fork mode), TASK-011 (idempotency audit — as capacity allows)
