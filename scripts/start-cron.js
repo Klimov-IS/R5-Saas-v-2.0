@@ -2,13 +2,14 @@
  * CRON process manager — triggers and monitors CRON jobs in the main Next.js app.
  *
  * Architecture:
- * - Main app (cluster, 2 instances) does NOT start CRON (to avoid duplicates)
+ * - Main app (fork, 1 instance) does NOT start CRON at startup
  * - This script (fork, 1 instance) triggers CRON via POST /api/cron/trigger
  * - Every 5 minutes, healthCheck verifies CRON is still running
  * - If main app restarts (losing in-memory CRON state), healthCheck re-triggers
+ * - After 3+ consecutive failures, sends Telegram alert to admin
  *
  * Run: node scripts/start-cron.js
- * PM2: managed by ecosystem-cron.config.js
+ * PM2: managed by ecosystem.config.js
  */
 
 require('dotenv').config({ path: '.env.production' });
@@ -16,6 +17,7 @@ require('dotenv').config({ path: '.env.production' });
 const HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 let consecutiveFailures = 0;
 const MAX_FAILURES_BEFORE_EXIT = 10;
+const ALERT_EVERY_N_FAILURES = 3; // Send TG alert every 3 consecutive failures
 
 console.log('[START-CRON] 🚀 CRON process manager starting...');
 console.log('[START-CRON] 📅 Timestamp:', new Date().toISOString());
@@ -24,6 +26,26 @@ console.log('[START-CRON] 🔧 Environment:', {
   API_KEY: process.env.NEXT_PUBLIC_API_KEY ? '✅ Set' : '❌ Missing',
   BASE_URL: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
 });
+
+/**
+ * Send alert to admin Telegram chat when critical failures occur.
+ */
+async function sendAdminAlert(text) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
+  if (!botToken || !adminChatId) return;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: adminChatId, text, parse_mode: 'HTML' }),
+    });
+    console.log('[START-CRON] Admin alert sent to Telegram');
+  } catch (err) {
+    console.error('[START-CRON] Failed to send admin alert:', err.message);
+  }
+}
 
 async function waitForServer(url, maxAttempts = 30, delayMs = 2000) {
   console.log(`[START-CRON] ⏳ Waiting for Next.js server at ${url}...`);
@@ -109,7 +131,16 @@ async function healthCheck() {
     consecutiveFailures++;
     console.error(`[START-CRON] ❌ Health check failed (${consecutiveFailures}/${MAX_FAILURES_BEFORE_EXIT}):`, error.message);
 
+    if (consecutiveFailures >= ALERT_EVERY_N_FAILURES && consecutiveFailures % ALERT_EVERY_N_FAILURES === 0) {
+      sendAdminAlert(
+        `<b>R5 CRON Alert</b>\n\nHealth check failed <b>${consecutiveFailures}</b> times in a row!\nError: ${error.message}\n\nMax before exit: ${MAX_FAILURES_BEFORE_EXIT}`
+      );
+    }
+
     if (consecutiveFailures >= MAX_FAILURES_BEFORE_EXIT) {
+      await sendAdminAlert(
+        `<b>R5 CRON CRITICAL</b>\n\n${MAX_FAILURES_BEFORE_EXIT} consecutive failures — CRON manager exiting.\nPM2 will restart, but manual check recommended.`
+      );
       console.error('[START-CRON] 💀 Too many consecutive failures, exiting (PM2 will restart)');
       process.exit(1);
     }

@@ -278,9 +278,9 @@ async function generateComplaintsBatch(
   console.log(`[BACKFILL-WORKER] Calling API: ${endpoint} with ${reviewIds.length} reviews`);
 
   // Get API key from environment for internal calls
-  const apiKey = process.env.INTERNAL_API_KEY || process.env.CRON_API_KEY;
+  const apiKey = process.env.INTERNAL_API_KEY || process.env.CRON_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
   if (!apiKey) {
-    throw new Error('INTERNAL_API_KEY or CRON_API_KEY not configured');
+    throw new Error('INTERNAL_API_KEY, CRON_API_KEY, or NEXT_PUBLIC_API_KEY not configured');
   }
 
   try {

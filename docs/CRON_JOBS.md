@@ -1,65 +1,129 @@
 # CRON Jobs Documentation - WB Reputation Manager
 
-**Last Updated:** 2026-03-13
-**Emergency Deployment:** 2026-03-13 (CRON architecture changed)
+**Last Updated:** 2026-03-14
+**Architecture Update:** 2026-03-14 (fork mode + health check + forceCron)
 
 ---
 
-## 🚨 CRITICAL: CRON Architecture (Updated 2026-03-13)
+## CRON Architecture (Updated 2026-03-14)
 
-### NEW: Separate CRON Process (Production)
-
-**Problem Solved:** Duplicate auto-sequence messages (3× sends from 2 main app instances + 1 cron process)
-
-**Solution:** CRON jobs now run in a **dedicated separate process** (`wb-reputation-cron`)
+### Production Architecture
 
 **Production Architecture:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ PM2 Processes                                               │
 ├─────────────────────────────────────────────────────────────┤
-│ ✅ wb-reputation (cluster, 2 instances)                     │
-│    → CRON: DISABLED (via ENABLE_CRON_IN_MAIN_APP check)    │
-│    → Handles: HTTP requests only                            │
+│ ✅ wb-reputation (fork, 1 instance)                         │
+│    → CRON: DISABLED at startup (via ENABLE_CRON_IN_MAIN_APP)│
+│    → CRON: ENABLED via POST /api/cron/trigger (forceCron)  │
+│    → Handles: HTTP requests + CRON jobs (after trigger)     │
 │                                                              │
 │ ✅ wb-reputation-cron (fork, 1 instance)                    │
-│    → CRON: ENABLED (via scripts/start-cron.js)             │
-│    → Handles: All CRON jobs (single source of truth)        │
+│    → Triggers CRON in main app via HTTP POST                │
+│    → Monitors CRON health every 5 min (auto-retrigger)     │
+│    → Does NOT run CRON jobs itself                          │
 │                                                              │
 │ ✅ wb-reputation-tg-bot (fork, 1 instance)                  │
 │    → Telegram bot long-polling                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Environment Variable (NEW):**
-```bash
-# 🚨 DO NOT SET IN PRODUCTION!
-# ENABLE_CRON_IN_MAIN_APP=true  # ← Only for local dev!
+### CRON Trigger Flow
 
-# In production, CRON runs ONLY in wb-reputation-cron process
+```mermaid
+sequenceDiagram
+    participant PM2
+    participant MainApp as wb-reputation (fork)
+    participant CronMgr as wb-reputation-cron
+
+    PM2->>MainApp: start
+    MainApp->>MainApp: instrumentation.ts → initializeServer()
+    Note over MainApp: initialized=true, cronJobsStarted=false
+
+    PM2->>CronMgr: start
+    CronMgr->>CronMgr: waitForServer(3s)
+    CronMgr->>MainApp: POST /api/cron/trigger
+    MainApp->>MainApp: initializeServer({ forceCron: true })
+    Note over MainApp: cronJobsStarted=true, 11 jobs started
+    MainApp-->>CronMgr: { cronRunning: true }
+
+    loop Every 5 minutes
+        CronMgr->>MainApp: GET /api/cron/trigger
+        alt cronRunning: true
+            MainApp-->>CronMgr: Health OK
+        else cronRunning: false (app restarted)
+            MainApp-->>CronMgr: cronRunning: false
+            CronMgr->>MainApp: POST /api/cron/trigger (re-trigger)
+        end
+    end
 ```
 
-**Code Protection:** [src/lib/init-server.ts:29-36](../src/lib/init-server.ts#L29-L36)
+### Key Invariants (NEVER violate)
+
+1. **CRON jobs must run in EXACTLY 1 process** — the main app instance
+2. `cronJobsStarted` is in-memory — lost on process restart
+3. `initialized` and `cronJobsStarted` are **separate flags** (never conflate them)
+4. `init-server.ts` must allow `forceCron` even if `initialized=true`
+5. `start-cron.js` must have health check, not just one-shot trigger
+
+### Two Flags in init-server.ts
+
 ```typescript
-const enableCronInMainApp = process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
+let initialized = false;      // Server startup completed (instrumentation.ts ran)
+let cronJobsStarted = false;  // CRON schedulers are actually running
 
-if (!enableCronInMainApp) {
-  console.log('[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)');
-  initialized = true;
-  return;
+export function initializeServer(options?: { forceCron?: boolean }) {
+  // initialized=true on first call (instrumentation.ts)
+  // cronJobsStarted=true only when CRON jobs actually start
+  // forceCron bypasses ENABLE_CRON_IN_MAIN_APP check
 }
+
+export function isInitialized(): boolean { return initialized; }
+export function isCronRunning(): boolean { return cronJobsStarted; }
 ```
 
-**Verification:**
+### On Restart / Redeploy
+
+**`pm2 restart all`:**
+1. Main app restarts → `cronJobsStarted=false` (CRON dies)
+2. `start-cron.js` restarts → waits 3s → POST trigger → CRON restarts
+3. Max CRON downtime: ~6 seconds
+
+**`pm2 restart wb-reputation` (main app only):**
+1. Main app restarts → `cronJobsStarted=false`
+2. `start-cron.js` is still running → health check in max 5 min → re-triggers
+3. Max CRON downtime: ~5 minutes
+
+**`pm2 restart wb-reputation-cron` (cron manager only):**
+1. CRON jobs continue running in main app (unaffected)
+2. `start-cron.js` restarts → POST trigger → sees "already running" → OK
+3. Max CRON downtime: 0 seconds
+
+### Why Fork Mode (Changed 2026-03-14)
+
+Previously main app ran in cluster mode (2 instances). This caused a critical risk:
+- `cronJobsStarted` is per-instance (in-memory, not shared)
+- Health check GET could hit instance without CRON → sees `cronRunning: false`
+- Re-trigger POST could start SECOND set of CRON jobs in the other instance
+
+**Solution:** Switched to fork mode (1 instance). 4GB RAM is sufficient.
+**Tradeoff:** No zero-downtime restarts (2-3s gap on restart).
+
+### Verification
+
 ```bash
-# Should see ONLY ONE log entry per job execution (not 3)
+# Should see ONLY ONE log entry per job execution
 pm2 logs wb-reputation-cron | grep "Auto-sequence"
+
+# Health check status
+curl -s localhost:3000/api/cron/trigger -H 'Authorization: Bearer API_KEY'
+# → { "cronRunning": true, "initialized": true }
 ```
 
 **Related Documents:**
-- [DEPLOYMENT.md Section 4.5](../DEPLOYMENT.md#45-запустить-cron-процесс)
-- [Emergency Sprint Plan](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SPRINT-PLAN.md)
-- [Deployment Report 2026-03-13](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/DEPLOYMENT-REPORT-2026-03-13.md)
+- [Sprint-007 Audit](sprints/Sprint-007-System-Health-Audit-2026-03-14/AUDIT-RESULTS.md)
+- [Sprint-Emergency CRON Fix](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SPRINT-PLAN.md)
 
 ---
 
@@ -84,27 +148,36 @@ Jobs are managed using the `node-cron` library and initialize automatically when
 
 ## Architecture
 
-### Auto-Initialization Flow
+### Initialization Flow (Updated 2026-03-14)
 
 ```mermaid
 graph TD
-    A[Next.js Server Starts] --> B[instrumentation.ts executes]
-    B --> C[Calls initializeServer]
-    C --> D[src/lib/init-server.ts]
-    D --> E[startDailyReviewSync]
-    E --> F[CRON Job Registered]
-    F --> G[Waits for Schedule]
-    G --> H{Time Match?}
-    H -->|Yes| I[Execute Job]
-    H -->|No| G
-    I --> J[Sync All Active Stores]
-    J --> G
+    A[PM2 starts wb-reputation] --> B[instrumentation.ts]
+    B --> C["initializeServer()"]
+    C --> D{"ENABLE_CRON_IN_MAIN_APP?"}
+    D -->|"false (production)"| E["initialized=true, CRON OFF"]
+    D -->|"true (local dev)"| F["Start all CRON jobs"]
+
+    G[PM2 starts wb-reputation-cron] --> H[scripts/start-cron.js]
+    H --> I[Wait for server ready]
+    I --> J["POST /api/cron/trigger"]
+    J --> K["initializeServer({ forceCron: true })"]
+    K --> F
+    F --> L["cronJobsStarted=true"]
+
+    H --> M["setInterval(healthCheck, 5min)"]
+    M --> N["GET /api/cron/trigger"]
+    N --> O{"cronRunning?"}
+    O -->|true| P["Health OK"]
+    O -->|false| J
 ```
 
 **Key Files:**
-- [instrumentation.ts](../instrumentation.ts) - Next.js hook (entry point)
-- [src/lib/init-server.ts](../src/lib/init-server.ts#L10) - Server initialization
-- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts#L51) - CRON job definitions
+- [instrumentation.ts](../instrumentation.ts) - Next.js hook (startup, sets `initialized=true`)
+- [src/lib/init-server.ts](../src/lib/init-server.ts) - Two flags: `initialized` + `cronJobsStarted`, `forceCron` option
+- [src/app/api/cron/trigger/route.ts](../src/app/api/cron/trigger/route.ts) - POST triggers CRON, GET checks health
+- [scripts/start-cron.js](../scripts/start-cron.js) - CRON process manager with health check + auto-retrigger
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) - CRON job definitions (11 active jobs)
 
 ---
 
@@ -312,62 +385,59 @@ export async function getAllStores(): Promise<Store[]> {
 
 ---
 
-## How CRON Auto-Start Works (Updated 2026-03-13)
+## How CRON Auto-Start Works (Updated 2026-03-14)
 
-### Architecture: Two Paths
+### Production: HTTP Trigger + Health Check
 
-#### Path A: Main App (wb-reputation) - CRON DISABLED
+CRON jobs run inside the main Next.js process (`wb-reputation`), but are **triggered remotely** by the `wb-reputation-cron` manager process via HTTP.
 
-**Production:** CRON jobs are **DISABLED** in main app
+**Step 1 — Main app starts (CRON OFF):**
+1. PM2 starts `wb-reputation` (fork mode, 1 instance)
+2. `instrumentation.ts` → `initializeServer()` → `initialized=true`
+3. `ENABLE_CRON_IN_MAIN_APP` is NOT set → CRON stays OFF
+4. `cronJobsStarted` remains `false`
 
-1. Next.js server starts → [instrumentation.ts](../instrumentation.ts) runs
-2. Calls `initializeServer()` from [src/lib/init-server.ts](../src/lib/init-server.ts)
-3. **Checks `ENABLE_CRON_IN_MAIN_APP`** environment variable
-4. If `false` or undefined → **SKIP CRON initialization** (default in production)
-5. Logs: `[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)`
+**Step 2 — CRON manager triggers (CRON ON):**
+1. PM2 starts `wb-reputation-cron` → `scripts/start-cron.js`
+2. Waits for main app to be ready (up to 60s)
+3. `POST /api/cron/trigger` → `initializeServer({ forceCron: true })`
+4. Main app starts all 11 CRON jobs → `cronJobsStarted=true`
 
-**Code:** [src/lib/init-server.ts:29-36](../src/lib/init-server.ts#L29-L36)
+**Step 3 — Health monitoring (auto-recovery):**
+1. Every 5 minutes: `GET /api/cron/trigger` → checks `cronRunning`
+2. If `cronRunning: false` (e.g. main app restarted) → re-triggers via POST
+3. 10 consecutive failures → `process.exit(1)` → PM2 restarts cron manager
+
+**Code:** [src/lib/init-server.ts](../src/lib/init-server.ts)
 ```typescript
-const enableCronInMainApp = process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
+let initialized = false;
+let cronJobsStarted = false;
 
-if (!enableCronInMainApp) {
-  console.log('[INIT] ⚠️  CRON jobs DISABLED in main app');
+export function initializeServer(options?: { forceCron?: boolean }) {
+  if (initialized && (!options?.forceCron || cronJobsStarted)) return;
   initialized = true;
-  return; // ← EXIT without starting CRON
+
+  const enableCron = options?.forceCron || process.env.ENABLE_CRON_IN_MAIN_APP === 'true';
+  if (!enableCron) return; // CRON stays off
+
+  if (cronJobsStarted) return;
+  // Start all CRON jobs...
+  cronJobsStarted = true;
 }
 ```
 
-#### Path B: CRON Process (wb-reputation-cron) - CRON ENABLED
-
-**Production:** CRON jobs run **ONLY** in dedicated `wb-reputation-cron` process
-
-1. PM2 starts `scripts/start-cron.js`
-2. Sets `ENABLE_CRON_IN_MAIN_APP=true` in environment
-3. Imports and calls `initializeServer()` → registers all CRON jobs
-4. Logs: `[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)`
-   - Message says "main app" but actually running in dedicated cron process
-   - This is correct - reuses same init code
-5. All 12 CRON jobs start in **single process** (no duplicates)
-
-**PM2 Config:** [ecosystem-cron.config.js](../ecosystem-cron.config.js)
+**Health Check:** [scripts/start-cron.js](../scripts/start-cron.js)
 ```javascript
-{
-  name: 'wb-reputation-cron',
-  script: './scripts/start-cron.js',
-  instances: 1,
-  exec_mode: 'fork',
-  env: {
-    ENABLE_CRON_IN_MAIN_APP: 'true', // ← Force CRON ON
-    NODE_ENV: 'production'
+async function healthCheck() {
+  const response = await fetch(`${baseUrl}/api/cron/trigger`, {
+    headers: { 'Authorization': `Bearer ${apiKey}` },
+  });
+  const data = await response.json();
+  if (!data.cronRunning) {
+    await triggerCronJobs(); // re-trigger
   }
 }
-```
-
-**Start Script:** [scripts/start-cron.js](../scripts/start-cron.js)
-```javascript
-process.env.ENABLE_CRON_IN_MAIN_APP = 'true';
-const { initializeServer } = require('../src/lib/init-server');
-initializeServer();
+setInterval(healthCheck, 5 * 60 * 1000);
 ```
 
 ---
@@ -414,57 +484,37 @@ export function startDailyReviewSync() {
 
 ---
 
-## Deployment Impact (Updated 2026-03-13)
+## Deployment Impact (Updated 2026-03-14)
 
 ### Does CRON Auto-Start After Deployment?
 
-**YES, but in separate process.** When you deploy:
+**YES, automatically.** The `wb-reputation-cron` process handles triggering and recovery.
 
-```bash
-# Deploy with update-app.sh
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
-  "cd /var/www/wb-reputation && bash deploy/update-app.sh"
-```
+**What Happens on `pm2 restart all`:**
 
-**What Happens:**
-
-**Main App (wb-reputation):**
-1. `pm2 reload wb-reputation` → restarts 2 instances
-2. Next.js server restarts
-3. `instrumentation.ts` runs
-4. CRON initialization **SKIPPED** (ENABLE_CRON_IN_MAIN_APP not set)
-5. Logs: `[INIT] ⚠️  CRON jobs DISABLED in main app`
-
-**CRON Process (wb-reputation-cron):**
-1. Already running (not restarted during main app deploy)
-2. **OR** manually start if not running: `pm2 start wb-reputation-cron`
-3. CRON jobs continue running without interruption
-4. **Rolling restart** if needed: `pm2 restart wb-reputation-cron`
-
-**Important:** After code changes to CRON logic, restart CRON process:
-```bash
-# On production server
-pm2 restart wb-reputation-cron
-
-# Verify CRON initialized
-pm2 logs wb-reputation-cron --lines 50 | grep "CRON.*started"
-```
+1. Main app restarts → `cronJobsStarted=false` (CRON dies)
+2. `wb-reputation-cron` restarts → waits 3s → POST trigger → CRON restarts
+3. Max CRON downtime: ~6 seconds
 
 **Verification After Deploy:**
 ```bash
-# Check all processes are online
+# 1. All processes online
 pm2 list
 
-# Verify main app has CRON disabled
-pm2 logs wb-reputation --lines 20 | grep "CRON"
-# Should see: "CRON jobs DISABLED in main app"
+# 2. CRON triggered
+pm2 logs wb-reputation-cron --lines 20 --nostream | grep "CRON"
+# Should see: "CRON jobs triggered!"
 
-# Verify CRON process has jobs running
-pm2 logs wb-reputation-cron --lines 20 | grep "CRON"
-# Should see: "✅ Daily review sync job started successfully"
+# 3. Health check
+curl -s localhost:3000/api/cron/trigger -H 'Authorization: Bearer API_KEY'
+# Should see: { "cronRunning": true }
+
+# 4. CRON jobs running in main app
+pm2 logs wb-reputation --lines 50 --nostream | grep "CRON"
+# Should see: "Starting CRON jobs via /api/cron/trigger"
 ```
 
-**No manual intervention required** (assuming wb-reputation-cron already running)
+**No manual intervention required** — health check auto-recovers within 5 minutes
 
 ---
 
@@ -500,7 +550,7 @@ cron.schedule('...', async () => {
 
 ---
 
-## Monitoring CRON Jobs (Updated 2026-03-13)
+## Monitoring CRON Jobs (Updated 2026-03-14)
 
 ### Check CRON Initialization (Production)
 
@@ -508,31 +558,38 @@ cron.schedule('...', async () => {
 # SSH into server
 ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
 
-# ✅ View CRON process logs (correct process)
-pm2 logs wb-reputation-cron | grep -E "\[INIT\]|\[CRON\]"
+# View CRON manager logs
+pm2 logs wb-reputation-cron --lines 30 --nostream
 
-# ✅ Verify main app has CRON disabled
-pm2 logs wb-reputation | grep "CRON jobs DISABLED"
+# View main app CRON logs
+pm2 logs wb-reputation --lines 50 --nostream | grep -E "\[INIT\]|\[CRON\]"
+
+# Health check via API
+curl -s localhost:3000/api/cron/trigger -H 'Authorization: Bearer API_KEY'
 ```
 
 **Expected Output (wb-reputation-cron):**
 ```
-[INIT] 🚀 Initializing server at 2026-03-13T12:35:00.000Z
-[INIT] Environment: production
-[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)
-[CRON] Scheduling daily review sync: 0 * * * *
-[CRON] ✅ Daily review sync job started successfully
-[CRON] ✅ Auto-sequence processor job started
-[CRON] ✅ Resolved-review closer job started
-...
-[INIT] ✅ Server initialized successfully (125ms)
+[START-CRON] CRON process manager starting...
+[START-CRON] Server is ready
+[START-CRON] POST http://localhost:3000/api/cron/trigger
+[START-CRON] Response: {"cronRunning":true}
+[START-CRON] CRON jobs triggered!
+[START-CRON] Health check every 300s
+[START-CRON] Health OK: CRON running | 2026-03-14T09:00:00.000Z
 ```
 
 **Expected Output (wb-reputation main app):**
 ```
-[INIT] 🚀 Initializing server at 2026-03-13T12:35:00.000Z
-[INIT] ⚠️  CRON jobs DISABLED in main app (use wb-reputation-cron process)
-[INIT] 💡 To enable in main app (local dev only): set ENABLE_CRON_IN_MAIN_APP=true
+[INIT] Initializing server at 2026-03-14T08:33:00.000Z
+[INIT] CRON jobs DISABLED in main app (waiting for /api/cron/trigger)
+[API CRON TRIGGER] CRON trigger requested
+[INIT] Starting CRON jobs via /api/cron/trigger (dedicated process)
+[CRON] Daily review sync job started successfully
+[CRON] Auto-sequence processor job started
+[CRON] Resolved-review closer job started
+...
+[INIT] CRON jobs started successfully
 ```
 
 ### Monitor CRON Execution
@@ -667,33 +724,37 @@ pm2 logs wb-reputation-cron --lines 200 | grep -A 2 "Auto-sequence"
 
 **Symptom:** No `[CRON]` logs after server restart
 
-**IMPORTANT:** Check **wb-reputation-cron** process (not main app!)
-
-**Check:**
+**Check (in order):**
 ```bash
-# 1. Verify CRON process is running
-pm2 list | grep cron
+# 1. All processes online?
+pm2 list
 
-# 2. Check CRON process logs
-pm2 logs wb-reputation-cron | grep "INIT"
+# 2. CRON manager triggered successfully?
+pm2 logs wb-reputation-cron --lines 20 --nostream | grep -E "triggered|failed|Health"
 
-# 3. Verify main app has CRON DISABLED
-pm2 logs wb-reputation | grep "CRON jobs DISABLED"
+# 3. Health check API
+curl -s localhost:3000/api/cron/trigger -H 'Authorization: Bearer API_KEY'
+# → { "cronRunning": true } = OK
+# → { "cronRunning": false } = CRON not running, check main app logs
+
+# 4. Main app CRON status
+pm2 logs wb-reputation --lines 50 --nostream | grep -E "\[INIT\]|\[CRON\]"
 ```
 
-**Expected in wb-reputation-cron logs:**
-```
-[INIT] 🚀 Initializing server at 2026-03-13T12:35:00.000Z
-[INIT] ⚠️  Starting cron jobs IN MAIN APP (should only happen in local dev!)
-[CRON] ✅ Daily review sync job started successfully
-[CRON] ✅ Auto-sequence processor job started
-...
+**If CRON not running:**
+```bash
+# Restart CRON manager (will re-trigger)
+pm2 restart wb-reputation-cron
+
+# Or restart everything
+pm2 restart all
 ```
 
-**If CRON process not in PM2:**
+**If processes not in PM2:**
 ```bash
 cd /var/www/wb-reputation
-pm2 start ecosystem-cron.config.js
+pm2 start ecosystem.config.js
+pm2 save
 ```
 
 ### CRON Job Running But Failing
@@ -1212,7 +1273,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 
 ---
 
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-14
 
 **Production CRON Jobs:**
 | Job | Schedule (MSK) | Schedule (UTC) | Description |
@@ -1232,6 +1293,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 **Non-CRON Background Process:**
 | Process | Type | Description |
 |---------|------|-------------|
+| **CRON Manager** (`wb-reputation-cron`) | PM2 fork | Triggers CRON in main app via HTTP, monitors health every 5 min |
 | **TG Bot** (`wb-reputation-tg-bot`) | PM2 fork | Telegram bot long-polling + push notifications hook in dialogue sync |
 
 **Estimated Daily Cost Savings:** 30-40% via template optimization

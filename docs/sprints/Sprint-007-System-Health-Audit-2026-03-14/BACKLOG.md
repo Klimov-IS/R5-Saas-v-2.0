@@ -277,17 +277,25 @@ After `pm2 restart all`, verify within 5 minutes:
 
 ## Summary
 
-| Priority | Tasks | Total Effort |
-|----------|-------|-------------|
-| P0 | 1 task | 30 min |
-| P1 | 4 tasks | ~1.5 hours |
-| P2 | 4 tasks | ~2.5 hours |
-| P3 | 2 tasks | ~8 hours |
-| **Total** | **11 tasks** | **~12.5 hours** |
+| Priority | Tasks | Completed | Total Effort |
+|----------|-------|-----------|-------------|
+| P0 | 1 task | 1/1 DONE | 30 min |
+| P1 | 4 tasks | 4/4 DONE | ~1.5 hours |
+| P2 | 4 tasks | 0/4 | ~2.5 hours |
+| P3 | 2 tasks | 0/2 | ~8 hours |
+| **Total** | **11 tasks** | **5/11** | **~12.5 hours** |
 
-**Recommended execution order:**
-1. TASK-001 (P0) — fix cluster risk immediately
-2. TASK-002 + TASK-003 (P1) — update documentation while context is fresh
-3. TASK-004 (P1) — add alerting
-4. TASK-005 (P1) — fix backfill noise
-5. Everything else as capacity allows
+**Completed (2026-03-14):**
+- TASK-001 (P0) — switched to fork mode, deployed, verified
+- TASK-002 (P1) — CRON_JOBS.md updated with new architecture
+- TASK-003 (P1) — CLAUDE.md updated with CRON internals
+- TASK-004 (P1) — Telegram admin alerting added to start-cron.js
+- TASK-005 (P1) — Backfill worker now falls back to NEXT_PUBLIC_API_KEY
+
+**Note for TASK-004:** Requires `TELEGRAM_ADMIN_CHAT_ID` env var on production server. Without it, alerts silently skip. Add via:
+```bash
+# On production server, add to .env.production:
+TELEGRAM_ADMIN_CHAT_ID=<admin-chat-id>
+```
+
+**Remaining (P2+P3):** as capacity allows
