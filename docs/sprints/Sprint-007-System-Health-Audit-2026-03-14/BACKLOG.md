@@ -246,54 +246,49 @@ After `pm2 restart all`, verify within 5 minutes:
 
 ### TASK-010: Standalone CRON process (eliminate HTTP trigger dependency)
 
-**Problem:** Current architecture: CRON jobs run inside main app process, triggered via HTTP. This means CRON depends on main app being healthy, cluster routing being predictable, and in-memory state being preserved.
-
-**Solution:** Move CRON jobs to a standalone Node.js process that:
-- Imports cron-jobs.ts directly
-- Runs its own node-cron schedulers
-- Connects to DB independently
-- No HTTP dependency on main app
-
-**Tradeoff:** Requires TypeScript compilation setup for the standalone process, shared config management, and possibly duplicating some initialization code.
-
-**This becomes unnecessary if TASK-001 Option A (fork mode) is chosen** — fork mode eliminates the cluster routing problem entirely.
-
-**Estimated effort:** 4-6 hours
+**Status: N/A** — fork mode (TASK-001) eliminated cluster routing problem. Standalone process no longer needed.
 
 ---
 
 ### TASK-011: Dialogue sync idempotency audit
 
-**Problem:** If CRON runs in 2 instances (cluster bug), dialogue sync and review sync will execute twice per cycle. While most operations use upserts, there may be side effects:
-- Double TG notifications (mitigated by atomic dedup)
-- Double WB API calls (rate limit risk)
-- Double backfill job creation
-
-**Solution:** Audit all CRON jobs for side effects when executed twice concurrently. Add distributed locks (DB-based) where needed.
-
-**Estimated effort:** 2-3 hours
+**Status: DEFERRED** — low risk with fork mode (1 instance = no concurrent CRON execution). Re-evaluate only if cluster mode is ever re-enabled.
 
 ---
 
 ## Summary
 
-| Priority | Tasks | Completed | Total Effort |
-|----------|-------|-----------|-------------|
+| Priority | Tasks | Status | Total Effort |
+|----------|-------|--------|-------------|
 | P0 | 1 task | 1/1 DONE | 30 min |
 | P1 | 4 tasks | 4/4 DONE | ~1.5 hours |
 | P2 | 4 tasks | 4/4 DONE | ~2.5 hours |
-| P3 | 2 tasks | 0/2 | ~8 hours |
-| **Total** | **11 tasks** | **9/11** | **~12.5 hours** |
+| P3 | 2 tasks | 1 N/A, 1 DEFERRED | — |
+| **Total** | **11 tasks** | **SPRINT CLOSED** | **~4.5 hours actual** |
 
-**Completed (2026-03-14):**
+---
+
+## Sprint Closed: 2026-03-14
+
+**All completed tasks:**
 - TASK-001 (P0) — switched to fork mode, deployed, verified
 - TASK-002 (P1) — CRON_JOBS.md updated with new architecture
 - TASK-003 (P1) — CLAUDE.md updated with CRON internals
-- TASK-004 (P1) — Telegram admin alerting added to start-cron.js (TELEGRAM_ADMIN_CHAT_ID=789263961 configured)
-- TASK-005 (P1) — Backfill worker now falls back to NEXT_PUBLIC_API_KEY
+- TASK-004 (P1) — Telegram admin alerting added to start-cron.js (TELEGRAM_ADMIN_CHAT_ID=789263961)
+- TASK-005 (P1) — Backfill worker falls back to NEXT_PUBLIC_API_KEY
 - TASK-006 (P2) — pm2-logrotate: retain=15, max_size=50M (750MB, ~36h retention)
-- TASK-007 (P2) — /api/health updated with isCronRunning() + active sequences count
-- TASK-008 (P2) — DEPLOYMENT.md updated: fork mode, post-deploy checklist
+- TASK-007 (P2) — /api/health updated: isCronRunning(), active sequences, force-dynamic
+- TASK-008 (P2) — DEPLOYMENT.md: fork mode docs, post-deploy checklist
 - TASK-009 (P2) — RESOLUTION-2026-03-14.md added to Sprint-Emergency
 
-**Remaining (P3):** TASK-010 (no longer needed with fork mode), TASK-011 (idempotency audit — as capacity allows)
+**Closed without action:**
+- TASK-010 (P3) — N/A (fork mode makes standalone CRON unnecessary)
+- TASK-011 (P3) — DEFERRED (no risk with single instance)
+
+**Commits:**
+- `fb062f8` — Core CRON fix (forceCron, cronJobsStarted, health check, tg_message_id)
+- `0998cc9` — Fork mode + Sprint-007 audit docs
+- `74cf17f` — P1 tasks (docs, alerting, backfill fix)
+- `f195d48` — P2 tasks (DEPLOYMENT.md, /api/health, RESOLUTION, logrotate)
+- `c874908` — /api/health force-dynamic fix
+- `1ed0649` — /api/health table name fix
