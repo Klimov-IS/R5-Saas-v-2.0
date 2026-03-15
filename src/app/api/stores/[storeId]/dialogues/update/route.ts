@@ -114,7 +114,12 @@ async function updateDialoguesForStore(storeId: string, fullScan = false): Promi
                 draft_reply_thread_id: existingChat?.draft_reply_thread_id || null,
             };
 
-            await dbHelpers.upsertChat(chatPayload);
+            const upserted = await dbHelpers.upsertChat(chatPayload);
+
+            // Track newly created chats in the map so Step 5 status transitions work
+            if (!existingChat && upserted) {
+                existingChatMap.set(activeChat.chatID, upserted);
+            }
         }
 
         console.log(`[DIALOGUES] Updated/Created ${activeChats.length} chat documents.`);

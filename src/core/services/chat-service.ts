@@ -161,6 +161,7 @@ export async function sendMessage(
     draft_reply_generated_at: null,
     draft_reply_edited: null,
     status: 'in_progress',
+    status_updated_at: new Date().toISOString(),
     last_message_sender: 'seller',
     last_message_text: trimmedMessage,
     last_message_date: new Date().toISOString(),
