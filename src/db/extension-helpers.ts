@@ -10,6 +10,7 @@
 
 import { query } from './client';
 import { generateReviewComplaint } from '@/ai/flows/generate-review-complaint-flow';
+import { getCached as getCachedApiKey, setCached as setCachedApiKey } from '@/lib/api-key-cache';
 
 // ============================================================================
 // Types for Extension API
@@ -449,12 +450,19 @@ async function getOrCreateProduct(
 }
 
 /**
- * Get user by API token
+ * Get user by API token (cached)
+ *
+ * Uses in-memory LRU cache to avoid DB query on every extension API call.
+ * Cache has no TTL — invalidated on server restart or manual clear.
  *
  * @param token API token (starts with "wbrm_")
  * @returns User info or null
  */
 export async function getUserByApiToken(token: string) {
+  // Check cache first
+  const cached = getCachedApiKey(token);
+  if (cached !== null) return cached;
+
   const result = await query<{
     id: string;
     email: string;
@@ -466,7 +474,9 @@ export async function getUserByApiToken(token: string) {
     [token]
   );
 
-  return result.rows[0] || null;
+  const user = result.rows[0] || null;
+  if (user) setCachedApiKey(token, user);
+  return user;
 }
 
 /**

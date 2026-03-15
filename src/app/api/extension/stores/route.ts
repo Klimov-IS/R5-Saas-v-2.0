@@ -111,21 +111,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Helper: wrap a query in a timeout — returns empty rows on timeout instead of blocking
-    const QUERY_TIMEOUT_MS = 8000;
-    function queryWithTimeout<T extends Record<string, any>>(sql: string, params: any[]) {
-      return Promise.race([
-        query<T>(sql, params),
-        new Promise<{ rows: T[] }>((resolve) =>
-          setTimeout(() => resolve({ rows: [] } as any), QUERY_TIMEOUT_MS)
-        ),
-      ]);
-    }
-
-    // 4. Run EXISTS queries in parallel (boolean: has tasks, not exact count)
-    // EXISTS stops at first match — dramatically faster than COUNT(*) on 3.2M+ rows
-    const [storesResult, draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Q1: stores (fast, no heavy joins) ──
+    // 4. Step 1: Load stores + precompute eligible product_ids per store (~20ms)
+    const [storesResult, eligibleProductsResult] = await Promise.all([
       query<{
         id: string;
         name: string;
@@ -138,8 +125,55 @@ export async function GET(request: NextRequest) {
         ORDER BY s.name ASC`,
         [user.id]
       ),
+      // Preload all eligible product_ids grouped by store_id
+      query<{
+        store_id: string;
+        product_id: string;
+        submit_complaints: boolean;
+        work_in_chats: boolean;
+      }>(
+        `SELECT p.store_id, p.id as product_id,
+                pr.submit_complaints, pr.work_in_chats
+         FROM products p
+         JOIN product_rules pr ON pr.product_id = p.id
+         WHERE p.store_id IN (SELECT s.id FROM stores s WHERE s.owner_id = $1)
+           AND p.work_status = 'active'
+           AND (pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE)`,
+        [user.id]
+      ),
+    ]);
 
-      // ── Q1b: stores with draft complaints (EXISTS — stops at first match) ──
+    // Build per-store eligible product_id arrays
+    const storeEligibleProducts = new Map<string, string[]>();
+    const storeChatProducts = new Map<string, string[]>();
+    for (const row of eligibleProductsResult.rows) {
+      if (!storeEligibleProducts.has(row.store_id)) storeEligibleProducts.set(row.store_id, []);
+      storeEligibleProducts.get(row.store_id)!.push(row.product_id);
+      if (row.work_in_chats) {
+        if (!storeChatProducts.has(row.store_id)) storeChatProducts.set(row.store_id, []);
+        storeChatProducts.get(row.store_id)!.push(row.product_id);
+      }
+    }
+
+    // 5. Step 2: Run simplified EXISTS queries using product_id = ANY(...)
+    const activeStoreIds = storesResult.rows.filter(s => s.is_active).map(s => s.id);
+    const chatStageStoreIds = storesResult.rows
+      .filter(s => s.is_active && ['chats_opened', 'monitoring'].includes(s.stage))
+      .map(s => s.id);
+
+    // Helper: wrap a query in a timeout — returns empty rows on timeout instead of blocking
+    const QUERY_TIMEOUT_MS = 8000;
+    function queryWithTimeout<T extends Record<string, any>>(sql: string, params: any[]) {
+      return Promise.race([
+        query<T>(sql, params),
+        new Promise<{ rows: T[] }>((resolve) =>
+          setTimeout(() => resolve({ rows: [] } as any), QUERY_TIMEOUT_MS)
+        ),
+      ]);
+    }
+
+    const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
+      // ── Q1b: stores with draft complaints ──
       queryWithTimeout<{ store_id: string }>(
         `SELECT s.id as store_id
         FROM stores s
@@ -147,114 +181,75 @@ export async function GET(request: NextRequest) {
         AND EXISTS (
           SELECT 1 FROM review_complaints rc
           JOIN reviews r ON r.id = rc.review_id
-          JOIN products p ON rc.product_id = p.id
           WHERE rc.store_id = s.id
             AND rc.status = 'draft'
-            AND p.work_status = 'active'
             AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
             AND r.review_status_wb != 'deleted'
         )`,
         [user.id]
       ),
 
-      // ── Q2: stores with pending status parses (EXISTS — stops at first match) ──
-      // Chat-only ratings gated by stage: included only if store at 'chats_opened' or 'monitoring'
-      queryWithTimeout<{ store_id: string }>(
-        `SELECT s.id as store_id
-        FROM stores s
-        WHERE s.owner_id = $1 AND s.is_active = TRUE
-        AND EXISTS (
-          SELECT 1 FROM products p
-          JOIN product_rules pr ON pr.product_id = p.id
-          JOIN reviews r ON r.product_id = p.id
-          WHERE p.store_id = s.id
-            AND p.work_status = 'active'
-            AND (pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE)
-            AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
-            AND r.rating_excluded = FALSE
-            AND r.marketplace = 'wb'
-            AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
-            AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
-            AND NOT EXISTS (
-              SELECT 1 FROM review_complaints rc
-              WHERE rc.review_id = r.id AND rc.status = 'draft'
-            )
-            AND r.rating = ANY(ARRAY_REMOVE(ARRAY[
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_1) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_1) THEN 1 END,
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_2) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_2) THEN 2 END,
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_3) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_3) THEN 3 END,
-              CASE WHEN (pr.submit_complaints AND pr.complaint_rating_4) OR (s.stage IN ('chats_opened', 'monitoring') AND pr.work_in_chats AND pr.chat_rating_4) THEN 4 END
-            ], NULL))
-        )`,
-        [user.id]
-      ),
+      // ── Q2: stores with pending status parses ──
+      // Uses precomputed product_ids — no product_rules JOIN
+      (async () => {
+        const result: { store_id: string }[] = [];
+        for (const storeId of activeStoreIds) {
+          const productIds = storeEligibleProducts.get(storeId);
+          if (!productIds || productIds.length === 0) continue;
+          const exists = await queryWithTimeout<{ exists: boolean }>(
+            `SELECT EXISTS (
+              SELECT 1 FROM reviews r
+              WHERE r.store_id = $1
+                AND r.product_id = ANY($2::text[])
+                AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
+                AND r.rating_excluded = FALSE
+                AND r.marketplace = 'wb'
+                AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+                AND NOT EXISTS (
+                  SELECT 1 FROM review_complaints rc
+                  WHERE rc.review_id = r.id AND rc.status = 'draft'
+                )
+            ) as exists`,
+            [storeId, productIds]
+          );
+          if (exists.rows[0]?.exists) result.push({ store_id: storeId });
+        }
+        return { rows: result };
+      })(),
 
-      // ── Q3: stores with pending chats (EXISTS — stops at first match) ──
-      // Stage guard: only count for stores at 'chats_opened' or 'monitoring'
-      queryWithTimeout<{ store_id: string }>(
-        `SELECT s.id as store_id
-        FROM stores s
-        WHERE s.owner_id = $1 AND s.is_active = TRUE
-        AND s.stage IN ('chats_opened', 'monitoring')
-        AND (
-          EXISTS (
-            SELECT 1 FROM reviews r
-            JOIN review_complaints rc ON rc.review_id = r.id
-            JOIN products p ON r.product_id = p.id
-            JOIN product_rules pr ON pr.product_id = p.id
-            WHERE r.store_id = s.id
-              AND rc.status = 'rejected'
-              AND pr.work_in_chats = TRUE
-              AND r.chat_status_by_review = 'available'
-              AND r.review_status_wb IN ('visible', 'unknown')
-              AND r.rating_excluded = FALSE
-              AND r.marketplace = 'wb'
-              AND p.work_status = 'active'
-              AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
-              AND (
-                (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-                (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-                (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
-                (r.rating = 4 AND pr.chat_rating_4 = TRUE)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM review_chat_links rcl
-                WHERE rcl.store_id = r.store_id
-                  AND rcl.review_nm_id = p.wb_product_id
-                  AND rcl.review_rating = r.rating
-                  AND rcl.review_date BETWEEN r.date - interval '2 minutes'
-                                             AND r.date + interval '2 minutes'
-              )
-          )
-          OR EXISTS (
-            SELECT 1 FROM reviews r
-            JOIN products p ON r.product_id = p.id
-            JOIN product_rules pr ON pr.product_id = p.id
-            WHERE r.store_id = s.id
-              AND r.chat_status_by_review = 'opened'
-              AND pr.work_in_chats = TRUE
-              AND r.review_status_wb != 'deleted'
-              AND r.rating_excluded = FALSE
-              AND r.marketplace = 'wb'
-              AND p.work_status = 'active'
-              AND (
-                (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-                (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-                (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
-                (r.rating = 4 AND pr.chat_rating_4 = TRUE)
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM review_chat_links rcl
-                WHERE rcl.store_id = r.store_id
-                  AND rcl.review_nm_id = p.wb_product_id
-                  AND rcl.review_rating = r.rating
-                  AND rcl.review_date BETWEEN r.date - interval '2 minutes'
-                                             AND r.date + interval '2 minutes'
-              )
-          )
-        )`,
-        [user.id]
-      ),
+      // ── Q3: stores with pending chats ──
+      // Uses precomputed chat product_ids — no product_rules JOIN
+      (async () => {
+        const result: { store_id: string }[] = [];
+        for (const storeId of chatStageStoreIds) {
+          const productIds = storeChatProducts.get(storeId);
+          if (!productIds || productIds.length === 0) continue;
+          const exists = await queryWithTimeout<{ exists: boolean }>(
+            `SELECT EXISTS (
+              SELECT 1 FROM reviews r
+              JOIN review_complaints rc ON rc.review_id = r.id
+              WHERE r.store_id = $1
+                AND r.product_id = ANY($2::text[])
+                AND rc.status = 'rejected'
+                AND r.chat_status_by_review = 'available'
+                AND r.review_status_wb IN ('visible', 'unknown')
+                AND r.rating_excluded = FALSE
+                AND r.marketplace = 'wb'
+                AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
+                AND NOT EXISTS (
+                  SELECT 1 FROM review_chat_links rcl
+                  WHERE rcl.store_id = r.store_id
+                    AND rcl.review_nm_id = (SELECT wb_product_id FROM products WHERE id = r.product_id)
+                    AND rcl.review_rating = r.rating
+                    AND rcl.review_date BETWEEN r.date - interval '2 minutes' AND r.date + interval '2 minutes'
+                )
+            ) as exists`,
+            [storeId, productIds]
+          );
+          if (exists.rows[0]?.exists) result.push({ store_id: storeId });
+        }
+        return { rows: result };
+      })(),
     ]);
 
     // Build lookup sets (boolean: store has tasks in this direction)
