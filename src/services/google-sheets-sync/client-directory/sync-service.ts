@@ -44,8 +44,8 @@ const CLIENT_DIRECTORY_SHEET = 'Список клиентов';
 // Google Drive folder with client folders
 const CLIENTS_FOLDER_ID = '1GelGC6stQVoc5OaJuachXNZtuJvOevyK';
 
-// Number of columns in client directory (A through O)
-const COLUMN_COUNT = 15;
+// Number of columns in client directory (A through P)
+const COLUMN_COUNT = 16;
 
 /**
  * Get all stores from database
@@ -194,7 +194,7 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
       existingData = await readSheetData(
         config,
         config.spreadsheetId,
-        `'${CLIENT_DIRECTORY_SHEET}'!A:O`
+        `'${CLIENT_DIRECTORY_SHEET}'!A:P`
       );
       console.log(`[ClientDirectorySync] Found ${existingData.length} existing rows`);
     } catch (error) {

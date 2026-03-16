@@ -55,7 +55,8 @@ function formatStatus(isActive: boolean): string {
  */
 export interface ManualFields {
   inn: string;     // C — ИНН
-  task: string;    // O — Задача
+  costCd: string;  // D — Стоимость ЦД
+  task: string;    // P — Задача
 }
 
 /**
@@ -65,6 +66,7 @@ export interface ManualFields {
 export function extractManualFields(row: string[]): ManualFields {
   return {
     inn: row[COLUMN_INDICES.INN] || '',
+    costCd: row[COLUMN_INDICES.COST_CD] || '',
     task: row[COLUMN_INDICES.TASK] || ''
   };
 }
@@ -84,24 +86,25 @@ function formatStage(stage: string | null): string {
 export function formatClientRow(
   store: StoreData,
   driveMatch: DriveFolderMatch,
-  manual: ManualFields = { inn: '', task: '' }
+  manual: ManualFields = { inn: '', costCd: '', task: '' }
 ): string[] {
   return [
     store.id,                                    // A: ID магазина
     store.name,                                  // B: Название
     manual.inn,                                  // C: ИНН (manual)
-    formatDate(store.created_at),                // D: Дата подключения
-    formatApiStatus(store.api_token),            // E: API Main
-    formatApiStatus(store.content_api_token),    // F: API Content
-    formatApiStatus(store.feedbacks_api_token),  // G: API Feedbacks
-    formatApiStatus(store.chat_api_token),       // H: API Chat
-    driveMatch.folderLink || '',                 // I: Папка клиента
-    driveMatch.reportLink || '',                 // J: Отчёт
-    driveMatch.screenshotsLink || '',            // K: Скриншоты
-    formatDateTime(new Date()),                  // L: Обновлено
-    formatStatus(store.is_active),               // M: Статус
-    formatStage(store.stage),                    // N: Этап (auto from DB)
-    manual.task                                  // O: Задача (manual)
+    manual.costCd,                               // D: Стоимость ЦД (manual)
+    formatDate(store.created_at),                // E: Дата подключения
+    formatApiStatus(store.api_token),            // F: API Main
+    formatApiStatus(store.content_api_token),    // G: API Content
+    formatApiStatus(store.feedbacks_api_token),  // H: API Feedbacks
+    formatApiStatus(store.chat_api_token),       // I: API Chat
+    driveMatch.folderLink || '',                 // J: Папка клиента
+    driveMatch.reportLink || '',                 // K: Отчёт
+    driveMatch.screenshotsLink || '',            // L: Скриншоты
+    formatDateTime(new Date()),                  // M: Обновлено
+    formatStatus(store.is_active),               // N: Статус
+    formatStage(store.stage),                    // O: Этап (auto from DB)
+    manual.task                                  // P: Задача (manual)
   ];
 }
 
@@ -138,7 +141,7 @@ export function buildRowRange(
   sheetName: string,
   rowNumber: number,
   startCol: number = 0,
-  endCol: number = 14 // O column (15 columns: A-O)
+  endCol: number = 15 // P column (16 columns: A-P)
 ): string {
   const startLetter = columnToLetter(startCol);
   const endLetter = columnToLetter(endCol);
