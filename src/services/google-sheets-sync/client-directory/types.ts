@@ -18,6 +18,7 @@ export interface StoreData {
   id: string;
   name: string;
   is_active: boolean;
+  stage: string | null;
   created_at: Date;
   api_token: string | null;
   content_api_token: string | null;
@@ -45,7 +46,6 @@ export interface ClientRow {
   name: string;
   inn: string;
   connectedAt: string;
-  status: string;
   apiMain: string;
   apiContent: string;
   apiFeedbacks: string;
@@ -54,6 +54,9 @@ export interface ClientRow {
   reportLink: string;
   screenshotsLink: string;
   updatedAt: string;
+  status: string;
+  stage: string;
+  task: string;
 }
 
 /**
@@ -74,17 +77,19 @@ export interface ClientDirectorySyncResult {
 export const COLUMN_INDICES = {
   STORE_ID: 0,      // A
   NAME: 1,          // B
-  INN: 2,           // C
+  INN: 2,           // C  (manual — preserved)
   CONNECTED_AT: 3,  // D
-  STATUS: 4,        // E
-  API_MAIN: 5,      // F
-  API_CONTENT: 6,   // G
-  API_FEEDBACKS: 7, // H
-  API_CHAT: 8,      // I
-  FOLDER_LINK: 9,   // J
-  REPORT_LINK: 10,  // K
-  SCREENSHOTS: 11,  // L
-  UPDATED_AT: 12    // M
+  API_MAIN: 4,      // E
+  API_CONTENT: 5,   // F
+  API_FEEDBACKS: 6, // G
+  API_CHAT: 7,      // H
+  FOLDER_LINK: 8,   // I
+  REPORT_LINK: 9,   // J
+  SCREENSHOTS: 10,  // K
+  UPDATED_AT: 11,   // L
+  STATUS: 12,       // M
+  STAGE: 13,        // N  (manual — preserved)
+  TASK: 14          // O  (manual — preserved)
 } as const;
 
 /**
@@ -95,7 +100,6 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'Название',
   'ИНН',
   'Дата подключения',
-  'Статус',
   'API Main',
   'API Content',
   'API Feedbacks',
@@ -103,5 +107,8 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'Папка клиента',
   'Отчёт',
   'Скриншоты',
-  'Обновлено'
+  'Обновлено',
+  'Статус',
+  'Этап',
+  'Задача'
 ];

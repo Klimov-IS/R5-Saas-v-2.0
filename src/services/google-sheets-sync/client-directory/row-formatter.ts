@@ -2,8 +2,10 @@
  * Row formatting for Client Directory sheet
  */
 
-import type { StoreData, DriveFolderMatch, ClientRow } from './types';
-import { CLIENT_DIRECTORY_HEADERS } from './types';
+import type { StoreData, DriveFolderMatch } from './types';
+import { CLIENT_DIRECTORY_HEADERS, COLUMN_INDICES } from './types';
+import { STORE_STAGE_LABELS } from '@/types/stores';
+import type { StoreStage } from '@/types/stores';
 
 /**
  * Format date to DD.MM.YYYY
@@ -48,27 +50,58 @@ function formatStatus(isActive: boolean): string {
 }
 
 /**
- * Format store data into a row for the sheet
+ * Manual fields preserved from existing row data.
+ * These columns are filled by managers and must not be overwritten.
+ */
+export interface ManualFields {
+  inn: string;     // C — ИНН
+  task: string;    // O — Задача
+}
+
+/**
+ * Extract manual fields from an existing sheet row.
+ * Returns empty strings for missing values.
+ */
+export function extractManualFields(row: string[]): ManualFields {
+  return {
+    inn: row[COLUMN_INDICES.INN] || '',
+    task: row[COLUMN_INDICES.TASK] || ''
+  };
+}
+
+/**
+ * Format store stage as Russian label
+ */
+function formatStage(stage: string | null): string {
+  if (!stage) return '';
+  return STORE_STAGE_LABELS[stage as StoreStage] || stage;
+}
+
+/**
+ * Format store data into a row for the sheet.
+ * Column order: A-O (15 columns), matches CLIENT_DIRECTORY_HEADERS.
  */
 export function formatClientRow(
   store: StoreData,
   driveMatch: DriveFolderMatch,
-  existingInn: string = ''
+  manual: ManualFields = { inn: '', task: '' }
 ): string[] {
   return [
-    store.id,
-    store.name,
-    existingInn, // Preserve existing INN (filled manually)
-    formatDate(store.created_at),
-    formatStatus(store.is_active),
-    formatApiStatus(store.api_token),
-    formatApiStatus(store.content_api_token),
-    formatApiStatus(store.feedbacks_api_token),
-    formatApiStatus(store.chat_api_token),
-    driveMatch.folderLink || '',
-    driveMatch.reportLink || '',
-    driveMatch.screenshotsLink || '',
-    formatDateTime(new Date())
+    store.id,                                    // A: ID магазина
+    store.name,                                  // B: Название
+    manual.inn,                                  // C: ИНН (manual)
+    formatDate(store.created_at),                // D: Дата подключения
+    formatApiStatus(store.api_token),            // E: API Main
+    formatApiStatus(store.content_api_token),    // F: API Content
+    formatApiStatus(store.feedbacks_api_token),  // G: API Feedbacks
+    formatApiStatus(store.chat_api_token),       // H: API Chat
+    driveMatch.folderLink || '',                 // I: Папка клиента
+    driveMatch.reportLink || '',                 // J: Отчёт
+    driveMatch.screenshotsLink || '',            // K: Скриншоты
+    formatDateTime(new Date()),                  // L: Обновлено
+    formatStatus(store.is_active),               // M: Статус
+    formatStage(store.stage),                    // N: Этап (auto from DB)
+    manual.task                                  // O: Задача (manual)
   ];
 }
 
@@ -77,13 +110,6 @@ export function formatClientRow(
  */
 export function getClientDirectoryHeaders(): string[] {
   return [...CLIENT_DIRECTORY_HEADERS];
-}
-
-/**
- * Parse existing row to extract INN (column C, index 2)
- */
-export function extractInnFromRow(row: string[]): string {
-  return row[2] || '';
 }
 
 /**
@@ -105,14 +131,14 @@ export function columnToLetter(column: number): string {
  * Build A1 notation range for a row
  * @param sheetName - Sheet name
  * @param rowNumber - 1-based row number
- * @param startCol - 0-based start column
- * @param endCol - 0-based end column
+ * @param startCol - 0-based start column (default: 0 = A)
+ * @param endCol - 0-based end column (default: 14 = O)
  */
 export function buildRowRange(
   sheetName: string,
   rowNumber: number,
   startCol: number = 0,
-  endCol: number = 12 // M column
+  endCol: number = 14 // O column (15 columns: A-O)
 ): string {
   const startLetter = columnToLetter(startCol);
   const endLetter = columnToLetter(endCol);

@@ -136,7 +136,7 @@ export async function clearAndWriteRows(
 
   // 1. Clear the sheet (with retry)
   await withRetry(async () => {
-    const clearUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}:clear`;
+    const clearUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(`'${sheetName}'`)}:clear`;
     const clearResponse = await fetch(clearUrl, {
       method: 'POST',
       headers: {
@@ -156,7 +156,7 @@ export async function clearAndWriteRows(
   // 2. Write headers + data (with retry)
   const allRows = [headers, ...rows];
   const result = await withRetry(async () => {
-    const updateUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1?valueInputOption=USER_ENTERED`;
+    const updateUrl = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(`'${sheetName}'!A1`)}?valueInputOption=USER_ENTERED`;
 
     const updateResponse = await fetch(updateUrl, {
       method: 'PUT',
@@ -357,7 +357,7 @@ export async function appendRows(
   const sheetName = config.sheetName;
 
   return withRetry(async () => {
-    const url = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(sheetName)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    const url = `${GOOGLE_SHEETS_BASE_URL}/${config.spreadsheetId}/values/${encodeURIComponent(`'${sheetName}'!A1`)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
 
     const response = await fetch(url, {
       method: 'POST',

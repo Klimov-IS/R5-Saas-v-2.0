@@ -34,5 +34,6 @@ export {
 
 export {
   formatClientRow,
+  extractManualFields,
   getClientDirectoryHeaders
 } from './row-formatter';
