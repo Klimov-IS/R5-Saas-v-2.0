@@ -8,7 +8,7 @@
  * - Preserves manually entered data (INN in column C)
  * - Links to Google Drive folders via fuzzy name matching
  *
- * Uses ONLY batchUpdate with explicit A:M ranges — no appendRows,
+ * Uses ONLY batchUpdate with explicit A:T ranges — no appendRows,
  * no Google table detection, no column shifting.
  */
 
@@ -23,6 +23,7 @@ import { getGoogleSheetsConfig } from '../sync-service';
 import type { GoogleSheetsConfig } from '../types';
 import type {
   StoreData,
+  StoreMetrics,
   ClientDirectorySyncResult,
   DriveFolderMatch
 } from './types';
@@ -44,8 +45,8 @@ const CLIENT_DIRECTORY_SHEET = 'Список клиентов';
 // Google Drive folder with client folders
 const CLIENTS_FOLDER_ID = '1GelGC6stQVoc5OaJuachXNZtuJvOevyK';
 
-// Number of columns in client directory (A through P)
-const COLUMN_COUNT = 16;
+// Number of columns in client directory (A through T)
+const COLUMN_COUNT = 20;
 
 /**
  * Get all stores from database
@@ -59,6 +60,64 @@ async function getAllStores(): Promise<StoreData[]> {
     ORDER BY name`
   );
   return result.rows;
+}
+
+/**
+ * Batch-fetch computed metrics for all stores.
+ * Two queries: product metrics + negative review counts.
+ */
+async function getStoreMetrics(storeIds: string[]): Promise<Map<string, StoreMetrics>> {
+  const metricsMap = new Map<string, StoreMetrics>();
+  if (storeIds.length === 0) return metricsMap;
+
+  // Query 1: chat work flag + active product count per store
+  const productResult = await query<{
+    store_id: string;
+    has_chat_work: boolean;
+    active_products: string;
+  }>(
+    `SELECT p.store_id,
+       BOOL_OR(pr.work_in_chats) AS has_chat_work,
+       COUNT(DISTINCT p.id) AS active_products
+     FROM products p
+     JOIN product_rules pr ON pr.product_id = p.id
+     WHERE p.store_id = ANY($1)
+       AND (pr.work_in_chats = TRUE OR pr.submit_complaints = TRUE)
+     GROUP BY p.store_id`,
+    [storeIds]
+  );
+
+  // Query 2: negative reviews (1-3★) for products with active rules
+  const reviewResult = await query<{
+    store_id: string;
+    negative_count: string;
+  }>(
+    `SELECT r.store_id, COUNT(*) AS negative_count
+     FROM reviews r
+     JOIN products p ON r.product_id = p.id
+     JOIN product_rules pr ON pr.product_id = p.id
+     WHERE r.store_id = ANY($1)
+       AND r.rating <= 3
+       AND (pr.work_in_chats = TRUE OR pr.submit_complaints = TRUE)
+     GROUP BY r.store_id`,
+    [storeIds]
+  );
+
+  // Build lookup maps
+  const productMap = new Map(productResult.rows.map(r => [r.store_id, r]));
+  const reviewMap = new Map(reviewResult.rows.map(r => [r.store_id, r]));
+
+  for (const storeId of storeIds) {
+    const pm = productMap.get(storeId);
+    const rm = reviewMap.get(storeId);
+    metricsMap.set(storeId, {
+      hasChatWork: pm?.has_chat_work ?? false,
+      activeProducts: pm ? parseInt(pm.active_products, 10) : 0,
+      negativeReviews: rm ? parseInt(rm.negative_count, 10) : 0
+    });
+  }
+
+  return metricsMap;
 }
 
 /**
@@ -170,7 +229,7 @@ async function matchStoreToDrive(
  * Sync client directory to Google Sheets.
  *
  * Strategy: explicit batchUpdate only (no appendRows).
- * Every write targets a specific A{row}:M{row} range.
+ * Every write targets a specific A{row}:T{row} range.
  * This prevents column shifting from Google's table detection.
  */
 export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> {
@@ -194,7 +253,7 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
       existingData = await readSheetData(
         config,
         config.spreadsheetId,
-        `'${CLIENT_DIRECTORY_SHEET}'!A:P`
+        `'${CLIENT_DIRECTORY_SHEET}'!A:T`
       );
       console.log(`[ClientDirectorySync] Found ${existingData.length} existing rows`);
     } catch (error) {
@@ -223,7 +282,12 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
       };
     }
 
-    // 5. Get client folders from Google Drive
+    // 5. Batch-fetch metrics for all stores
+    const storeIds = stores.map(s => s.id);
+    const metricsMap = await getStoreMetrics(storeIds);
+    console.log(`[ClientDirectorySync] Fetched metrics for ${metricsMap.size} stores`);
+
+    // 6. Get client folders from Google Drive
     let clientFolders: DriveFile[] = [];
     try {
       clientFolders = await listFilesInFolder(config, CLIENTS_FOLDER_ID);
@@ -232,23 +296,23 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
       console.warn('[ClientDirectorySync] Failed to list client folders:', error);
     }
 
-    // 6. Calculate next available row for new stores
+    // 7. Calculate next available row for new stores
     const lastDataRow = findLastDataRow(existingData);
     let nextRow = lastDataRow + 1;
 
-    // 7. Build all updates in a single array
+    // 8. Build all updates in a single array
     const updates: Array<{ range: string; values: string[][] }> = [];
     let updatedCount = 0;
     let appendedCount = 0;
     const folderContentsCache = new Map<string, DriveFile[]>();
 
-    // 7a. Always write headers at row 1
+    // 8a. Always write headers at row 1
     updates.push({
       range: buildRowRange(CLIENT_DIRECTORY_SHEET, 1),
       values: [getClientDirectoryHeaders()]
     });
 
-    // 7b. Process each store
+    // 8b. Process each store
     for (const store of stores) {
       const driveMatch = await matchStoreToDrive(
         store,
@@ -257,6 +321,7 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
         folderContentsCache
       );
 
+      const metrics = metricsMap.get(store.id) || { hasChatWork: false, activeProducts: 0, negativeReviews: 0 };
       const existingRowNum = storeRowMap.get(store.id);
 
       if (existingRowNum) {
@@ -266,21 +331,21 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
 
         updates.push({
           range: buildRowRange(CLIENT_DIRECTORY_SHEET, existingRowNum),
-          values: [formatClientRow(store, driveMatch, manual)]
+          values: [formatClientRow(store, driveMatch, manual, metrics)]
         });
         updatedCount++;
       } else {
         // NEW: Store not in sheet — write at next available row
         updates.push({
           range: buildRowRange(CLIENT_DIRECTORY_SHEET, nextRow),
-          values: [formatClientRow(store, driveMatch)]
+          values: [formatClientRow(store, driveMatch, undefined, metrics)]
         });
         nextRow++;
         appendedCount++;
       }
     }
 
-    // 7c. Clear duplicate rows (write empty cells to A:M only)
+    // 8c. Clear duplicate rows
     const emptyRow = Array(COLUMN_COUNT).fill('');
     for (const rowNum of duplicateRows) {
       updates.push({
@@ -291,7 +356,7 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
 
     console.log(`[ClientDirectorySync] Updates: ${updatedCount}, New: ${appendedCount}, Dupes cleared: ${duplicateRows.length}`);
 
-    // 8. Single batchUpdate call for everything
+    // 9. Single batchUpdate call for everything
     const result = await batchUpdateRows(sheetConfig, updates);
     console.log(`[ClientDirectorySync] Written ${result.updatedCells} cells via batchUpdate`);
 

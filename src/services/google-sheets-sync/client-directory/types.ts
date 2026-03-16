@@ -27,6 +27,15 @@ export interface StoreData {
 }
 
 /**
+ * Computed metrics per store (from batch queries)
+ */
+export interface StoreMetrics {
+  hasChatWork: boolean;
+  activeProducts: number;
+  negativeReviews: number;
+}
+
+/**
  * Drive folder match result
  */
 export interface DriveFolderMatch {
@@ -36,27 +45,6 @@ export interface DriveFolderMatch {
   reportLink: string | null;
   screenshotsId: string | null;
   screenshotsLink: string | null;
-}
-
-/**
- * Client row data for sheet
- */
-export interface ClientRow {
-  storeId: string;
-  name: string;
-  inn: string;
-  connectedAt: string;
-  apiMain: string;
-  apiContent: string;
-  apiFeedbacks: string;
-  apiChat: string;
-  folderLink: string;
-  reportLink: string;
-  screenshotsLink: string;
-  updatedAt: string;
-  status: string;
-  stage: string;
-  task: string;
 }
 
 /**
@@ -73,24 +61,29 @@ export interface ClientDirectorySyncResult {
 
 /**
  * Column indices in the sheet (0-based)
+ * Total: 20 columns (A-T)
  */
 export const COLUMN_INDICES = {
-  STORE_ID: 0,      // A
-  NAME: 1,          // B
-  INN: 2,           // C  (manual — preserved)
-  COST_CD: 3,       // D  (manual — preserved)
-  CONNECTED_AT: 4,  // E
-  API_MAIN: 5,      // F
-  API_CONTENT: 6,   // G
-  API_FEEDBACKS: 7, // H
-  API_CHAT: 8,      // I
-  FOLDER_LINK: 9,   // J
-  REPORT_LINK: 10,  // K
-  SCREENSHOTS: 11,  // L
-  UPDATED_AT: 12,   // M
-  STATUS: 13,       // N
-  STAGE: 14,        // O  (auto from DB)
-  TASK: 15          // P  (manual — preserved)
+  STORE_ID: 0,        // A
+  NAME: 1,            // B
+  INN: 2,             // C  (manual)
+  CONTACT: 3,         // D  (manual)
+  COST_CD: 4,         // E  (manual)
+  CONNECTED_AT: 5,    // F
+  API_MAIN: 6,        // G
+  API_CONTENT: 7,     // H
+  API_FEEDBACKS: 8,   // I
+  API_CHAT: 9,        // J
+  FOLDER_LINK: 10,    // K
+  REPORT_LINK: 11,    // L
+  SCREENSHOTS: 12,    // M
+  UPDATED_AT: 13,     // N
+  STATUS: 14,         // O
+  STAGE: 15,          // P  (auto from DB)
+  CHAT_WORK: 16,      // Q  (auto — computed)
+  PRODUCTS: 17,       // R  (auto — computed)
+  REVIEWS: 18,        // S  (auto — computed)
+  TASK: 19            // T  (manual)
 } as const;
 
 /**
@@ -100,6 +93,7 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'ID магазина',
   'Название',
   'ИНН',
+  'Контакт',
   'Стоимость ЦД',
   'Дата подключения',
   'API Main',
@@ -112,5 +106,8 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'Обновлено',
   'Статус',
   'Этап',
+  'Работа в чатах',
+  'Артикулы',
+  'Отзывы 1-3★',
   'Задача'
 ];

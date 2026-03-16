@@ -14,10 +14,10 @@ export {
 
 export type {
   StoreData,
+  StoreMetrics,
   ClientDirectorySyncResult,
   ClientDirectoryConfig,
-  DriveFolderMatch,
-  ClientRow
+  DriveFolderMatch
 } from './types';
 
 export {

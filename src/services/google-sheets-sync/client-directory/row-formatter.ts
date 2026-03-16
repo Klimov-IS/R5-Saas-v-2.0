@@ -2,7 +2,7 @@
  * Row formatting for Client Directory sheet
  */
 
-import type { StoreData, DriveFolderMatch } from './types';
+import type { StoreData, DriveFolderMatch, StoreMetrics } from './types';
 import { CLIENT_DIRECTORY_HEADERS, COLUMN_INDICES } from './types';
 import { STORE_STAGE_LABELS } from '@/types/stores';
 import type { StoreStage } from '@/types/stores';
@@ -50,13 +50,22 @@ function formatStatus(isActive: boolean): string {
 }
 
 /**
+ * Format store stage as Russian label
+ */
+function formatStage(stage: string | null): string {
+  if (!stage) return '';
+  return STORE_STAGE_LABELS[stage as StoreStage] || stage;
+}
+
+/**
  * Manual fields preserved from existing row data.
  * These columns are filled by managers and must not be overwritten.
  */
 export interface ManualFields {
-  inn: string;     // C — ИНН
-  costCd: string;  // D — Стоимость ЦД
-  task: string;    // P — Задача
+  inn: string;      // C — ИНН
+  contact: string;  // D — Контакт
+  costCd: string;   // E — Стоимость ЦД
+  task: string;     // T — Задача
 }
 
 /**
@@ -66,45 +75,45 @@ export interface ManualFields {
 export function extractManualFields(row: string[]): ManualFields {
   return {
     inn: row[COLUMN_INDICES.INN] || '',
+    contact: row[COLUMN_INDICES.CONTACT] || '',
     costCd: row[COLUMN_INDICES.COST_CD] || '',
     task: row[COLUMN_INDICES.TASK] || ''
   };
 }
 
-/**
- * Format store stage as Russian label
- */
-function formatStage(stage: string | null): string {
-  if (!stage) return '';
-  return STORE_STAGE_LABELS[stage as StoreStage] || stage;
-}
+const EMPTY_METRICS: StoreMetrics = { hasChatWork: false, activeProducts: 0, negativeReviews: 0 };
 
 /**
  * Format store data into a row for the sheet.
- * Column order: A-O (15 columns), matches CLIENT_DIRECTORY_HEADERS.
+ * Column order: A-T (20 columns), matches CLIENT_DIRECTORY_HEADERS.
  */
 export function formatClientRow(
   store: StoreData,
   driveMatch: DriveFolderMatch,
-  manual: ManualFields = { inn: '', costCd: '', task: '' }
+  manual: ManualFields = { inn: '', contact: '', costCd: '', task: '' },
+  metrics: StoreMetrics = EMPTY_METRICS
 ): string[] {
   return [
     store.id,                                    // A: ID магазина
     store.name,                                  // B: Название
     manual.inn,                                  // C: ИНН (manual)
-    manual.costCd,                               // D: Стоимость ЦД (manual)
-    formatDate(store.created_at),                // E: Дата подключения
-    formatApiStatus(store.api_token),            // F: API Main
-    formatApiStatus(store.content_api_token),    // G: API Content
-    formatApiStatus(store.feedbacks_api_token),  // H: API Feedbacks
-    formatApiStatus(store.chat_api_token),       // I: API Chat
-    driveMatch.folderLink || '',                 // J: Папка клиента
-    driveMatch.reportLink || '',                 // K: Отчёт
-    driveMatch.screenshotsLink || '',            // L: Скриншоты
-    formatDateTime(new Date()),                  // M: Обновлено
-    formatStatus(store.is_active),               // N: Статус
-    formatStage(store.stage),                    // O: Этап (auto from DB)
-    manual.task                                  // P: Задача (manual)
+    manual.contact,                              // D: Контакт (manual)
+    manual.costCd,                               // E: Стоимость ЦД (manual)
+    formatDate(store.created_at),                // F: Дата подключения
+    formatApiStatus(store.api_token),            // G: API Main
+    formatApiStatus(store.content_api_token),    // H: API Content
+    formatApiStatus(store.feedbacks_api_token),  // I: API Feedbacks
+    formatApiStatus(store.chat_api_token),       // J: API Chat
+    driveMatch.folderLink || '',                 // K: Папка клиента
+    driveMatch.reportLink || '',                 // L: Отчёт
+    driveMatch.screenshotsLink || '',            // M: Скриншоты
+    formatDateTime(new Date()),                  // N: Обновлено
+    formatStatus(store.is_active),               // O: Статус
+    formatStage(store.stage),                    // P: Этап (auto from DB)
+    metrics.hasChatWork ? '✅' : '❌',            // Q: Работа в чатах (auto)
+    String(metrics.activeProducts),              // R: Артикулы (auto)
+    String(metrics.negativeReviews),             // S: Отзывы 1-3★ (auto)
+    manual.task                                  // T: Задача (manual)
   ];
 }
 
@@ -135,13 +144,13 @@ export function columnToLetter(column: number): string {
  * @param sheetName - Sheet name
  * @param rowNumber - 1-based row number
  * @param startCol - 0-based start column (default: 0 = A)
- * @param endCol - 0-based end column (default: 14 = O)
+ * @param endCol - 0-based end column (default: 19 = T)
  */
 export function buildRowRange(
   sheetName: string,
   rowNumber: number,
   startCol: number = 0,
-  endCol: number = 15 // P column (16 columns: A-P)
+  endCol: number = 19 // T column (20 columns: A-T)
 ): string {
   const startLetter = columnToLetter(startCol);
   const endLetter = columnToLetter(endCol);
