@@ -69,8 +69,11 @@ export async function PATCH(
       );
     }
 
-    // Update status
-    const updatedStore = await dbHelpers.updateStore(storeId, { is_active });
+    // Update status + track deactivation date
+    const updatedStore = await dbHelpers.updateStore(storeId, {
+      is_active,
+      deactivated_at: is_active ? null : new Date().toISOString()
+    });
 
     if (!updatedStore) {
       return NextResponse.json(

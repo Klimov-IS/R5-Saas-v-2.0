@@ -75,6 +75,7 @@ export interface Store {
   owner_id: string;
   org_id?: string | null;
   is_active: boolean;
+  deactivated_at?: string | null;
   stage: StoreStage;  // Business lifecycle stage (Sprint-006)
   product_count?: number; // NEW: Computed product count
   last_product_update_status?: UpdateStatus | null;
@@ -506,6 +507,7 @@ export async function updateStore(
     ['chat_api_token', 'chat_api_token'],
     ['owner_id', 'owner_id'],
     ['is_active', 'is_active'],
+    ['deactivated_at', 'deactivated_at'],
     ['stage', 'stage'],
     ['last_product_update_status', 'last_product_update_status'],
     ['last_product_update_date', 'last_product_update_date'],

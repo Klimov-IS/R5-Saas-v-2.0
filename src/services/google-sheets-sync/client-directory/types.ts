@@ -18,6 +18,7 @@ export interface StoreData {
   id: string;
   name: string;
   is_active: boolean;
+  deactivated_at: Date | null;
   stage: string | null;
   created_at: Date;
   api_token: string | null;
@@ -61,7 +62,7 @@ export interface ClientDirectorySyncResult {
 
 /**
  * Column indices in the sheet (0-based)
- * Total: 17 columns (A-Q)
+ * Total: 18 columns (A-R)
  */
 export const COLUMN_INDICES = {
   STORE_ID: 0,        // A
@@ -76,11 +77,12 @@ export const COLUMN_INDICES = {
   SCREENSHOTS: 9,     // J
   UPDATED_AT: 10,     // K
   STATUS: 11,         // L
-  STAGE: 12,          // M  (auto from DB)
-  CHAT_WORK: 13,      // N  (auto — computed)
-  PRODUCTS: 14,       // O  (auto — computed)
-  REVIEWS: 15,        // P  (auto — computed)
-  TASK: 16            // Q  (manual)
+  DEACTIVATED_AT: 12, // M  (auto — date when deactivated)
+  STAGE: 13,          // N  (auto from DB)
+  CHAT_WORK: 14,      // O  (auto — computed)
+  PRODUCTS: 15,       // P  (auto — computed)
+  REVIEWS: 16,        // Q  (auto — computed)
+  TASK: 17            // R  (manual)
 } as const;
 
 /**
@@ -99,6 +101,7 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'Скриншоты',
   'Обновлено',
   'Статус',
+  'Отключён',
   'Этап',
   'Работа в чатах',
   'Артикулы',

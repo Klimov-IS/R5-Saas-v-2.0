@@ -8,7 +8,7 @@
  * - Preserves manually entered data (INN in column C)
  * - Links to Google Drive folders via fuzzy name matching
  *
- * Uses ONLY batchUpdate with explicit A:Q ranges — no appendRows,
+ * Uses ONLY batchUpdate with explicit A:R ranges — no appendRows,
  * no Google table detection, no column shifting.
  */
 
@@ -45,8 +45,8 @@ const CLIENT_DIRECTORY_SHEET = 'Список клиентов';
 // Google Drive folder with client folders
 const CLIENTS_FOLDER_ID = '1GelGC6stQVoc5OaJuachXNZtuJvOevyK';
 
-// Number of columns in client directory (A through Q)
-const COLUMN_COUNT = 17;
+// Number of columns in client directory (A through R)
+const COLUMN_COUNT = 18;
 
 /**
  * Get all stores from database
@@ -54,7 +54,7 @@ const COLUMN_COUNT = 17;
 async function getAllStores(): Promise<StoreData[]> {
   const result = await query<StoreData>(
     `SELECT
-      id, name, is_active, stage, created_at,
+      id, name, is_active, deactivated_at, stage, created_at,
       api_token, content_api_token, feedbacks_api_token, chat_api_token
     FROM stores
     ORDER BY name`
@@ -229,7 +229,7 @@ async function matchStoreToDrive(
  * Sync client directory to Google Sheets.
  *
  * Strategy: explicit batchUpdate only (no appendRows).
- * Every write targets a specific A{row}:Q{row} range.
+ * Every write targets a specific A{row}:R{row} range.
  * This prevents column shifting from Google's table detection.
  */
 export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> {
@@ -253,7 +253,7 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
       existingData = await readSheetData(
         config,
         config.spreadsheetId,
-        `'${CLIENT_DIRECTORY_SHEET}'!A:Q`
+        `'${CLIENT_DIRECTORY_SHEET}'!A:R`
       );
       console.log(`[ClientDirectorySync] Found ${existingData.length} existing rows`);
     } catch (error) {
