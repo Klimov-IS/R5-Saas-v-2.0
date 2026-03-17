@@ -61,7 +61,7 @@ export interface ClientDirectorySyncResult {
 
 /**
  * Column indices in the sheet (0-based)
- * Total: 20 columns (A-T)
+ * Total: 17 columns (A-Q)
  */
 export const COLUMN_INDICES = {
   STORE_ID: 0,        // A
@@ -70,20 +70,17 @@ export const COLUMN_INDICES = {
   CONTACT: 3,         // D  (manual)
   COST_CD: 4,         // E  (manual)
   CONNECTED_AT: 5,    // F
-  API_MAIN: 6,        // G
-  API_CONTENT: 7,     // H
-  API_FEEDBACKS: 8,   // I
-  API_CHAT: 9,        // J
-  FOLDER_LINK: 10,    // K
-  REPORT_LINK: 11,    // L
-  SCREENSHOTS: 12,    // M
-  UPDATED_AT: 13,     // N
-  STATUS: 14,         // O
-  STAGE: 15,          // P  (auto from DB)
-  CHAT_WORK: 16,      // Q  (auto — computed)
-  PRODUCTS: 17,       // R  (auto — computed)
-  REVIEWS: 18,        // S  (auto — computed)
-  TASK: 19            // T  (manual)
+  API: 6,             // G  (✅ if any token exists)
+  FOLDER_LINK: 7,     // H
+  REPORT_LINK: 8,     // I
+  SCREENSHOTS: 9,     // J
+  UPDATED_AT: 10,     // K
+  STATUS: 11,         // L
+  STAGE: 12,          // M  (auto from DB)
+  CHAT_WORK: 13,      // N  (auto — computed)
+  PRODUCTS: 14,       // O  (auto — computed)
+  REVIEWS: 15,        // P  (auto — computed)
+  TASK: 16            // Q  (manual)
 } as const;
 
 /**
@@ -96,10 +93,7 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'Контакт',
   'Стоимость ЦД',
   'Дата подключения',
-  'API Main',
-  'API Content',
-  'API Feedbacks',
-  'API Chat',
+  'API',
   'Папка клиента',
   'Отчёт',
   'Скриншоты',
