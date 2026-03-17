@@ -74,6 +74,8 @@ export interface Store {
   ozon_subscription?: string | null;
   owner_id: string;
   org_id?: string | null;
+  inn?: string | null;
+  cost_cd?: string | null;
   is_active: boolean;
   deactivated_at?: string | null;
   stage: StoreStage;  // Business lifecycle stage (Sprint-006)
@@ -466,8 +468,9 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
     `INSERT INTO stores (
       id, name, marketplace, api_token, content_api_token, feedbacks_api_token, chat_api_token,
       ozon_client_id, ozon_api_key, ozon_subscription,
-      owner_id, org_id, is_active, stage, total_reviews, total_chats, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+      owner_id, org_id, is_active, stage, total_reviews, total_chats,
+      inn, cost_cd, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
     RETURNING *`,
     [
       store.id,
@@ -486,6 +489,8 @@ export async function createStore(store: Omit<Store, 'created_at' | 'updated_at'
       store.stage || 'cabinet_connected',  // Default stage
       store.total_reviews || 0,
       store.total_chats || 0,
+      store.inn || null,
+      store.cost_cd || null,
     ]
   );
   return result.rows[0];
@@ -506,6 +511,8 @@ export async function updateStore(
     ['feedbacks_api_token', 'feedbacks_api_token'],
     ['chat_api_token', 'chat_api_token'],
     ['owner_id', 'owner_id'],
+    ['inn', 'inn'],
+    ['cost_cd', 'cost_cd'],
     ['is_active', 'is_active'],
     ['deactivated_at', 'deactivated_at'],
     ['stage', 'stage'],

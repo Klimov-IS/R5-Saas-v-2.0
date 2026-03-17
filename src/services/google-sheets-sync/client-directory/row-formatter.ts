@@ -61,11 +61,10 @@ function formatStage(stage: string | null): string {
 /**
  * Manual fields preserved from existing row data.
  * These columns are filled by managers and must not be overwritten.
+ * Note: INN and cost_cd moved to DB (migration 036) — no longer manual.
  */
 export interface ManualFields {
-  inn: string;      // C — ИНН
   contact: string;  // D — Контакт
-  costCd: string;   // E — Стоимость ЦД
   task: string;     // R — Задача
 }
 
@@ -75,9 +74,7 @@ export interface ManualFields {
  */
 export function extractManualFields(row: string[]): ManualFields {
   return {
-    inn: row[COLUMN_INDICES.INN] || '',
     contact: row[COLUMN_INDICES.CONTACT] || '',
-    costCd: row[COLUMN_INDICES.COST_CD] || '',
     task: row[COLUMN_INDICES.TASK] || ''
   };
 }
@@ -91,15 +88,15 @@ const EMPTY_METRICS: StoreMetrics = { hasChatWork: false, activeProducts: 0, neg
 export function formatClientRow(
   store: StoreData,
   driveMatch: DriveFolderMatch,
-  manual: ManualFields = { inn: '', contact: '', costCd: '', task: '' },
+  manual: ManualFields = { contact: '', task: '' },
   metrics: StoreMetrics = EMPTY_METRICS
 ): string[] {
   return [
     store.id,                                    // A: ID магазина
     store.name,                                  // B: Название
-    manual.inn,                                  // C: ИНН (manual)
+    store.inn || '',                             // C: ИНН (from DB)
     manual.contact,                              // D: Контакт (manual)
-    manual.costCd,                               // E: Стоимость ЦД (manual)
+    store.cost_cd || '',                         // E: Стоимость ЦД (from DB)
     formatDate(store.created_at),                // F: Дата подключения
     formatHasAnyApi(store),                      // G: API (✅ if any token)
     driveMatch.folderLink || '',                 // H: Папка клиента

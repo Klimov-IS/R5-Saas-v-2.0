@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { clientId, apiKey, name } = body;
+    const { clientId, apiKey, name, inn: bodyInn, costCd } = body;
 
     if (!clientId || !apiKey) {
       return NextResponse.json(
@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
       ozon_client_id: String(clientId),
       ozon_api_key: apiKey,
       ozon_subscription: subscription,
+      inn: bodyInn || null,
+      cost_cd: costCd || null,
       owner_id: userSettings.id,
       org_id: orgId,
       is_active: true,

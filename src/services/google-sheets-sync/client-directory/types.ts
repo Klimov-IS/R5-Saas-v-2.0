@@ -17,6 +17,8 @@ export interface ClientDirectoryConfig extends GoogleSheetsConfig {
 export interface StoreData {
   id: string;
   name: string;
+  inn: string | null;
+  cost_cd: string | null;
   is_active: boolean;
   deactivated_at: Date | null;
   stage: string | null;

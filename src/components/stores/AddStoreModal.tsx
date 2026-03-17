@@ -19,6 +19,8 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
+    inn: '',
+    cost_cd: '',
     api_token: '',
     content_api_token: '',
     feedbacks_api_token: '',
@@ -70,6 +72,8 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
         body: JSON.stringify({
           id: storeId,
           name: formData.name.trim(),
+          inn: formData.inn.trim() || undefined,
+          costCd: formData.cost_cd.trim() || undefined,
           apiToken: formData.api_token.trim(),
           contentApiToken: formData.content_api_token.trim(),
           feedbacksApiToken: formData.feedbacks_api_token.trim(),
@@ -99,6 +103,8 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
       // Reset form and close modal
       setFormData({
         name: '',
+        inn: '',
+        cost_cd: '',
         api_token: '',
         content_api_token: '',
         feedbacks_api_token: '',
@@ -265,6 +271,88 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
                   marginTop: '4px'
                 }}>{errors.name}</p>
               )}
+            </div>
+
+            {/* INN + Cost CD row */}
+            <div style={{ display: 'flex', gap: '16px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: 'hsl(var(--muted-foreground))',
+                  marginBottom: '6px'
+                }}>
+                  ИНН
+                </label>
+                <input
+                  type="text"
+                  value={formData.inn}
+                  onChange={(e) => handleChange('inn', e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="1234567890"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    transition: 'all 0.2s',
+                    backgroundColor: 'hsl(var(--card))',
+                    color: 'hsl(var(--foreground))',
+                    cursor: isSubmitting ? 'not-allowed' : 'text',
+                    opacity: isSubmitting ? 0.6 : 1
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px hsla(var(--primary), 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'hsl(var(--border))';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{
+                  display: 'block',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: 'hsl(var(--muted-foreground))',
+                  marginBottom: '6px'
+                }}>
+                  Стоимость ЦД
+                </label>
+                <input
+                  type="text"
+                  value={formData.cost_cd}
+                  onChange={(e) => handleChange('cost_cd', e.target.value)}
+                  disabled={isSubmitting}
+                  placeholder="500 ₽"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    transition: 'all 0.2s',
+                    backgroundColor: 'hsl(var(--card))',
+                    color: 'hsl(var(--foreground))',
+                    cursor: isSubmitting ? 'not-allowed' : 'text',
+                    opacity: isSubmitting ? 0.6 : 1
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+                    e.currentTarget.style.boxShadow = '0 0 0 3px hsla(var(--primary), 0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = 'hsl(var(--border))';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                />
+              </div>
             </div>
 
             {/* API Token */}

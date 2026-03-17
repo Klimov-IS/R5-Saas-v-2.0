@@ -54,7 +54,7 @@ const COLUMN_COUNT = 18;
 async function getAllStores(): Promise<StoreData[]> {
   const result = await query<StoreData>(
     `SELECT
-      id, name, is_active, deactivated_at, stage, created_at,
+      id, name, inn, cost_cd, is_active, deactivated_at, stage, created_at,
       api_token, content_api_token, feedbacks_api_token, chat_api_token
     FROM stores
     ORDER BY name`

@@ -35,6 +35,8 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
   const [clientId, setClientId] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [storeName, setStoreName] = useState('');
+  const [inn, setInn] = useState('');
+  const [costCd, setCostCd] = useState('');
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -43,6 +45,8 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
     setClientId('');
     setApiKey('');
     setStoreName('');
+    setInn('');
+    setCostCd('');
     setValidation(null);
     setErrors({});
   };
@@ -96,6 +100,7 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
 
       if (data.valid) {
         setStoreName(data.sellerName || '');
+        setInn(data.inn || '');
         setStep('preview');
       } else {
         setErrors({ apiKey: data.error || 'Неверные учётные данные' });
@@ -126,6 +131,8 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
           clientId: clientId.trim(),
           apiKey: apiKey.trim(),
           name: storeName.trim(),
+          inn: inn.trim() || undefined,
+          costCd: costCd.trim() || undefined,
         }),
       });
 
@@ -442,11 +449,68 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
                     />
                   </div>
 
-                  {/* Company + INN */}
+                  {/* INN + Cost CD (editable) */}
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        color: 'hsl(var(--muted-foreground))',
+                        marginBottom: '4px',
+                      }}>
+                        ИНН
+                      </label>
+                      <input
+                        type="text"
+                        value={inn}
+                        onChange={(e) => setInn(e.target.value)}
+                        disabled={isCreating}
+                        placeholder="1234567890"
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          outline: 'none',
+                          backgroundColor: 'hsl(var(--card))',
+                          color: 'hsl(var(--foreground))',
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        color: 'hsl(var(--muted-foreground))',
+                        marginBottom: '4px',
+                      }}>
+                        Стоимость ЦД
+                      </label>
+                      <input
+                        type="text"
+                        value={costCd}
+                        onChange={(e) => setCostCd(e.target.value)}
+                        disabled={isCreating}
+                        placeholder="500 ₽"
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '4px',
+                          fontSize: '14px',
+                          outline: 'none',
+                          backgroundColor: 'hsl(var(--card))',
+                          color: 'hsl(var(--foreground))',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Company */}
                   {validation.companyName && (
                     <InfoRow label="Юрлицо" value={validation.companyName} />
                   )}
-                  {validation.inn && <InfoRow label="ИНН" value={validation.inn} />}
 
                   {/* Subscription */}
                   <InfoRow label="Подписка" value={validation.subscription || '—'} />
