@@ -131,37 +131,38 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 5. Step 1: Load stores + precompute eligible product_ids per store (~20ms)
-    const [storesResult, eligibleProductsResult] = await Promise.all([
-      query<{
-        id: string;
-        name: string;
-        is_active: boolean;
-        stage: string;
-      }>(
-        `SELECT s.id, s.name, s.is_active, s.stage
-        FROM stores s
-        WHERE s.owner_id = $1
-        ORDER BY s.name ASC`,
-        [user.id]
-      ),
-      // Preload all eligible product_ids grouped by store_id
-      query<{
-        store_id: string;
-        product_id: string;
-        submit_complaints: boolean;
-        work_in_chats: boolean;
-      }>(
-        `SELECT p.store_id, p.id as product_id,
-                pr.submit_complaints, pr.work_in_chats
-         FROM products p
-         JOIN product_rules pr ON pr.product_id = p.id
-         WHERE p.store_id IN (SELECT s.id FROM stores s WHERE s.owner_id = $1)
-           AND p.work_status = 'active'
-           AND (pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE)`,
-        [user.id]
-      ),
-    ]);
+    // 5. Step 1a: Load stores (~10ms)
+    const storesResult = await query<{
+      id: string;
+      name: string;
+      is_active: boolean;
+      stage: string;
+    }>(
+      `SELECT s.id, s.name, s.is_active, s.stage
+       FROM stores s
+       WHERE s.owner_id = $1
+       ORDER BY s.name ASC`,
+      [user.id]
+    );
+
+    const allStoreIds = storesResult.rows.map(s => s.id);
+
+    // 5. Step 1b: Preload eligible product_ids using ANY() (~50ms, was 1.6s with subquery)
+    const eligibleProductsResult = await query<{
+      store_id: string;
+      product_id: string;
+      submit_complaints: boolean;
+      work_in_chats: boolean;
+    }>(
+      `SELECT p.store_id, p.id as product_id,
+              pr.submit_complaints, pr.work_in_chats
+       FROM products p
+       JOIN product_rules pr ON pr.product_id = p.id
+       WHERE p.store_id = ANY($1::text[])
+         AND p.work_status = 'active'
+         AND (pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE)`,
+      [allStoreIds]
+    );
 
     // Build per-store eligible product_id arrays
     const storeEligibleProducts = new Map<string, string[]>();
@@ -206,21 +207,23 @@ export async function GET(request: NextRequest) {
     }
 
     const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Q1b: stores with draft complaints (already single query) ──
-      queryWithTimeout<{ store_id: string }>(
-        `SELECT s.id as store_id
-        FROM stores s
-        WHERE s.owner_id = $1
-        AND EXISTS (
-          SELECT 1 FROM review_complaints rc
-          JOIN reviews r ON r.id = rc.review_id
-          WHERE rc.store_id = s.id
-            AND rc.status = 'draft'
-            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-            AND r.review_status_wb != 'deleted'
-        )`,
-        [user.id]
-      ),
+      // ── Q1b: stores with draft complaints ──
+      // Rewritten: start from review_complaints index (store_id, status='draft')
+      // then filter via eligible product_ids. Was: EXISTS per store (74s!), now: single scan (<100ms)
+      allEligibleProductIds.length > 0
+        ? queryWithTimeout<{ store_id: string }>(
+            `SELECT DISTINCT rc.store_id
+             FROM review_complaints rc
+             JOIN reviews r ON r.id = rc.review_id
+             WHERE rc.store_id = ANY($1::text[])
+               AND rc.status = 'draft'
+               AND r.product_id = ANY($2::text[])
+               AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+               AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
+               AND r.rating_excluded = FALSE`,
+            [activeStoreIds, allEligibleProductIds]
+          )
+        : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
       // ── Q2: stores with pending status parses — SINGLE QUERY (was: 62 sequential queries) ──
       allEligibleProductIds.length > 0
