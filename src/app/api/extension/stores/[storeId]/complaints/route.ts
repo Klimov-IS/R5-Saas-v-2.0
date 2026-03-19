@@ -91,62 +91,55 @@ export async function GET(
       );
     }
 
-    // 3. Запрос жалоб с JOIN
-    console.log(`[Extension Complaints] 🔍 Поиск жалоб в БД...`);
+    // 3. Complaints + stats in parallel (Sprint-012: was sequential)
+    console.log(`[Extension Complaints] Поиск жалоб для ${storeId}...`);
     const startTime = Date.now();
 
-    // IMPORTANT: Filter by BOTH rc.status AND r.complaint_status
-    // rc.status='draft' means AI generated complaint text
-    // r.complaint_status must be 'not_sent' or 'draft' (not already submitted to WB)
-    // Exclude: 'rejected', 'approved', 'pending', 'reconsidered', 'sent'
-    // NOTE: rc.store_id = $1 is redundant with r.store_id = $1 but enables
-    // PostgreSQL to use idx_complaints_store_draft index for direct store lookup
-    const complaintsResult = await query(
-      `SELECT
-        r.id,
-        p.wb_product_id as product_id,
-        r.rating,
-        r.text,
-        r.author,
-        r.date as created_at,
-        rc.reason_id,
-        rc.reason_name,
-        rc.complaint_text
-      FROM review_complaints rc
-      JOIN reviews r ON r.id = rc.review_id
-      JOIN products p ON r.product_id = p.id
-      WHERE rc.store_id = $1
-        AND rc.status = 'draft'
-        AND r.store_id = $1
-        AND r.rating = ANY($2)
-        AND p.work_status = 'active'
-        AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-        AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
-        AND r.rating_excluded = FALSE
-      ORDER BY p.wb_product_id, r.date DESC
-      LIMIT $3`,
-      [storeId, ratings, limit]
-    );
-
-    const complaintsData = complaintsResult.rows;
-
-    // 4. Stats: rating + article in a single query (one scan instead of two)
-    // Returns (rating, wb_product_id, count) grouped pairs — aggregated in JS
-    const statsResult = await query<{ rating: number; wb_product_id: string; count: string }>(
-      `SELECT r.rating, p.wb_product_id, COUNT(*) as count
-       FROM review_complaints rc
-       JOIN reviews r ON r.id = rc.review_id
-       JOIN products p ON r.product_id = p.id
-       WHERE rc.store_id = $1
-         AND rc.status = 'draft'
-         AND r.store_id = $1
-         AND p.work_status = 'active'
-         AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-         AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
-         AND r.rating_excluded = FALSE
-       GROUP BY r.rating, p.wb_product_id`,
-      [storeId]
-    );
+    const [complaintsResult, statsResult] = await Promise.all([
+      // Complaints query
+      query(
+        `SELECT
+          r.id,
+          p.wb_product_id as product_id,
+          r.rating,
+          r.text,
+          r.author,
+          r.date as created_at,
+          rc.reason_id,
+          rc.reason_name,
+          rc.complaint_text
+        FROM review_complaints rc
+        JOIN reviews r ON r.id = rc.review_id
+        JOIN products p ON r.product_id = p.id
+        WHERE rc.store_id = $1
+          AND rc.status = 'draft'
+          AND r.store_id = $1
+          AND r.rating = ANY($2)
+          AND p.work_status = 'active'
+          AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+          AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
+          AND r.rating_excluded = FALSE
+        ORDER BY p.wb_product_id, r.date DESC
+        LIMIT $3`,
+        [storeId, ratings, limit]
+      ),
+      // Stats query (parallel)
+      query<{ rating: number; wb_product_id: string; count: string }>(
+        `SELECT r.rating, p.wb_product_id, COUNT(*) as count
+         FROM review_complaints rc
+         JOIN reviews r ON r.id = rc.review_id
+         JOIN products p ON r.product_id = p.id
+         WHERE rc.store_id = $1
+           AND rc.status = 'draft'
+           AND r.store_id = $1
+           AND p.work_status = 'active'
+           AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+           AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
+           AND r.rating_excluded = FALSE
+         GROUP BY r.rating, p.wb_product_id`,
+        [storeId]
+      ),
+    ]);
 
     // Aggregate stats in JS from the single grouped result
     const ratingStats: Record<string, number> = {};
@@ -167,6 +160,7 @@ export async function GET(
       .forEach(([key, val]) => { articleStats[key] = val; });
 
     const elapsed = Date.now() - startTime;
+    const complaintsData = complaintsResult.rows;
     console.log(`[Extension Complaints] ✅ Найдено ${complaintsData.length} жалоб (${elapsed}ms, stats groups: ${statsResult.rows.length})`);
 
     // 6. Форматирование ответа
@@ -196,10 +190,12 @@ export async function GET(
       total: response.total,
     });
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, {
+      headers: { 'Cache-Control': 'private, max-age=10' },
+    });
 
   } catch (error: any) {
-    console.error(`[Extension Complaints] ❌ Ошибка при получении жалоб:`, error);
+    console.error(`[Extension Complaints] Ошибка при получении жалоб:`, error);
 
     return NextResponse.json(
       {

@@ -82,7 +82,7 @@ export async function GET(
         },
         items,
       },
-      { headers: corsHeaders }
+      { headers: { ...corsHeaders, 'Cache-Control': 'private, max-age=60' } }
     );
 
   } catch (error: any) {

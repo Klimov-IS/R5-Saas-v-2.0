@@ -465,6 +465,8 @@ export async function GET(
         cooldownBetweenChatsMs: 3000,
         cooldownBetweenComplaintsMs: 1000,
       },
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=15' },
     });
 
   } catch (error: any) {

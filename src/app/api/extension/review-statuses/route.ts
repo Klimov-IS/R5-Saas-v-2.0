@@ -8,8 +8,8 @@
  * This allows Backend to filter reviews before GPT complaint generation,
  * saving ~80% of GPT tokens.
  *
- * @version 1.2.0
- * @date 2026-02-20
+ * @version 2.0.0 — Sprint-012: batch UPSERT + batch sync (700 SQL → ~10)
+ * @date 2026-03-19
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -261,268 +261,301 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. UPSERT reviews into database
-    let created = 0;
-    let updated = 0;
+    // ════════════════════════════════════════════════════════════════
+    // 4. Batch UPSERT to review_statuses_from_extension
+    //    Sprint-012: Was 100 individual INSERT...ON CONFLICT → 1 query
+    // ════════════════════════════════════════════════════════════════
+    const validReviews: ReviewStatusInput[] = [];
     let errors = 0;
     const errorDetails: { reviewKey: string; error: string }[] = [];
 
     for (const review of reviews) {
+      if (!review.reviewKey || !review.productId || !review.rating || !review.reviewDate) {
+        errors++;
+        errorDetails.push({ reviewKey: review.reviewKey || 'unknown', error: 'Missing required fields' });
+        continue;
+      }
+      if (review.rating < 1 || review.rating > 5) {
+        errors++;
+        errorDetails.push({ reviewKey: review.reviewKey, error: `Invalid rating: ${review.rating}` });
+        continue;
+      }
+      validReviews.push(review);
+    }
+
+    let created = 0;
+    let updated = 0;
+
+    if (validReviews.length > 0) {
+      // Build parameterized VALUES list (max 100 rows × 10 params = 1000 params)
+      const vals: string[] = [];
+      const params: any[] = [];
+      let idx = 1;
+      for (const r of validReviews) {
+        vals.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+        params.push(
+          r.reviewKey, storeId, r.productId, r.rating, r.reviewDate,
+          JSON.stringify(r.statuses || []), r.canSubmitComplaint ?? true,
+          r.chatStatus || null, r.ratingExcluded ?? false, parsedAt
+        );
+      }
       try {
-        // Validate review fields
-        if (!review.reviewKey || !review.productId || !review.rating || !review.reviewDate) {
-          errors++;
-          errorDetails.push({
-            reviewKey: review.reviewKey || 'unknown',
-            error: 'Missing required fields'
-          });
-          continue;
-        }
-
-        // Validate rating
-        if (review.rating < 1 || review.rating > 5) {
-          errors++;
-          errorDetails.push({
-            reviewKey: review.reviewKey,
-            error: `Invalid rating: ${review.rating}`
-          });
-          continue;
-        }
-
-        // UPSERT query (includes chat_status + rating_excluded from extension)
-        const result = await query(
+        const upsertResult = await query<{ review_key: string; is_insert: boolean }>(
           `INSERT INTO review_statuses_from_extension
             (review_key, store_id, product_id, rating, review_date, statuses, can_submit_complaint, chat_status, rating_excluded, parsed_at)
-          VALUES
-            ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          ON CONFLICT (review_key, store_id)
-          DO UPDATE SET
-            statuses = EXCLUDED.statuses,
-            can_submit_complaint = EXCLUDED.can_submit_complaint,
-            chat_status = EXCLUDED.chat_status,
-            rating_excluded = EXCLUDED.rating_excluded,
-            parsed_at = EXCLUDED.parsed_at,
-            updated_at = CURRENT_TIMESTAMP
-          RETURNING (xmax = 0) as is_insert`,
-          [
-            review.reviewKey,
-            storeId,
-            review.productId,
-            review.rating,
-            review.reviewDate,
-            JSON.stringify(review.statuses || []),
-            review.canSubmitComplaint ?? true,
-            review.chatStatus || null,
-            review.ratingExcluded ?? false,
-            parsedAt
-          ]
+           VALUES ${vals.join(', ')}
+           ON CONFLICT (review_key, store_id) DO UPDATE SET
+             statuses = EXCLUDED.statuses,
+             can_submit_complaint = EXCLUDED.can_submit_complaint,
+             chat_status = EXCLUDED.chat_status,
+             rating_excluded = EXCLUDED.rating_excluded,
+             parsed_at = EXCLUDED.parsed_at,
+             updated_at = CURRENT_TIMESTAMP
+           RETURNING review_key, (xmax = 0) as is_insert`,
+          params
         );
-
-        if (result.rows[0]?.is_insert) {
-          created++;
-        } else {
-          updated++;
-        }
+        created = upsertResult.rows.filter(r => r.is_insert).length;
+        updated = upsertResult.rows.filter(r => !r.is_insert).length;
       } catch (err: any) {
-        errors++;
-        errorDetails.push({
-          reviewKey: review.reviewKey,
-          error: err.message
-        });
-        console.error(`[Extension ReviewStatuses] ❌ Error processing review ${review.reviewKey}:`, err.message);
+        // Fallback: individual upserts if batch fails (e.g. data type mismatch)
+        console.error(`[Extension ReviewStatuses] Batch UPSERT failed, falling back:`, err.message);
+        for (const r of validReviews) {
+          try {
+            const result = await query(
+              `INSERT INTO review_statuses_from_extension
+                (review_key, store_id, product_id, rating, review_date, statuses, can_submit_complaint, chat_status, rating_excluded, parsed_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+               ON CONFLICT (review_key, store_id) DO UPDATE SET
+                 statuses = EXCLUDED.statuses, can_submit_complaint = EXCLUDED.can_submit_complaint,
+                 chat_status = EXCLUDED.chat_status, rating_excluded = EXCLUDED.rating_excluded,
+                 parsed_at = EXCLUDED.parsed_at, updated_at = CURRENT_TIMESTAMP
+               RETURNING (xmax = 0) as is_insert`,
+              [r.reviewKey, storeId, r.productId, r.rating, r.reviewDate,
+               JSON.stringify(r.statuses || []), r.canSubmitComplaint ?? true,
+               r.chatStatus || null, r.ratingExcluded ?? false, parsedAt]
+            );
+            if (result.rows[0]?.is_insert) created++; else updated++;
+          } catch (e: any) {
+            errors++;
+            errorDetails.push({ reviewKey: r.reviewKey, error: e.message });
+          }
+        }
       }
     }
 
-    console.log(`[Extension ReviewStatuses] ✅ Processed: created=${created}, updated=${updated}, errors=${errors}`);
+    console.log(`[Extension ReviewStatuses] Processed: created=${created}, updated=${updated}, errors=${errors}`);
 
-    // 5. Sync statuses to reviews table (complaint statuses + chat statuses)
+    // ════════════════════════════════════════════════════════════════
+    // 5. Batch sync to reviews table
+    //    Sprint-012: Was ~600 individual UPDATEs → ~6-10 batch queries
+    // ════════════════════════════════════════════════════════════════
     let synced = 0;
     let chatStatusSynced = 0;
     let syncErrors = 0;
     const syncErrorDetails: { reviewKey: string; error: string }[] = [];
     const unmatchedReviews: { reviewKey: string; productId: string; rating: number; reviewDate: string }[] = [];
-    const resolvedReviewIds: string[] = []; // collect for immediate chat closure
+    const resolvedReviewIds: string[] = [];
 
-    for (const review of reviews) {
-      // Skip if missing required fields
-      if (!review.productId || !review.rating || !review.reviewDate) {
-        continue;
-      }
+    // Pre-compute batch arrays for each sync type (JS only, no DB calls)
+    interface BatchItem { pid: string; rat: number; dt: string }
+    const chatBatch: (BatchItem & { status: string; reviewKey: string; originalProductId: string })[] = [];
+    const reExcludedTrue: BatchItem[] = [];
+    const reExcludedFalse: BatchItem[] = [];
+    const rwbBatch: (BatchItem & { status: string })[] = [];
+    const psBatch: (BatchItem & { status: string })[] = [];
+    const complaintBatch: (BatchItem & { status: string; reviewKey: string })[] = [];
 
-      const reviewsProductId = `${storeId}_${review.productId}`;
+    for (const review of validReviews) {
+      const pid = `${storeId}_${review.productId}`;
+      const base = { pid, rat: review.rating, dt: review.reviewDate };
 
-      // 5a. Sync chat_status_by_review (with downgrade protection)
-      // Never overwrite 'opened' — opened chat is permanent
-      const mappedChatStatus = mapChatStatus(review.chatStatus);
-      if (mappedChatStatus) {
-        try {
-          const chatSyncResult = await query(
-            `UPDATE reviews
-             SET
-               chat_status_by_review = $1::chat_status_by_review,
-               updated_at = NOW()
-             WHERE
-               store_id = $2
-               AND product_id = $3
-               AND rating = $4
-               AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-               AND (chat_status_by_review IS NULL
-                 OR chat_status_by_review != 'opened'
-                 OR $1::chat_status_by_review = 'opened')
-             RETURNING id`,
-            [mappedChatStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
-          );
-          if (chatSyncResult.rowCount && chatSyncResult.rowCount > 0) {
-            chatStatusSynced++;
-          } else {
-            // Review not found in DB — extension sees it on WB but we don't have it
-            unmatchedReviews.push({
-              reviewKey: review.reviewKey,
-              productId: review.productId,
-              rating: review.rating,
-              reviewDate: review.reviewDate,
-            });
-          }
-        } catch (err: any) {
-          // Non-critical: log but don't count as sync error
-          console.error(`[Extension ReviewStatuses] ❌ Chat status sync error for ${review.reviewKey}:`, err.message);
-        }
-      }
+      const cs = mapChatStatus(review.chatStatus);
+      if (cs) chatBatch.push({ ...base, status: cs, reviewKey: review.reviewKey, originalProductId: review.productId });
 
-      // 5b. Sync rating_excluded to reviews table
-      if (review.ratingExcluded === true || review.ratingExcluded === false) {
-        try {
-          const reResult = await query<{ id: string }>(
-            `UPDATE reviews
-             SET
-               rating_excluded = $1,
-               updated_at = NOW()
-             WHERE
-               store_id = $2
-               AND product_id = $3
-               AND rating = $4
-               AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-               AND rating_excluded != $1
-             RETURNING id`,
-            [review.ratingExcluded, storeId, reviewsProductId, review.rating, review.reviewDate]
-          );
-          // rating_excluded = true → review is resolved
-          if (review.ratingExcluded && reResult.rows.length > 0) {
-            for (const r of reResult.rows) resolvedReviewIds.push(r.id);
-          }
-        } catch (err: any) {
-          console.error(`[Extension ReviewStatuses] ❌ rating_excluded sync error for ${review.reviewKey}:`, err.message);
-        }
-      }
+      if (review.ratingExcluded === true) reExcludedTrue.push(base);
+      else if (review.ratingExcluded === false) reExcludedFalse.push(base);
 
-      // 5c. Sync review_status_wb from extension statuses (1:1 WB mapping)
       if (review.statuses && review.statuses.length > 0) {
-        const reviewStatusWb = getReviewStatusWbFromStatuses(review.statuses);
-        if (reviewStatusWb) {
-          try {
-            const rswResult = await query<{ id: string }>(
-              `UPDATE reviews
-               SET
-                 review_status_wb = $1::review_status_wb,
-                 updated_at = NOW()
-               WHERE
-                 store_id = $2
-                 AND product_id = $3
-                 AND rating = $4
-                 AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-                 AND review_status_wb != $1
-               RETURNING id`,
-              [reviewStatusWb, storeId, reviewsProductId, review.rating, review.reviewDate]
-            );
-            // excluded/unpublished/temporarily_hidden/deleted → review is resolved
-            const resolvedWbStatuses = ['excluded', 'unpublished', 'temporarily_hidden', 'deleted'];
-            if (resolvedWbStatuses.includes(reviewStatusWb) && rswResult.rows.length > 0) {
-              for (const r of rswResult.rows) resolvedReviewIds.push(r.id);
-            }
-          } catch (err: any) {
-            console.error(`[Extension ReviewStatuses] ❌ review_status_wb sync error for ${review.reviewKey}:`, err.message);
-          }
-        }
-
-        // 5c2. Sync product_status_by_review (purchase/return info)
-        const productStatus = getProductStatusFromStatuses(review.statuses);
-        if (productStatus) {
-          try {
-            await query(
-              `UPDATE reviews
-               SET
-                 product_status_by_review = $1::product_status_by_review,
-                 updated_at = NOW()
-               WHERE
-                 store_id = $2
-                 AND product_id = $3
-                 AND rating = $4
-                 AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-                 AND product_status_by_review != $1`,
-              [productStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
-            );
-          } catch (err: any) {
-            console.error(`[Extension ReviewStatuses] ❌ product_status sync error for ${review.reviewKey}:`, err.message);
-          }
-        }
+        const rwb = getReviewStatusWbFromStatuses(review.statuses);
+        if (rwb) rwbBatch.push({ ...base, status: rwb });
+        const ps = getProductStatusFromStatuses(review.statuses);
+        if (ps) psBatch.push({ ...base, status: ps });
+        const cst = getComplaintStatusFromStatuses(review.statuses);
+        if (cst) complaintBatch.push({ ...base, status: cst, reviewKey: review.reviewKey });
       }
+    }
 
-      // 5d. Sync complaint statuses (only if complaint status present)
-      if (!review.statuses || !hasAnyComplaintStatus(review.statuses)) {
-        continue;
-      }
-
+    // 5a. Batch chat_status_by_review sync (with downgrade protection)
+    if (chatBatch.length > 0) {
       try {
-        const complaintStatus = getComplaintStatusFromStatuses(review.statuses);
-        if (!complaintStatus) continue;
-
-        // Update reviews table:
-        // - Set complaint_status
-        // - Clear draft (complaint_text = NULL)
-        // - Set has_complaint_draft = false
-        // - Set has_complaint = true (complaint was submitted)
-        const syncResult = await query(
-          `UPDATE reviews
-           SET
-             complaint_status = $1::complaint_status,
-             complaint_text = NULL,
-             has_complaint_draft = false,
-             has_complaint = true,
-             updated_at = NOW()
-           WHERE
-             store_id = $2
-             AND product_id = $3
-             AND rating = $4
-             AND DATE_TRUNC('minute', date) = DATE_TRUNC('minute', $5::timestamptz)
-             AND (complaint_status IN ('not_sent', 'draft') OR complaint_status IS NULL)
-           RETURNING id`,
-          [complaintStatus, storeId, reviewsProductId, review.rating, review.reviewDate]
+        const result = await query<{ id: string }>(
+          `UPDATE reviews r
+           SET chat_status_by_review = batch.new_status::chat_status_by_review, updated_at = NOW()
+           FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat,
+                        unnest($3::timestamptz[]) as dt, unnest($4::text[]) as new_status) batch
+           WHERE r.store_id = $5
+             AND r.product_id = batch.pid AND r.rating = batch.rat
+             AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+             AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review != 'opened' OR batch.new_status = 'opened')
+           RETURNING r.id`,
+          [chatBatch.map(b => b.pid), chatBatch.map(b => b.rat), chatBatch.map(b => b.dt),
+           chatBatch.map(b => b.status), storeId]
         );
+        chatStatusSynced = result.rows.length;
 
-        if (syncResult.rowCount && syncResult.rowCount > 0) {
-          // Also update review_complaints table status
-          for (const row of syncResult.rows) {
-            await query(
-              `UPDATE review_complaints
-               SET status = $1, updated_at = NOW()
-               WHERE review_id = $2 AND status = 'draft'`,
-              [complaintStatus, row.id]
-            );
-            // complaint approved → review is resolved
-            if (complaintStatus === 'approved') {
-              resolvedReviewIds.push(row.id);
+        // Detect unmatched reviews (not found in DB) — only if some weren't matched
+        if (result.rows.length < chatBatch.length) {
+          const checkResult = await query<{ pid: string; rat: number; dt: string }>(
+            `SELECT batch.pid, batch.rat, batch.dt::text
+             FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat, unnest($3::timestamptz[]) as dt) batch
+             WHERE NOT EXISTS (
+               SELECT 1 FROM reviews r
+               WHERE r.store_id = $4 AND r.product_id = batch.pid AND r.rating = batch.rat
+                 AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+             )`,
+            [chatBatch.map(b => b.pid), chatBatch.map(b => b.rat), chatBatch.map(b => b.dt), storeId]
+          );
+          const unmatchedKeys = new Set(checkResult.rows.map(r => `${r.pid}_${r.rat}_${r.dt}`));
+          for (const b of chatBatch) {
+            if (unmatchedKeys.has(`${b.pid}_${b.rat}_${b.dt}`)) {
+              unmatchedReviews.push({ reviewKey: b.reviewKey, productId: b.originalProductId, rating: b.rat, reviewDate: b.dt });
             }
           }
-          synced++;
-          console.log(`[Extension ReviewStatuses] 🔄 Synced review ${review.reviewKey} → ${complaintStatus}`);
         }
       } catch (err: any) {
-        syncErrors++;
-        syncErrorDetails.push({
-          reviewKey: review.reviewKey,
-          error: err.message
-        });
-        console.error(`[Extension ReviewStatuses] ❌ Sync error for ${review.reviewKey}:`, err.message);
+        console.error(`[Extension ReviewStatuses] Batch chat_status sync error:`, err.message);
+      }
+    }
+
+    // 5b. Batch rating_excluded sync
+    if (reExcludedTrue.length > 0) {
+      try {
+        const result = await query<{ id: string }>(
+          `UPDATE reviews r
+           SET rating_excluded = true, updated_at = NOW()
+           FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat, unnest($3::timestamptz[]) as dt) batch
+           WHERE r.store_id = $4
+             AND r.product_id = batch.pid AND r.rating = batch.rat
+             AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+             AND r.rating_excluded != true
+           RETURNING r.id`,
+          [reExcludedTrue.map(b => b.pid), reExcludedTrue.map(b => b.rat), reExcludedTrue.map(b => b.dt), storeId]
+        );
+        resolvedReviewIds.push(...result.rows.map(r => r.id));
+      } catch (err: any) {
+        console.error(`[Extension ReviewStatuses] Batch rating_excluded=true sync error:`, err.message);
+      }
+    }
+    if (reExcludedFalse.length > 0) {
+      try {
+        await query(
+          `UPDATE reviews r
+           SET rating_excluded = false, updated_at = NOW()
+           FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat, unnest($3::timestamptz[]) as dt) batch
+           WHERE r.store_id = $4
+             AND r.product_id = batch.pid AND r.rating = batch.rat
+             AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+             AND r.rating_excluded != false`,
+          [reExcludedFalse.map(b => b.pid), reExcludedFalse.map(b => b.rat), reExcludedFalse.map(b => b.dt), storeId]
+        );
+      } catch (err: any) {
+        console.error(`[Extension ReviewStatuses] Batch rating_excluded=false sync error:`, err.message);
+      }
+    }
+
+    // 5c. Batch review_status_wb sync
+    if (rwbBatch.length > 0) {
+      try {
+        const resolvedWbStatuses = ['excluded', 'unpublished', 'temporarily_hidden', 'deleted'];
+        const result = await query<{ id: string; new_status: string }>(
+          `UPDATE reviews r
+           SET review_status_wb = batch.new_status::review_status_wb, updated_at = NOW()
+           FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat,
+                        unnest($3::timestamptz[]) as dt, unnest($4::text[]) as new_status) batch
+           WHERE r.store_id = $5
+             AND r.product_id = batch.pid AND r.rating = batch.rat
+             AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+             AND r.review_status_wb::text != batch.new_status
+           RETURNING r.id, batch.new_status`,
+          [rwbBatch.map(b => b.pid), rwbBatch.map(b => b.rat), rwbBatch.map(b => b.dt),
+           rwbBatch.map(b => b.status), storeId]
+        );
+        for (const r of result.rows) {
+          if (resolvedWbStatuses.includes(r.new_status)) resolvedReviewIds.push(r.id);
+        }
+      } catch (err: any) {
+        console.error(`[Extension ReviewStatuses] Batch review_status_wb sync error:`, err.message);
+      }
+    }
+
+    // 5c2. Batch product_status_by_review sync
+    if (psBatch.length > 0) {
+      try {
+        await query(
+          `UPDATE reviews r
+           SET product_status_by_review = batch.new_status::product_status_by_review, updated_at = NOW()
+           FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat,
+                        unnest($3::timestamptz[]) as dt, unnest($4::text[]) as new_status) batch
+           WHERE r.store_id = $5
+             AND r.product_id = batch.pid AND r.rating = batch.rat
+             AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+             AND r.product_status_by_review::text != batch.new_status`,
+          [psBatch.map(b => b.pid), psBatch.map(b => b.rat), psBatch.map(b => b.dt),
+           psBatch.map(b => b.status), storeId]
+        );
+      } catch (err: any) {
+        console.error(`[Extension ReviewStatuses] Batch product_status sync error:`, err.message);
+      }
+    }
+
+    // 5d. Batch complaint_status sync + review_complaints update
+    if (complaintBatch.length > 0) {
+      // Group by complaint status (max 4: rejected, approved, pending, reconsidered)
+      const groups = new Map<string, typeof complaintBatch>();
+      for (const item of complaintBatch) {
+        if (!groups.has(item.status)) groups.set(item.status, []);
+        groups.get(item.status)!.push(item);
+      }
+
+      for (const [status, items] of Array.from(groups.entries())) {
+        try {
+          const syncResult = await query<{ id: string }>(
+            `UPDATE reviews r
+             SET complaint_status = $1::complaint_status,
+                 complaint_text = NULL, has_complaint_draft = false, has_complaint = true,
+                 updated_at = NOW()
+             FROM (SELECT unnest($2::text[]) as pid, unnest($3::int[]) as rat, unnest($4::timestamptz[]) as dt) batch
+             WHERE r.store_id = $5
+               AND r.product_id = batch.pid AND r.rating = batch.rat
+               AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
+               AND (r.complaint_status IN ('not_sent', 'draft') OR r.complaint_status IS NULL)
+             RETURNING r.id`,
+            [status, items.map((i: any) => i.pid), items.map((i: any) => i.rat), items.map((i: any) => i.dt), storeId]
+          );
+
+          if (syncResult.rows.length > 0) {
+            synced += syncResult.rows.length;
+            const affectedIds = syncResult.rows.map(r => r.id);
+
+            // Batch update review_complaints (single query for all affected)
+            await query(
+              `UPDATE review_complaints SET status = $1, updated_at = NOW()
+               WHERE review_id = ANY($2::text[]) AND status = 'draft'`,
+              [status, affectedIds]
+            );
+
+            if (status === 'approved') {
+              resolvedReviewIds.push(...affectedIds);
+            }
+            console.log(`[Extension ReviewStatuses] Batch synced ${syncResult.rows.length} reviews -> ${status}`);
+          }
+        } catch (err: any) {
+          syncErrors += items.length;
+          for (const item of items) {
+            syncErrorDetails.push({ reviewKey: item.reviewKey, error: err.message });
+          }
+          console.error(`[Extension ReviewStatuses] Batch complaint sync error (${status}):`, err.message);
+        }
       }
     }
 
@@ -565,7 +598,7 @@ export async function POST(request: NextRequest) {
       const dateTo = Math.ceil(Math.max(...allSyncDates)) + 86400;    // +1 day buffer
 
       if (unmatchedReviews.length > 0) {
-        const missingNmIds = [...new Set(unmatchedReviews.map(r => r.productId))];
+        const missingNmIds = Array.from(new Set(unmatchedReviews.map(r => r.productId)));
         console.log(
           `[Extension ReviewStatuses] ⚠️ ${unmatchedReviews.length} unmatched (not in DB), ` +
           `articles: ${missingNmIds.slice(0, 5).join(', ')}`
@@ -609,7 +642,7 @@ export async function POST(request: NextRequest) {
         // Unmatched: extension sees on WB but not in our DB
         unmatched: unmatchedReviews.length,
         unmatchedArticles: unmatchedReviews.length > 0
-          ? [...new Set(unmatchedReviews.map(r => r.productId))]
+          ? Array.from(new Set(unmatchedReviews.map(r => r.productId)))
           : [],
         // NotFound: extension doesn't see on WB but in our DB (possibly deleted)
         notFound: notFoundCount,

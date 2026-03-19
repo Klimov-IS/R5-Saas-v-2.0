@@ -1,19 +1,24 @@
 /**
  * GET /api/extension/stores
  *
- * Returns list of stores accessible by the current API token
- * Direct DB query (~500ms with partial index)
+ * Returns list of stores accessible by the current API token.
+ * Uses single-query strategy for task counts (was: N+1 loop over 62 stores).
+ * In-memory cache with 30s TTL to avoid re-computation.
  *
  * Rate limiting: 100 requests per minute per token
  * CORS enabled for Chrome Extension
  *
- * @version 3.0.0
- * @date 2026-02-15
+ * @version 4.0.0 — Sprint-012: eliminated N+1, added cache, Cache-Control
+ * @date 2026-03-19
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByApiToken } from '@/db/extension-helpers';
 import { query } from '@/db/client';
+
+// In-memory cache for stores response (TTL 30s, keyed by userId)
+const storesCache = new Map<string, { data: any; expiresAt: number }>();
+const STORES_CACHE_TTL_MS = 30_000;
 
 // Simple in-memory rate limiter (100 req/min per token)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -111,7 +116,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 4. Step 1: Load stores + precompute eligible product_ids per store (~20ms)
+    // 4. Check cache (30s TTL)
+    const cached = storesCache.get(user.id);
+    if (cached && Date.now() < cached.expiresAt) {
+      return NextResponse.json(cached.data, {
+        headers: {
+          ...corsHeaders,
+          'Cache-Control': 'private, max-age=30',
+          'X-Cache': 'HIT',
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+          'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),
+        }
+      });
+    }
+
+    // 5. Step 1: Load stores + precompute eligible product_ids per store (~20ms)
     const [storesResult, eligibleProductsResult] = await Promise.all([
       query<{
         id: string;
@@ -155,15 +175,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5. Step 2: Run simplified EXISTS queries using product_id = ANY(...)
+    // 5. Step 2: Single-query EXISTS checks (was: N+1 loops over 62 stores)
     const activeStoreIds = storesResult.rows.filter(s => s.is_active).map(s => s.id);
     const chatStageStoreIds = storesResult.rows
       .filter(s => s.is_active && ['chats_opened', 'monitoring'].includes(s.stage))
       .map(s => s.id);
 
+    // Collect flat arrays of all eligible product_ids across all stores
+    // Safe because product_ids are globally unique (scoped to store in DB)
+    const activeStoreIdSet = new Set(activeStoreIds);
+    const chatStoreIdSet = new Set(chatStageStoreIds);
+    const allEligibleProductIds: string[] = [];
+    const allChatProductIds: string[] = [];
+    storeEligibleProducts.forEach((pids, sid) => {
+      if (activeStoreIdSet.has(sid)) allEligibleProductIds.push(...pids);
+    });
+    storeChatProducts.forEach((pids, sid) => {
+      if (chatStoreIdSet.has(sid)) allChatProductIds.push(...pids);
+    });
+
     // Helper: wrap a query in a timeout — returns empty rows on timeout instead of blocking
     const QUERY_TIMEOUT_MS = 8000;
-    function queryWithTimeout<T extends Record<string, any>>(sql: string, params: any[]) {
+    const queryWithTimeout = <T extends Record<string, any>>(sql: string, params: any[]) => {
       return Promise.race([
         query<T>(sql, params),
         new Promise<{ rows: T[] }>((resolve) =>
@@ -173,7 +206,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Q1b: stores with draft complaints ──
+      // ── Q1b: stores with draft complaints (already single query) ──
       queryWithTimeout<{ store_id: string }>(
         `SELECT s.id as store_id
         FROM stores s
@@ -189,67 +222,50 @@ export async function GET(request: NextRequest) {
         [user.id]
       ),
 
-      // ── Q2: stores with pending status parses ──
-      // Uses precomputed product_ids — no product_rules JOIN
-      (async () => {
-        const result: { store_id: string }[] = [];
-        for (const storeId of activeStoreIds) {
-          const productIds = storeEligibleProducts.get(storeId);
-          if (!productIds || productIds.length === 0) continue;
-          const exists = await queryWithTimeout<{ exists: boolean }>(
-            `SELECT EXISTS (
-              SELECT 1 FROM reviews r
-              WHERE r.store_id = $1
-                AND r.product_id = ANY($2::text[])
-                AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
-                AND r.rating_excluded = FALSE
-                AND r.marketplace = 'wb'
-                AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
-                AND NOT EXISTS (
-                  SELECT 1 FROM review_complaints rc
-                  WHERE rc.review_id = r.id AND rc.status = 'draft'
-                )
-            ) as exists`,
-            [storeId, productIds]
-          );
-          if (exists.rows[0]?.exists) result.push({ store_id: storeId });
-        }
-        return { rows: result };
-      })(),
+      // ── Q2: stores with pending status parses — SINGLE QUERY (was: 62 sequential queries) ──
+      allEligibleProductIds.length > 0
+        ? queryWithTimeout<{ store_id: string }>(
+            `SELECT DISTINCT r.store_id
+             FROM reviews r
+             WHERE r.store_id = ANY($1::text[])
+               AND r.product_id = ANY($2::text[])
+               AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
+               AND r.rating_excluded = FALSE
+               AND r.marketplace = 'wb'
+               AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
+               AND NOT EXISTS (
+                 SELECT 1 FROM review_complaints rc
+                 WHERE rc.review_id = r.id AND rc.status = 'draft'
+               )`,
+            [activeStoreIds, allEligibleProductIds]
+          )
+        : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
-      // ── Q3: stores with pending chats ──
-      // Uses precomputed chat product_ids — no product_rules JOIN
-      (async () => {
-        const result: { store_id: string }[] = [];
-        for (const storeId of chatStageStoreIds) {
-          const productIds = storeChatProducts.get(storeId);
-          if (!productIds || productIds.length === 0) continue;
-          const exists = await queryWithTimeout<{ exists: boolean }>(
-            `SELECT EXISTS (
-              SELECT 1 FROM reviews r
-              JOIN review_complaints rc ON rc.review_id = r.id
-              WHERE r.store_id = $1
-                AND r.product_id = ANY($2::text[])
-                AND rc.status = 'rejected'
-                AND r.chat_status_by_review = 'available'
-                AND r.review_status_wb IN ('visible', 'unknown')
-                AND r.rating_excluded = FALSE
-                AND r.marketplace = 'wb'
-                AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
-                AND NOT EXISTS (
-                  SELECT 1 FROM review_chat_links rcl
-                  WHERE rcl.store_id = r.store_id
-                    AND rcl.review_nm_id = (SELECT wb_product_id FROM products WHERE id = r.product_id)
-                    AND rcl.review_rating = r.rating
-                    AND rcl.review_date BETWEEN r.date - interval '2 minutes' AND r.date + interval '2 minutes'
-                )
-            ) as exists`,
-            [storeId, productIds]
-          );
-          if (exists.rows[0]?.exists) result.push({ store_id: storeId });
-        }
-        return { rows: result };
-      })(),
+      // ── Q3: stores with pending chats — SINGLE QUERY (was: 62 sequential queries) ──
+      allChatProductIds.length > 0
+        ? queryWithTimeout<{ store_id: string }>(
+            `SELECT DISTINCT r.store_id
+             FROM reviews r
+             JOIN review_complaints rc ON rc.review_id = r.id
+             JOIN products p ON r.product_id = p.id
+             WHERE r.store_id = ANY($1::text[])
+               AND r.product_id = ANY($2::text[])
+               AND rc.status = 'rejected'
+               AND r.chat_status_by_review = 'available'
+               AND r.review_status_wb IN ('visible', 'unknown')
+               AND r.rating_excluded = FALSE
+               AND r.marketplace = 'wb'
+               AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
+               AND NOT EXISTS (
+                 SELECT 1 FROM review_chat_links rcl
+                 WHERE rcl.store_id = r.store_id
+                   AND rcl.review_nm_id = p.wb_product_id
+                   AND rcl.review_rating = r.rating
+                   AND rcl.review_date BETWEEN r.date - interval '2 minutes' AND r.date + interval '2 minutes'
+               )`,
+            [chatStageStoreIds, allChatProductIds]
+          )
+        : Promise.resolve({ rows: [] as { store_id: string }[] }),
     ]);
 
     // Build lookup sets (boolean: store has tasks in this direction)
@@ -266,9 +282,14 @@ export async function GET(request: NextRequest) {
       pendingStatusParsesCount: statusParsesSet.has(row.id) ? 1 : 0,
     }));
 
+    // Cache result for 30s
+    storesCache.set(user.id, { data: stores, expiresAt: Date.now() + STORES_CACHE_TTL_MS });
+
     return NextResponse.json(stores, {
       headers: {
         ...corsHeaders,
+        'Cache-Control': 'private, max-age=30',
+        'X-Cache': 'MISS',
         'X-RateLimit-Limit': '100',
         'X-RateLimit-Remaining': rateLimit.remaining.toString(),
         'X-RateLimit-Reset': new Date(rateLimit.resetAt).toISOString(),

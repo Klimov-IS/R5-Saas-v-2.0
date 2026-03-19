@@ -17,8 +17,12 @@
  * IMPORTANT: review_status_wb is set to 'unknown' (NOT NULL),
  * because the tasks endpoint uses NOT IN (...) which excludes NULLs in PostgreSQL.
  *
- * @version 1.0.0
- * @date 2026-03-12
+ * Performance: Uses 2-step query strategy:
+ *   Step 1: Load eligible (product_id, ratings[]) from product_rules (~10ms)
+ *   Step 2: COUNT + UPDATE with unnest CTE (no 3-way JOIN)
+ *
+ * @version 1.1.0 — 2-step strategy, eliminates 3-way JOIN (Sprint-012)
+ * @date 2026-03-19
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -84,41 +88,79 @@ export async function POST(
       // Empty body is fine — reset all active products
     }
 
-    // 4. Count what will be affected (before update)
-    const nmIdFilter = nmIds
-      ? `AND p.wb_product_id = ANY($2::text[])`
-      : '';
-    const queryParams: any[] = [storeId];
-    if (nmIds) queryParams.push(nmIds);
+    // 4. Step 1: Load eligible products with their rating rules (~10ms, no heavy JOIN)
+    const eligResult = await query<{
+      product_id: string;
+      wb_product_id: string;
+      submit_complaints: boolean;
+      work_in_chats: boolean;
+      complaint_rating_1: boolean;
+      complaint_rating_2: boolean;
+      complaint_rating_3: boolean;
+      chat_rating_1: boolean;
+      chat_rating_2: boolean;
+      chat_rating_3: boolean;
+    }>(
+      `SELECT p.id as product_id, p.wb_product_id,
+              pr.submit_complaints, pr.work_in_chats,
+              pr.complaint_rating_1, pr.complaint_rating_2, pr.complaint_rating_3,
+              pr.chat_rating_1, pr.chat_rating_2, pr.chat_rating_3
+       FROM products p
+       JOIN product_rules pr ON pr.product_id = p.id
+       WHERE p.store_id = $1 AND p.work_status = 'active'
+         AND (pr.work_in_chats = TRUE OR pr.submit_complaints = TRUE)`,
+      [storeId]
+    );
 
+    // Build (product_id, rating) pairs for eligible reviews
+    const eligProductIds: string[] = [];
+    const eligRatings: number[] = [];
+
+    for (const row of eligResult.rows) {
+      if (nmIds && !nmIds.includes(row.wb_product_id)) continue;
+
+      const ratings = new Set<number>();
+      if (row.submit_complaints) {
+        if (row.complaint_rating_1) ratings.add(1);
+        if (row.complaint_rating_2) ratings.add(2);
+        if (row.complaint_rating_3) ratings.add(3);
+      }
+      if (row.work_in_chats) {
+        if (row.chat_rating_1) ratings.add(1);
+        if (row.chat_rating_2) ratings.add(2);
+        if (row.chat_rating_3) ratings.add(3);
+      }
+
+      ratings.forEach(r => {
+        eligProductIds.push(row.product_id);
+        eligRatings.push(r);
+      });
+    }
+
+    if (eligProductIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        data: { reset: 0, skipped: 0, total: 0 },
+        message: 'Нет товаров для ре-парсинга',
+        elapsed: Date.now() - startTime,
+      });
+    }
+
+    // 5. Step 2: COUNT using unnest CTE (no 3-way JOIN at runtime)
     const countResult = await query<{ total: string; eligible: string; rating_excluded: string }>(
-      `SELECT
+      `WITH eligible AS (
+        SELECT product_id, rating
+        FROM unnest($1::text[], $2::int[]) AS t(product_id, rating)
+      )
+      SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE r.rating_excluded = FALSE OR r.rating_excluded IS NULL) as eligible,
         COUNT(*) FILTER (WHERE r.rating_excluded = TRUE) as rating_excluded
       FROM reviews r
-      JOIN products p ON r.product_id = p.id AND p.store_id = r.store_id
-      JOIN product_rules pr ON pr.product_id = p.id
-      WHERE r.store_id = $1
-        AND r.marketplace = 'wb'
-        AND r.rating <= 3
-        AND p.work_status = 'active'
-        AND (pr.work_in_chats = TRUE OR pr.submit_complaints = TRUE)
-        AND (
-          (pr.submit_complaints = TRUE AND (
-            (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
-            (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
-            (r.rating = 3 AND pr.complaint_rating_3 = TRUE)
-          ))
-          OR
-          (pr.work_in_chats = TRUE AND (
-            (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-            (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-            (r.rating = 3 AND pr.chat_rating_3 = TRUE)
-          ))
-        )
-        ${nmIdFilter}`,
-      queryParams
+      JOIN eligible e ON r.product_id = e.product_id AND r.rating = e.rating
+      WHERE r.store_id = $3
+        AND r.marketplace = 'wb'`,
+      [eligProductIds, eligRatings, storeId]
     );
 
     const total = parseInt(countResult.rows[0].total);
@@ -146,38 +188,24 @@ export async function POST(
       );
     }
 
-    // 5. Reset statuses
+    // 6. UPDATE using unnest CTE (same pattern, no 3-way JOIN)
     const updateResult = await query<{ id: string }>(
-      `UPDATE reviews r
+      `WITH eligible AS (
+        SELECT product_id, rating
+        FROM unnest($1::text[], $2::int[]) AS t(product_id, rating)
+      )
+      UPDATE reviews r
       SET review_status_wb = 'unknown',
           chat_status_by_review = NULL,
           updated_at = NOW()
-      FROM products p
-      JOIN product_rules pr ON pr.product_id = p.id
-      WHERE r.product_id = p.id
-        AND r.store_id = p.store_id
-        AND r.store_id = $1
+      FROM eligible e
+      WHERE r.product_id = e.product_id
+        AND r.rating = e.rating
+        AND r.store_id = $3
         AND r.marketplace = 'wb'
-        AND r.rating <= 3
-        AND p.work_status = 'active'
-        AND (pr.work_in_chats = TRUE OR pr.submit_complaints = TRUE)
         AND (r.rating_excluded = FALSE OR r.rating_excluded IS NULL)
-        AND (
-          (pr.submit_complaints = TRUE AND (
-            (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
-            (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
-            (r.rating = 3 AND pr.complaint_rating_3 = TRUE)
-          ))
-          OR
-          (pr.work_in_chats = TRUE AND (
-            (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
-            (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
-            (r.rating = 3 AND pr.chat_rating_3 = TRUE)
-          ))
-        )
-        ${nmIdFilter}
       RETURNING r.id`,
-      queryParams
+      [eligProductIds, eligRatings, storeId]
     );
 
     const resetCount = updateResult.rows.length;
