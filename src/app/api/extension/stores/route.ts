@@ -208,20 +208,20 @@ export async function GET(request: NextRequest) {
 
     const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
       // ── Q1b: stores with draft complaints ──
-      // Rewritten: start from review_complaints index (store_id, status='draft')
-      // then filter via eligible product_ids. Was: EXISTS per store (74s!), now: single scan (<100ms)
-      allEligibleProductIds.length > 0
+      // Uses review_complaints index only (9ms), no product_id filter.
+      // ANY(7641 product_ids) caused 70s cold-cache penalty via pgBouncer.
+      // False positives (~10 stores) acceptable for boolean badge.
+      activeStoreIds.length > 0
         ? queryWithTimeout<{ store_id: string }>(
             `SELECT DISTINCT rc.store_id
              FROM review_complaints rc
              JOIN reviews r ON r.id = rc.review_id
              WHERE rc.store_id = ANY($1::text[])
                AND rc.status = 'draft'
-               AND r.product_id = ANY($2::text[])
                AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
                AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
                AND r.rating_excluded = FALSE`,
-            [activeStoreIds, allEligibleProductIds]
+            [activeStoreIds]
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
