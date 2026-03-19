@@ -145,101 +145,35 @@ export async function GET(request: NextRequest) {
       [user.id]
     );
 
-    const allStoreIds = storesResult.rows.map(s => s.id);
-
-    // 5. Step 1b: Preload eligible product_ids using ANY() (~50ms, was 1.6s with subquery)
-    const eligibleProductsResult = await query<{
-      store_id: string;
-      product_id: string;
-      submit_complaints: boolean;
-      work_in_chats: boolean;
-    }>(
-      `SELECT p.store_id, p.id as product_id,
-              pr.submit_complaints, pr.work_in_chats
-       FROM products p
-       JOIN product_rules pr ON pr.product_id = p.id
-       WHERE p.store_id = ANY($1::text[])
-         AND p.work_status = 'active'
-         AND (pr.submit_complaints = TRUE OR pr.work_in_chats = TRUE)`,
-      [allStoreIds]
-    );
-
-    // Build per-store eligible product_id arrays
-    const storeEligibleProducts = new Map<string, string[]>();
-    const storeChatProducts = new Map<string, string[]>();
-    for (const row of eligibleProductsResult.rows) {
-      if (!storeEligibleProducts.has(row.store_id)) storeEligibleProducts.set(row.store_id, []);
-      storeEligibleProducts.get(row.store_id)!.push(row.product_id);
-      if (row.work_in_chats) {
-        if (!storeChatProducts.has(row.store_id)) storeChatProducts.set(row.store_id, []);
-        storeChatProducts.get(row.store_id)!.push(row.product_id);
-      }
-    }
-
-    // 5. Step 2: Single-query EXISTS checks (was: N+1 loops over 62 stores)
+    // 5. Compute store ID sets for queries
     const activeStoreIds = storesResult.rows.filter(s => s.is_active).map(s => s.id);
     const chatStageStoreIds = storesResult.rows
       .filter(s => s.is_active && ['chats_opened', 'monitoring'].includes(s.stage))
       .map(s => s.id);
 
-    // Collect flat arrays of all eligible product_ids across all stores
-    // Safe because product_ids are globally unique (scoped to store in DB)
-    const activeStoreIdSet = new Set(activeStoreIds);
-    const chatStoreIdSet = new Set(chatStageStoreIds);
-    const allEligibleProductIds: string[] = [];
-    const allChatProductIds: string[] = [];
-    storeEligibleProducts.forEach((pids, sid) => {
-      if (activeStoreIdSet.has(sid)) allEligibleProductIds.push(...pids);
-    });
-    storeChatProducts.forEach((pids, sid) => {
-      if (chatStoreIdSet.has(sid)) allChatProductIds.push(...pids);
-    });
-
-    // Helper: wrap a query in a timeout — returns empty rows on timeout instead of blocking
-    const QUERY_TIMEOUT_MS = 8000;
-    const queryWithTimeout = <T extends Record<string, any>>(label: string, sql: string, params: any[]) => {
-      const start = Date.now();
-      return Promise.race([
-        query<T>(sql, params).then(result => {
-          console.log(`[Extension /stores] ${label}: ${Date.now() - start}ms, ${result.rows.length} rows`);
-          return result;
-        }),
-        new Promise<{ rows: T[] }>((resolve) =>
-          setTimeout(() => {
-            console.log(`[Extension /stores] ${label}: TIMEOUT after ${QUERY_TIMEOUT_MS}ms`);
-            resolve({ rows: [] } as any);
-          }, QUERY_TIMEOUT_MS)
-        ),
-      ]);
-    }
-
+    // 6. Three parallel boolean queries — NO product_id ANY() filters.
+    // Benchmark showed ANY(7641 product_ids) causes 49-70s cold-cache penalty.
+    // Without product_id filter: Q1b=9ms, Q2=<500ms, Q3=<500ms.
+    // False positives (~10-20%) acceptable for boolean badge on /stores list.
     const step2Start = Date.now();
     const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Q1b: stores with draft complaints ──
-      // Uses review_complaints index only (9ms), no product_id filter.
-      // ANY(7641 product_ids) caused 70s cold-cache penalty via pgBouncer.
-      // False positives (~10 stores) acceptable for boolean badge.
+      // ── Q1b: stores with draft complaints (idx_complaints_store_status) ──
       activeStoreIds.length > 0
-        ? queryWithTimeout<{ store_id: string }>('Q1b-draftComplaints',
+        ? query<{ store_id: string }>(
             `SELECT DISTINCT rc.store_id
              FROM review_complaints rc
-             JOIN reviews r ON r.id = rc.review_id
              WHERE rc.store_id = ANY($1::text[])
-               AND rc.status = 'draft'
-               AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
-               AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
-               AND r.rating_excluded = FALSE`,
+               AND rc.status = 'draft'`,
             [activeStoreIds]
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
-      // ── Q2: stores with pending status parses — SINGLE QUERY (was: 62 sequential queries) ──
-      allEligibleProductIds.length > 0
-        ? queryWithTimeout<{ store_id: string }>('Q2-statusParses',
+      // ── Q2: stores with pending status parses (idx_reviews_tasks_eligible) ──
+      activeStoreIds.length > 0
+        ? query<{ store_id: string }>(
             `SELECT DISTINCT r.store_id
              FROM reviews r
              WHERE r.store_id = ANY($1::text[])
-               AND r.product_id = ANY($2::text[])
                AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
                AND r.rating_excluded = FALSE
                AND r.marketplace = 'wb'
@@ -248,19 +182,18 @@ export async function GET(request: NextRequest) {
                  SELECT 1 FROM review_complaints rc
                  WHERE rc.review_id = r.id AND rc.status = 'draft'
                )`,
-            [activeStoreIds, allEligibleProductIds]
+            [activeStoreIds]
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
-      // ── Q3: stores with pending chats — SINGLE QUERY (was: 62 sequential queries) ──
-      allChatProductIds.length > 0
-        ? queryWithTimeout<{ store_id: string }>('Q3-pendingChats',
+      // ── Q3: stores with pending chats (JOINs only, no product_id array) ──
+      chatStageStoreIds.length > 0
+        ? query<{ store_id: string }>(
             `SELECT DISTINCT r.store_id
              FROM reviews r
              JOIN review_complaints rc ON rc.review_id = r.id
              JOIN products p ON r.product_id = p.id
              WHERE r.store_id = ANY($1::text[])
-               AND r.product_id = ANY($2::text[])
                AND rc.status = 'rejected'
                AND r.chat_status_by_review = 'available'
                AND r.review_status_wb IN ('visible', 'unknown')
@@ -274,12 +207,12 @@ export async function GET(request: NextRequest) {
                    AND rcl.review_rating = r.rating
                    AND rcl.review_date BETWEEN r.date - interval '2 minutes' AND r.date + interval '2 minutes'
                )`,
-            [chatStageStoreIds, allChatProductIds]
+            [chatStageStoreIds]
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
     ]);
 
-    console.log(`[Extension /stores] Step2 total: ${Date.now() - step2Start}ms`);
+    console.log(`[Extension /stores] Step2: ${Date.now() - step2Start}ms (Q1b=${draftComplaintsResult.rows.length}, Q2=${statusParsesResult.rows.length}, Q3=${pendingChatsResult.rows.length})`);
 
     // Build lookup sets (boolean: store has tasks in this direction)
     const draftComplaintsSet = new Set(draftComplaintsResult.rows.map(r => r.store_id));
