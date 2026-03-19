@@ -197,22 +197,30 @@ export async function GET(request: NextRequest) {
 
     // Helper: wrap a query in a timeout — returns empty rows on timeout instead of blocking
     const QUERY_TIMEOUT_MS = 8000;
-    const queryWithTimeout = <T extends Record<string, any>>(sql: string, params: any[]) => {
+    const queryWithTimeout = <T extends Record<string, any>>(label: string, sql: string, params: any[]) => {
+      const start = Date.now();
       return Promise.race([
-        query<T>(sql, params),
+        query<T>(sql, params).then(result => {
+          console.log(`[Extension /stores] ${label}: ${Date.now() - start}ms, ${result.rows.length} rows`);
+          return result;
+        }),
         new Promise<{ rows: T[] }>((resolve) =>
-          setTimeout(() => resolve({ rows: [] } as any), QUERY_TIMEOUT_MS)
+          setTimeout(() => {
+            console.log(`[Extension /stores] ${label}: TIMEOUT after ${QUERY_TIMEOUT_MS}ms`);
+            resolve({ rows: [] } as any);
+          }, QUERY_TIMEOUT_MS)
         ),
       ]);
     }
 
+    const step2Start = Date.now();
     const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
       // ── Q1b: stores with draft complaints ──
       // Uses review_complaints index only (9ms), no product_id filter.
       // ANY(7641 product_ids) caused 70s cold-cache penalty via pgBouncer.
       // False positives (~10 stores) acceptable for boolean badge.
       activeStoreIds.length > 0
-        ? queryWithTimeout<{ store_id: string }>(
+        ? queryWithTimeout<{ store_id: string }>('Q1b-draftComplaints',
             `SELECT DISTINCT rc.store_id
              FROM review_complaints rc
              JOIN reviews r ON r.id = rc.review_id
@@ -227,7 +235,7 @@ export async function GET(request: NextRequest) {
 
       // ── Q2: stores with pending status parses — SINGLE QUERY (was: 62 sequential queries) ──
       allEligibleProductIds.length > 0
-        ? queryWithTimeout<{ store_id: string }>(
+        ? queryWithTimeout<{ store_id: string }>('Q2-statusParses',
             `SELECT DISTINCT r.store_id
              FROM reviews r
              WHERE r.store_id = ANY($1::text[])
@@ -246,7 +254,7 @@ export async function GET(request: NextRequest) {
 
       // ── Q3: stores with pending chats — SINGLE QUERY (was: 62 sequential queries) ──
       allChatProductIds.length > 0
-        ? queryWithTimeout<{ store_id: string }>(
+        ? queryWithTimeout<{ store_id: string }>('Q3-pendingChats',
             `SELECT DISTINCT r.store_id
              FROM reviews r
              JOIN review_complaints rc ON rc.review_id = r.id
@@ -270,6 +278,8 @@ export async function GET(request: NextRequest) {
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
     ]);
+
+    console.log(`[Extension /stores] Step2 total: ${Date.now() - step2Start}ms`);
 
     // Build lookup sets (boolean: store has tasks in this direction)
     const draftComplaintsSet = new Set(draftComplaintsResult.rows.map(r => r.store_id));
