@@ -8,7 +8,7 @@
  * Rate limiting: 100 requests per minute per token
  * CORS enabled for Chrome Extension
  *
- * @version 4.0.0 — Sprint-012: eliminated N+1, added cache, Cache-Control
+ * @version 4.1.0 — Sprint-012: eliminated N+1, added cache, rating<5 filter (hotfix 500)
  * @date 2026-03-19
  */
 
@@ -177,6 +177,7 @@ export async function GET(request: NextRequest) {
                AND r.review_status_wb NOT IN ('unpublished', 'excluded', 'deleted')
                AND r.rating_excluded = FALSE
                AND r.marketplace = 'wb'
+               AND r.rating < 5
                AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
                AND NOT EXISTS (
                  SELECT 1 FROM review_complaints rc
@@ -199,6 +200,7 @@ export async function GET(request: NextRequest) {
                AND r.review_status_wb IN ('visible', 'unknown')
                AND r.rating_excluded = FALSE
                AND r.marketplace = 'wb'
+               AND r.rating < 5
                AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
                AND NOT EXISTS (
                  SELECT 1 FROM review_chat_links rcl
