@@ -246,7 +246,7 @@ export async function findLinkWithReviewByChatId(
   const result = await query<ReviewChatLink & { review_text?: string | null }>(
     `SELECT rcl.*, r.text as review_text
      FROM review_chat_links rcl
-     LEFT JOIN reviews r ON rcl.review_id = r.id
+     LEFT JOIN reviews_all r ON rcl.review_id = r.id
      WHERE rcl.chat_id = $1 LIMIT 1`,
     [chatId]
   );
@@ -274,7 +274,7 @@ export async function isReviewResolvedForChat(
   }>(
     `SELECT r.complaint_status, r.review_status_wb, r.rating_excluded
      FROM review_chat_links rcl
-     JOIN reviews r ON rcl.review_id = r.id
+     JOIN reviews_all r ON rcl.review_id = r.id
      WHERE rcl.chat_id = $1
      LIMIT 1`,
     [chatId]
@@ -331,7 +331,7 @@ export async function matchReviewByContext(
 ): Promise<string | null> {
   const result = await query<{ id: string }>(
     `SELECT r.id
-     FROM reviews r
+     FROM reviews_all r
      JOIN products p ON r.product_id = p.id
      WHERE r.store_id = $1
        AND p.wb_product_id = $2
@@ -358,7 +358,7 @@ export async function getPendingChatsCount(
 ): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT r.id) as count
-     FROM reviews r
+     FROM reviews_all r
      JOIN review_complaints rc ON rc.review_id = r.id
      JOIN products p ON r.product_id = p.id
      JOIN product_rules pr ON pr.product_id = p.id
@@ -412,6 +412,7 @@ export async function getPendingChatsCountOptimized(
            AND rcl.review_date BETWEEN r.date - interval '2 minutes'
                                     AND r.date + interval '2 minutes'
        )`,
+    // NOTE: stays on 'reviews' table — only 1-4★ ratings, all in reviews table
     [storeId]
   );
   return parseInt(result.rows[0]?.count || '0', 10);

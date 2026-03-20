@@ -737,7 +737,7 @@ export async function upsertProduct(product: Omit<Product, 'created_at' | 'updat
 
 export async function getReviews(productId: string): Promise<Review[]> {
   const result = await query<Review>(
-    'SELECT * FROM reviews WHERE product_id = $1 ORDER BY date DESC',
+    'SELECT * FROM reviews_all WHERE product_id = $1 ORDER BY date DESC',
     [productId]
   );
   return result.rows;
@@ -745,8 +745,8 @@ export async function getReviews(productId: string): Promise<Review[]> {
 
 export async function getReviewsByStore(storeId: string, limit?: number): Promise<Review[]> {
   const sql = limit
-    ? 'SELECT * FROM reviews WHERE store_id = $1 ORDER BY date DESC LIMIT $2'
-    : 'SELECT * FROM reviews WHERE store_id = $1 ORDER BY date DESC';
+    ? 'SELECT * FROM reviews_all WHERE store_id = $1 ORDER BY date DESC LIMIT $2'
+    : 'SELECT * FROM reviews_all WHERE store_id = $1 ORDER BY date DESC';
   const params = limit ? [storeId, limit] : [storeId];
   const result = await query<Review>(sql, params);
   return result.rows;
@@ -754,12 +754,15 @@ export async function getReviewsByStore(storeId: string, limit?: number): Promis
 
 export async function getReviewById(id: string): Promise<Review | null> {
   const result = await query<Review>('SELECT * FROM reviews WHERE id = $1', [id]);
-  return result.rows[0] || null;
+  if (result.rows[0]) return result.rows[0];
+  const archiveResult = await query<Review>('SELECT * FROM reviews_archive WHERE id = $1', [id]);
+  return archiveResult.rows[0] || null;
 }
 
 export async function createReview(review: Omit<Review, 'created_at' | 'updated_at'>): Promise<Review> {
+  const targetTable = review.rating === 5 ? 'reviews_archive' : 'reviews';
   const result = await query<Review>(
-    `INSERT INTO reviews (
+    `INSERT INTO ${targetTable} (
       id, product_id, store_id, marketplace, rating, text, pros, cons, author, date, owner_id,
       answer, photo_links, video, supplier_feedback_valuation, supplier_product_valuation,
       complaint_text, complaint_sent_date, draft_reply,
@@ -846,16 +849,57 @@ export async function updateReview(
   fields.push(`updated_at = NOW()`);
   values.push(id);
 
-  const result = await query<Review>(
+  // Try reviews first (1-4 stars), then archive (5 stars)
+  let result = await query<Review>(
     `UPDATE reviews SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
     values
   );
+  if (!result.rows[0]) {
+    result = await query<Review>(
+      `UPDATE reviews_archive SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+  }
   return result.rows[0] || null;
 }
 
 export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_at'>): Promise<Review> {
+  // Route to correct table based on rating (Sprint-013: reviews split)
+  const targetTable = review.rating === 5 ? 'reviews_archive' : 'reviews';
+  const otherTable = review.rating === 5 ? 'reviews' : 'reviews_archive';
+
+  const params = [
+    review.id,
+    review.product_id,
+    review.store_id,
+    review.marketplace || 'wb',
+    review.rating,
+    review.text !== undefined && review.text !== null ? review.text : '',
+    review.pros || '',
+    review.cons || '',
+    review.author,
+    review.date,
+    review.owner_id,
+    review.answer ? JSON.stringify(review.answer) : null,
+    review.photo_links ? JSON.stringify(review.photo_links) : null,
+    review.video ? JSON.stringify(review.video) : null,
+    review.supplier_feedback_valuation || null,
+    review.supplier_product_valuation || null,
+    review.complaint_text || null,
+    review.complaint_sent_date || null,
+    review.draft_reply || null,
+    review.ozon_review_status || null,
+    review.ozon_order_status || null,
+    review.is_rating_participant ?? null,
+    review.ozon_sku || null,
+    review.ozon_comment_id || null,
+    review.ozon_comments_amount ?? null,
+    review.likes_amount ?? null,
+    review.dislikes_amount ?? null,
+  ];
+
   const result = await query<Review>(
-    `INSERT INTO reviews (
+    `INSERT INTO ${targetTable} (
       id, product_id, store_id, marketplace, rating, text, pros, cons, author, date, owner_id,
       answer, photo_links, video, supplier_feedback_valuation, supplier_product_valuation,
       complaint_text, complaint_sent_date, draft_reply,
@@ -875,57 +919,37 @@ export async function upsertReview(review: Omit<Review, 'created_at' | 'updated_
       video = EXCLUDED.video,
       supplier_feedback_valuation = EXCLUDED.supplier_feedback_valuation,
       supplier_product_valuation = EXCLUDED.supplier_product_valuation,
-      complaint_text = COALESCE(EXCLUDED.complaint_text, reviews.complaint_text),
-      complaint_sent_date = COALESCE(EXCLUDED.complaint_sent_date, reviews.complaint_sent_date),
-      draft_reply = COALESCE(EXCLUDED.draft_reply, reviews.draft_reply),
+      complaint_text = COALESCE(EXCLUDED.complaint_text, ${targetTable}.complaint_text),
+      complaint_sent_date = COALESCE(EXCLUDED.complaint_sent_date, ${targetTable}.complaint_sent_date),
+      draft_reply = COALESCE(EXCLUDED.draft_reply, ${targetTable}.draft_reply),
       review_status_wb = CASE
-        WHEN reviews.review_status_wb IN ('deleted', 'unpublished') THEN 'visible'::review_status_wb
-        ELSE reviews.review_status_wb
+        WHEN ${targetTable}.review_status_wb IN ('deleted', 'unpublished') THEN 'visible'::review_status_wb
+        ELSE ${targetTable}.review_status_wb
       END,
       deleted_from_wb_at = CASE
-        WHEN reviews.review_status_wb IN ('deleted', 'unpublished') THEN NULL
-        ELSE reviews.deleted_from_wb_at
+        WHEN ${targetTable}.review_status_wb IN ('deleted', 'unpublished') THEN NULL
+        ELSE ${targetTable}.deleted_from_wb_at
       END,
-      ozon_review_status = COALESCE(EXCLUDED.ozon_review_status, reviews.ozon_review_status),
-      ozon_order_status = COALESCE(EXCLUDED.ozon_order_status, reviews.ozon_order_status),
-      is_rating_participant = COALESCE(EXCLUDED.is_rating_participant, reviews.is_rating_participant),
-      ozon_sku = COALESCE(EXCLUDED.ozon_sku, reviews.ozon_sku),
-      ozon_comment_id = COALESCE(EXCLUDED.ozon_comment_id, reviews.ozon_comment_id),
-      ozon_comments_amount = COALESCE(EXCLUDED.ozon_comments_amount, reviews.ozon_comments_amount),
-      likes_amount = COALESCE(EXCLUDED.likes_amount, reviews.likes_amount),
-      dislikes_amount = COALESCE(EXCLUDED.dislikes_amount, reviews.dislikes_amount),
+      ozon_review_status = COALESCE(EXCLUDED.ozon_review_status, ${targetTable}.ozon_review_status),
+      ozon_order_status = COALESCE(EXCLUDED.ozon_order_status, ${targetTable}.ozon_order_status),
+      is_rating_participant = COALESCE(EXCLUDED.is_rating_participant, ${targetTable}.is_rating_participant),
+      ozon_sku = COALESCE(EXCLUDED.ozon_sku, ${targetTable}.ozon_sku),
+      ozon_comment_id = COALESCE(EXCLUDED.ozon_comment_id, ${targetTable}.ozon_comment_id),
+      ozon_comments_amount = COALESCE(EXCLUDED.ozon_comments_amount, ${targetTable}.ozon_comments_amount),
+      likes_amount = COALESCE(EXCLUDED.likes_amount, ${targetTable}.likes_amount),
+      dislikes_amount = COALESCE(EXCLUDED.dislikes_amount, ${targetTable}.dislikes_amount),
       updated_at = NOW()
     RETURNING *`,
-    [
-      review.id,
-      review.product_id,
-      review.store_id,
-      review.marketplace || 'wb',
-      review.rating,
-      review.text !== undefined && review.text !== null ? review.text : '',
-      review.pros || '',
-      review.cons || '',
-      review.author,
-      review.date,
-      review.owner_id,
-      review.answer ? JSON.stringify(review.answer) : null,
-      review.photo_links ? JSON.stringify(review.photo_links) : null,
-      review.video ? JSON.stringify(review.video) : null,
-      review.supplier_feedback_valuation || null,
-      review.supplier_product_valuation || null,
-      review.complaint_text || null,
-      review.complaint_sent_date || null,
-      review.draft_reply || null,
-      review.ozon_review_status || null,
-      review.ozon_order_status || null,
-      review.is_rating_participant ?? null,
-      review.ozon_sku || null,
-      review.ozon_comment_id || null,
-      review.ozon_comments_amount ?? null,
-      review.likes_amount ?? null,
-      review.dislikes_amount ?? null,
-    ]
+    params
   );
+
+  if (result.rows[0]) {
+    // Upsert succeeded in target table — clean up other table in case rating changed
+    await query(`DELETE FROM ${otherTable} WHERE id = $1`, [review.id]);
+    return result.rows[0];
+  }
+
+  // Should not happen (INSERT always succeeds or conflicts), but safety fallback
   return result.rows[0];
 }
 
@@ -1421,7 +1445,7 @@ export async function getStoreStats(storeId: string) {
   }>(
     `SELECT
       (SELECT COUNT(*) FROM products WHERE store_id = $1) as total_products,
-      (SELECT COUNT(*) FROM reviews WHERE store_id = $1) as total_reviews,
+      (SELECT COUNT(*) FROM reviews_all WHERE store_id = $1) as total_reviews,
       (SELECT COUNT(*) FROM chats WHERE store_id = $1) as total_chats,
       (SELECT COUNT(*) FROM questions WHERE store_id = $1) as total_questions
     `,
@@ -1443,7 +1467,7 @@ export async function getStoreStats(storeId: string) {
 export async function getReviewRatingStats(storeId: string): Promise<Record<number, number>> {
   const result = await query<{ rating: number; count: string }>(
     `SELECT rating, COUNT(*) as count
-     FROM reviews
+     FROM reviews_all
      WHERE store_id = $1
      GROUP BY rating
      ORDER BY rating`,
@@ -1690,7 +1714,7 @@ export async function getReviewsByStoreWithPagination(
   // COUNT query: lightweight — no JOIN, no ORDER BY, no data columns
   const countSql = `
     SELECT COUNT(*) as cnt
-    FROM reviews r
+    FROM reviews_all r
     WHERE ${countFilter.whereClauses.join(' AND ')}
   `;
 
@@ -1708,7 +1732,7 @@ export async function getReviewsByStoreWithPagination(
       rc.generated_at as complaint_generated_at,
       rc.sent_at as complaint_sent_date,
       rc.regenerated_count
-    FROM reviews r
+    FROM reviews_all r
     LEFT JOIN review_complaints rc ON r.id = rc.review_id
     WHERE ${dataFilter.whereClauses.join(' AND ')}
     ORDER BY r.date DESC
@@ -1777,7 +1801,7 @@ export async function getReviewsWithCursor(
       rc.generated_at as complaint_generated_at,
       rc.sent_at as complaint_sent_date,
       rc.regenerated_count
-    FROM reviews r
+    FROM reviews_all r
     LEFT JOIN review_complaints rc ON r.id = rc.review_id
     WHERE ${dataFilter.whereClauses.join(' AND ')}
     ORDER BY r.date DESC, r.id DESC
@@ -1823,7 +1847,7 @@ export async function getReviewsCount(
   }
 ): Promise<number> {
   const { whereClauses, params } = buildReviewFilterClauses(storeId, options as ReviewsFilterOptions, true);
-  const sql = `SELECT COUNT(*) as count FROM reviews r WHERE ${whereClauses.join(' AND ')}`;
+  const sql = `SELECT COUNT(*) as count FROM reviews_all r WHERE ${whereClauses.join(' AND ')}`;
   const result = await query<{ count: string }>(sql, params);
   return parseInt(result.rows[0].count, 10);
 }
@@ -1892,7 +1916,7 @@ export async function getChatsByStoreWithPagination(
       pr.chat_strategy::text as chat_strategy
     FROM chats c
     ${rclJoin}
-    LEFT JOIN reviews r ON rcl.review_id = r.id
+    LEFT JOIN reviews_all r ON rcl.review_id = r.id
     LEFT JOIN products p ON p.store_id = c.store_id
       AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
         OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))
@@ -2536,7 +2560,7 @@ export async function getReviewsForProduct(
 ): Promise<Review[]> {
   let sql = `
     SELECT r.*
-    FROM reviews r
+    FROM reviews_all r
     LEFT JOIN review_complaints rc ON rc.review_id = r.id
     WHERE r.product_id = $1
   `;

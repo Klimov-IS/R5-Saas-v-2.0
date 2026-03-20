@@ -119,10 +119,10 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
       [storeId]
     ),
 
-    // Query 3: Rating breakdown
+    // Query 3: Rating breakdown (Sprint-013: use reviews_all for all ratings)
     query(
       `SELECT rating, COUNT(*) AS count
-       FROM reviews
+       FROM reviews_all
        WHERE store_id = $1
        GROUP BY rating
        ORDER BY rating DESC`,
@@ -142,10 +142,10 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
       [storeId]
     ),
 
-    // Query 5: Deleted reviews count
+    // Query 5: Deleted reviews count (Sprint-013: use reviews_all)
     query(
       `SELECT COUNT(*) AS deleted_count
-       FROM reviews
+       FROM reviews_all
        WHERE store_id = $1 AND deleted_from_wb_at IS NOT NULL`,
       [storeId]
     ),

@@ -105,11 +105,19 @@ export async function POST(
 
     for (const review of body.reviews) {
       try {
-        // Check if review exists
-        const existingReview = await query(
+        // Check if review exists (Sprint-013: check both tables)
+        let existingReview = await query(
           `SELECT id, review_status_wb, complaint_status FROM reviews WHERE id = $1`,
           [review.id]
         );
+        let reviewTable = 'reviews';
+        if (existingReview.rows.length === 0) {
+          existingReview = await query(
+            `SELECT id, review_status_wb, complaint_status FROM reviews_archive WHERE id = $1`,
+            [review.id]
+          );
+          reviewTable = 'reviews_archive';
+        }
 
         if (existingReview.rows.length > 0) {
           // UPDATE existing review with downgrade protection:
@@ -117,21 +125,21 @@ export async function POST(
           // - complaint_status: never rollback sent/pending/approved/rejected to not_sent/draft
           await query(
             `
-            UPDATE reviews
+            UPDATE ${reviewTable}
             SET
               review_status_wb = $1::review_status_wb,
               product_status_by_review = $2::product_status_by_review,
               chat_status_by_review = CASE
-                WHEN $3 = 'unknown' THEN reviews.chat_status_by_review
-                WHEN reviews.chat_status_by_review = 'opened' AND $3 != 'opened'
-                  THEN reviews.chat_status_by_review
-                ELSE COALESCE($3::chat_status_by_review, reviews.chat_status_by_review)
+                WHEN $3 = 'unknown' THEN ${reviewTable}.chat_status_by_review
+                WHEN ${reviewTable}.chat_status_by_review = 'opened' AND $3 != 'opened'
+                  THEN ${reviewTable}.chat_status_by_review
+                ELSE COALESCE($3::chat_status_by_review, ${reviewTable}.chat_status_by_review)
               END,
               complaint_status = CASE
-                WHEN reviews.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
+                WHEN ${reviewTable}.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
                   AND $4 IN ('not_sent', 'draft')
-                  THEN reviews.complaint_status
-                ELSE COALESCE($4::complaint_status, reviews.complaint_status)
+                  THEN ${reviewTable}.complaint_status
+                ELSE COALESCE($4::complaint_status, ${reviewTable}.complaint_status)
               END,
               parsed_at = $5,
               page_number = $6,

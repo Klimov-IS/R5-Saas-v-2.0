@@ -92,7 +92,7 @@ export async function POST(
       id: string;
       complaint_status: string;
     }>(
-      'SELECT id, complaint_status FROM reviews WHERE id = $1 AND store_id = $2',
+      'SELECT id, complaint_status FROM reviews_all WHERE id = $1 AND store_id = $2',
       [reviewId, storeId]
     );
 
@@ -123,12 +123,18 @@ export async function POST(
       // Body опциональный
     }
 
-    // 6. Обновить статусы в reviews
+    // 6. Обновить статусы в reviews (Sprint-013: try both tables)
     // Сразу ставим 'pending' (на рассмотрении), так как WB показывает "Проверяем жалобу"
-    await query(
+    const upd = await query(
       'UPDATE reviews SET complaint_status = $1, updated_at = NOW() WHERE id = $2',
       ['pending', reviewId]
     );
+    if ((upd.rowCount || 0) === 0) {
+      await query(
+        'UPDATE reviews_archive SET complaint_status = $1, updated_at = NOW() WHERE id = $2',
+        ['pending', reviewId]
+      );
+    }
 
     // 7. Обновить review_complaints
     // Сразу ставим 'pending' (на рассмотрении)

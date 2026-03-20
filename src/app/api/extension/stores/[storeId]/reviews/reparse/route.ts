@@ -188,13 +188,12 @@ export async function POST(
       );
     }
 
-    // 6. UPDATE using unnest CTE (same pattern, no 3-way JOIN)
-    const updateResult = await query<{ id: string }>(
-      `WITH eligible AS (
+    // 6. UPDATE using unnest CTE (Sprint-013: both tables)
+    const reparseSql = (table: string) => `WITH eligible AS (
         SELECT product_id, rating
         FROM unnest($1::text[], $2::int[]) AS t(product_id, rating)
       )
-      UPDATE reviews r
+      UPDATE ${table} r
       SET review_status_wb = 'unknown',
           chat_status_by_review = NULL,
           updated_at = NOW()
@@ -204,11 +203,12 @@ export async function POST(
         AND r.store_id = $3
         AND r.marketplace = 'wb'
         AND (r.rating_excluded = FALSE OR r.rating_excluded IS NULL)
-      RETURNING r.id`,
-      [eligProductIds, eligRatings, storeId]
-    );
+      RETURNING r.id`;
+    const reparseParams = [eligProductIds, eligRatings, storeId];
+    const r1 = await query<{ id: string }>(reparseSql('reviews'), reparseParams);
+    const r2 = await query<{ id: string }>(reparseSql('reviews_archive'), reparseParams);
 
-    const resetCount = updateResult.rows.length;
+    const resetCount = r1.rows.length + r2.rows.length;
     const storeName = storeResult.rows[0].name;
 
     console.log(`[Extension Reparse] ✅ ${storeName}: сброшено ${resetCount} отзывов, пропущено ${ratingExcluded} (rating_excluded)`);

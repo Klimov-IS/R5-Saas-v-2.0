@@ -386,10 +386,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 5a. Batch chat_status_by_review sync (with downgrade protection)
+    // Sprint-013: Execute on both reviews + reviews_archive
     if (chatBatch.length > 0) {
       try {
-        const result = await query<{ id: string }>(
-          `UPDATE reviews r
+        const chatUpdateSql = (table: string) => `UPDATE ${table} r
            SET chat_status_by_review = batch.new_status::chat_status_by_review, updated_at = NOW()
            FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat,
                         unnest($3::timestamptz[]) as dt, unnest($4::text[]) as new_status) batch
@@ -397,19 +397,20 @@ export async function POST(request: NextRequest) {
              AND r.product_id = batch.pid AND r.rating = batch.rat
              AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
              AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review != 'opened' OR batch.new_status = 'opened')
-           RETURNING r.id`,
-          [chatBatch.map(b => b.pid), chatBatch.map(b => b.rat), chatBatch.map(b => b.dt),
-           chatBatch.map(b => b.status), storeId]
-        );
-        chatStatusSynced = result.rows.length;
+           RETURNING r.id`;
+        const chatParams = [chatBatch.map(b => b.pid), chatBatch.map(b => b.rat), chatBatch.map(b => b.dt),
+           chatBatch.map(b => b.status), storeId];
+        const result1 = await query<{ id: string }>(chatUpdateSql('reviews'), chatParams);
+        const result2 = await query<{ id: string }>(chatUpdateSql('reviews_archive'), chatParams);
+        chatStatusSynced = result1.rows.length + result2.rows.length;
 
         // Detect unmatched reviews (not found in DB) — only if some weren't matched
-        if (result.rows.length < chatBatch.length) {
+        if (chatStatusSynced < chatBatch.length) {
           const checkResult = await query<{ pid: string; rat: number; dt: string }>(
             `SELECT batch.pid, batch.rat, batch.dt::text
              FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat, unnest($3::timestamptz[]) as dt) batch
              WHERE NOT EXISTS (
-               SELECT 1 FROM reviews r
+               SELECT 1 FROM reviews_all r
                WHERE r.store_id = $4 AND r.product_id = batch.pid AND r.rating = batch.rat
                  AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
              )`,
@@ -428,47 +429,48 @@ export async function POST(request: NextRequest) {
     }
 
     // 5b. Batch rating_excluded sync
+    // Sprint-013: Execute on both tables
     if (reExcludedTrue.length > 0) {
       try {
-        const result = await query<{ id: string }>(
-          `UPDATE reviews r
+        const reExclSql = (table: string) => `UPDATE ${table} r
            SET rating_excluded = true, updated_at = NOW()
            FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat, unnest($3::timestamptz[]) as dt) batch
            WHERE r.store_id = $4
              AND r.product_id = batch.pid AND r.rating = batch.rat
              AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
              AND r.rating_excluded != true
-           RETURNING r.id`,
-          [reExcludedTrue.map(b => b.pid), reExcludedTrue.map(b => b.rat), reExcludedTrue.map(b => b.dt), storeId]
-        );
-        resolvedReviewIds.push(...result.rows.map(r => r.id));
+           RETURNING r.id`;
+        const reExclParams = [reExcludedTrue.map(b => b.pid), reExcludedTrue.map(b => b.rat), reExcludedTrue.map(b => b.dt), storeId];
+        const r1 = await query<{ id: string }>(reExclSql('reviews'), reExclParams);
+        const r2 = await query<{ id: string }>(reExclSql('reviews_archive'), reExclParams);
+        resolvedReviewIds.push(...r1.rows.map(r => r.id), ...r2.rows.map(r => r.id));
       } catch (err: any) {
         console.error(`[Extension ReviewStatuses] Batch rating_excluded=true sync error:`, err.message);
       }
     }
     if (reExcludedFalse.length > 0) {
       try {
-        await query(
-          `UPDATE reviews r
+        const reExclFalseSql = (table: string) => `UPDATE ${table} r
            SET rating_excluded = false, updated_at = NOW()
            FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat, unnest($3::timestamptz[]) as dt) batch
            WHERE r.store_id = $4
              AND r.product_id = batch.pid AND r.rating = batch.rat
              AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
-             AND r.rating_excluded != false`,
-          [reExcludedFalse.map(b => b.pid), reExcludedFalse.map(b => b.rat), reExcludedFalse.map(b => b.dt), storeId]
-        );
+             AND r.rating_excluded != false`;
+        const reExclFalseParams = [reExcludedFalse.map(b => b.pid), reExcludedFalse.map(b => b.rat), reExcludedFalse.map(b => b.dt), storeId];
+        await query(reExclFalseSql('reviews'), reExclFalseParams);
+        await query(reExclFalseSql('reviews_archive'), reExclFalseParams);
       } catch (err: any) {
         console.error(`[Extension ReviewStatuses] Batch rating_excluded=false sync error:`, err.message);
       }
     }
 
     // 5c. Batch review_status_wb sync
+    // Sprint-013: Execute on both tables
     if (rwbBatch.length > 0) {
       try {
         const resolvedWbStatuses = ['excluded', 'unpublished', 'temporarily_hidden', 'deleted'];
-        const result = await query<{ id: string; new_status: string }>(
-          `UPDATE reviews r
+        const rwbSql = (table: string) => `UPDATE ${table} r
            SET review_status_wb = batch.new_status::review_status_wb, updated_at = NOW()
            FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat,
                         unnest($3::timestamptz[]) as dt, unnest($4::text[]) as new_status) batch
@@ -476,11 +478,12 @@ export async function POST(request: NextRequest) {
              AND r.product_id = batch.pid AND r.rating = batch.rat
              AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
              AND r.review_status_wb::text != batch.new_status
-           RETURNING r.id, batch.new_status`,
-          [rwbBatch.map(b => b.pid), rwbBatch.map(b => b.rat), rwbBatch.map(b => b.dt),
-           rwbBatch.map(b => b.status), storeId]
-        );
-        for (const r of result.rows) {
+           RETURNING r.id, batch.new_status`;
+        const rwbParams = [rwbBatch.map(b => b.pid), rwbBatch.map(b => b.rat), rwbBatch.map(b => b.dt),
+           rwbBatch.map(b => b.status), storeId];
+        const r1 = await query<{ id: string; new_status: string }>(rwbSql('reviews'), rwbParams);
+        const r2 = await query<{ id: string; new_status: string }>(rwbSql('reviews_archive'), rwbParams);
+        for (const r of [...r1.rows, ...r2.rows]) {
           if (resolvedWbStatuses.includes(r.new_status)) resolvedReviewIds.push(r.id);
         }
       } catch (err: any) {
@@ -489,20 +492,21 @@ export async function POST(request: NextRequest) {
     }
 
     // 5c2. Batch product_status_by_review sync
+    // Sprint-013: Execute on both tables
     if (psBatch.length > 0) {
       try {
-        await query(
-          `UPDATE reviews r
+        const psSql = (table: string) => `UPDATE ${table} r
            SET product_status_by_review = batch.new_status::product_status_by_review, updated_at = NOW()
            FROM (SELECT unnest($1::text[]) as pid, unnest($2::int[]) as rat,
                         unnest($3::timestamptz[]) as dt, unnest($4::text[]) as new_status) batch
            WHERE r.store_id = $5
              AND r.product_id = batch.pid AND r.rating = batch.rat
              AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
-             AND r.product_status_by_review::text != batch.new_status`,
-          [psBatch.map(b => b.pid), psBatch.map(b => b.rat), psBatch.map(b => b.dt),
-           psBatch.map(b => b.status), storeId]
-        );
+             AND r.product_status_by_review::text != batch.new_status`;
+        const psParams = [psBatch.map(b => b.pid), psBatch.map(b => b.rat), psBatch.map(b => b.dt),
+           psBatch.map(b => b.status), storeId];
+        await query(psSql('reviews'), psParams);
+        await query(psSql('reviews_archive'), psParams);
       } catch (err: any) {
         console.error(`[Extension ReviewStatuses] Batch product_status sync error:`, err.message);
       }
@@ -519,8 +523,8 @@ export async function POST(request: NextRequest) {
 
       for (const [status, items] of Array.from(groups.entries())) {
         try {
-          const syncResult = await query<{ id: string }>(
-            `UPDATE reviews r
+          // Sprint-013: Execute on both tables
+          const complaintSyncSql = (table: string) => `UPDATE ${table} r
              SET complaint_status = $1::complaint_status,
                  complaint_text = NULL, has_complaint_draft = false, has_complaint = true,
                  updated_at = NOW()
@@ -529,13 +533,15 @@ export async function POST(request: NextRequest) {
                AND r.product_id = batch.pid AND r.rating = batch.rat
                AND DATE_TRUNC('minute', r.date) = DATE_TRUNC('minute', batch.dt)
                AND (r.complaint_status IN ('not_sent', 'draft') OR r.complaint_status IS NULL)
-             RETURNING r.id`,
-            [status, items.map((i: any) => i.pid), items.map((i: any) => i.rat), items.map((i: any) => i.dt), storeId]
-          );
+             RETURNING r.id`;
+          const complaintParams = [status, items.map((i: any) => i.pid), items.map((i: any) => i.rat), items.map((i: any) => i.dt), storeId];
+          const sr1 = await query<{ id: string }>(complaintSyncSql('reviews'), complaintParams);
+          const sr2 = await query<{ id: string }>(complaintSyncSql('reviews_archive'), complaintParams);
+          const allSyncRows = [...sr1.rows, ...sr2.rows];
 
-          if (syncResult.rows.length > 0) {
-            synced += syncResult.rows.length;
-            const affectedIds = syncResult.rows.map(r => r.id);
+          if (allSyncRows.length > 0) {
+            synced += allSyncRows.length;
+            const affectedIds = allSyncRows.map(r => r.id);
 
             // Batch update review_complaints (single query for all affected)
             await query(
@@ -547,7 +553,7 @@ export async function POST(request: NextRequest) {
             if (status === 'approved') {
               resolvedReviewIds.push(...affectedIds);
             }
-            console.log(`[Extension ReviewStatuses] Batch synced ${syncResult.rows.length} reviews -> ${status}`);
+            console.log(`[Extension ReviewStatuses] Batch synced ${allSyncRows.length} reviews -> ${status}`);
           }
         } catch (err: any) {
           syncErrors += items.length;

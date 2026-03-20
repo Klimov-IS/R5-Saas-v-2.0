@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
           rating_excluded: boolean | null;
         }>(
           `SELECT complaint_status, review_status_wb, rating_excluded
-           FROM reviews WHERE id = $1`,
+           FROM reviews_all WHERE id = $1`,
           [reviewId]
         );
         const rev = reviewResult.rows[0];

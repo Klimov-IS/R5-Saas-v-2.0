@@ -104,17 +104,26 @@ export async function upsertReviewsFromExtension(
         rev.wb_article
       );
 
-      // 2. Check if review exists
+      // 2. Check if review exists (in either table)
       const existingReview = await query(
-        'SELECT id FROM reviews WHERE id = $1',
+        'SELECT id, rating FROM reviews WHERE id = $1',
         [rev.review_id]
       );
+      let isNewReview = !existingReview.rows[0];
+      if (isNewReview) {
+        const archiveCheck = await query(
+          'SELECT id, rating FROM reviews_archive WHERE id = $1',
+          [rev.review_id]
+        );
+        isNewReview = !archiveCheck.rows[0];
+      }
 
-      const isNewReview = !existingReview.rows[0];
+      // 3. Upsert review — route by rating (Sprint-013)
+      const targetTable = rev.rating === 5 ? 'reviews_archive' : 'reviews';
+      const otherTable = rev.rating === 5 ? 'reviews' : 'reviews_archive';
 
-      // 3. Upsert review
       await query(
-        `INSERT INTO reviews (
+        `INSERT INTO ${targetTable} (
           id, product_id, store_id, owner_id, rating, text, author, date,
           review_status_wb, product_status_by_review, chat_status_by_review, complaint_status,
           purchase_date, parsed_at, page_number,
@@ -129,16 +138,16 @@ export async function upsertReviewsFromExtension(
           product_status_by_review = EXCLUDED.product_status_by_review,
           chat_status_by_review = CASE
             WHEN EXCLUDED.chat_status_by_review = 'unknown'
-              THEN COALESCE(reviews.chat_status_by_review, 'unknown'::chat_status_by_review)
-            WHEN reviews.chat_status_by_review = 'opened' AND EXCLUDED.chat_status_by_review != 'opened'
-              THEN reviews.chat_status_by_review
-            ELSE COALESCE(EXCLUDED.chat_status_by_review, reviews.chat_status_by_review)
+              THEN COALESCE(${targetTable}.chat_status_by_review, 'unknown'::chat_status_by_review)
+            WHEN ${targetTable}.chat_status_by_review = 'opened' AND EXCLUDED.chat_status_by_review != 'opened'
+              THEN ${targetTable}.chat_status_by_review
+            ELSE COALESCE(EXCLUDED.chat_status_by_review, ${targetTable}.chat_status_by_review)
           END,
           complaint_status = CASE
-            WHEN reviews.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
+            WHEN ${targetTable}.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
               AND EXCLUDED.complaint_status IN ('not_sent', 'draft')
-              THEN reviews.complaint_status
-            ELSE COALESCE(EXCLUDED.complaint_status, reviews.complaint_status)
+              THEN ${targetTable}.complaint_status
+            ELSE COALESCE(EXCLUDED.complaint_status, ${targetTable}.complaint_status)
           END,
           purchase_date = EXCLUDED.purchase_date,
           parsed_at = EXCLUDED.parsed_at,
@@ -163,6 +172,9 @@ export async function upsertReviewsFromExtension(
         ]
       );
 
+      // Clean up other table in case rating changed
+      await query(`DELETE FROM ${otherTable} WHERE id = $1`, [rev.review_id]);
+
       if (isNewReview) {
         result.created++;
       } else {
@@ -179,9 +191,9 @@ export async function upsertReviewsFromExtension(
     }
   }
 
-  // Update store total_reviews count
+  // Update store total_reviews count (from both tables)
   const countResult = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM reviews WHERE store_id = $1',
+    'SELECT COUNT(*) as count FROM reviews_all WHERE store_id = $1',
     [storeId]
   );
 
@@ -310,7 +322,7 @@ export async function getStoreReviewsStats(storeId: string) {
       COUNT(*) FILTER (WHERE rating = 4) as rating_4,
       COUNT(*) FILTER (WHERE rating = 5) as rating_5,
       COALESCE(AVG(rating), 0) as avg_rating
-    FROM reviews
+    FROM reviews_all
     WHERE store_id = $1`,
     [storeId]
   );

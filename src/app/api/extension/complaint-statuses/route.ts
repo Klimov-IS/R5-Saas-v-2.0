@@ -233,9 +233,8 @@ export async function POST(request: NextRequest) {
     const filedDates = validItems.map(v => v.complaintFiledDate);
 
     const { bulkUpdateRows, reviewsUpdated, complaintsUpdated } = await transaction(async (client) => {
-      // Step 5: BULK UPDATE reviews table
-      const bulkUpdateResult = await client.query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(
-        `UPDATE reviews r
+      // Step 5: BULK UPDATE reviews table (Sprint-013: both tables)
+      const complaintBulkSql = (table: string) => `UPDATE ${table} r
          SET
            complaint_status = v.new_status::complaint_status,
            complaint_filed_by = v.filed_by,
@@ -256,9 +255,11 @@ export async function POST(request: NextRequest) {
            AND r.product_id = v.product_id
            AND r.rating = v.rating
            AND to_char(r.date AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD"T"HH24:MI') = v.date_minute
-         RETURNING r.id, v.new_status, v.filed_by, v.filed_date`,
-        [storeId, productIds, ratings, dateMinutes, statuses, filedBys, filedDates]
-      );
+         RETURNING r.id, v.new_status, v.filed_by, v.filed_date`;
+      const bulkParams = [storeId, productIds, ratings, dateMinutes, statuses, filedBys, filedDates];
+      const r1 = await client.query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(complaintBulkSql('reviews'), bulkParams);
+      const r2 = await client.query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(complaintBulkSql('reviews_archive'), bulkParams);
+      const bulkUpdateResult = { rows: [...r1.rows, ...r2.rows], rowCount: (r1.rowCount || 0) + (r2.rowCount || 0) };
 
       const rvUpdated = bulkUpdateResult.rowCount || 0;
       console.log(`[Extension ComplaintStatuses] Reviews updated: ${rvUpdated}`);
