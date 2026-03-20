@@ -395,9 +395,35 @@ CREATE INDEX idx_products_ozon_offer_id ON products(ozon_offer_id);
 
 ---
 
-### `reviews`
+### `reviews` + `reviews_archive` (Sprint-013 Table Split)
 
 **Purpose:** Customer reviews from WB Feedbacks API + Extension parsing
+
+**Architecture (Sprint-013, 2026-03-20):**
+The reviews data is split into two physical tables by rating:
+- `reviews` — working set (ratings 1-4), ~410K rows, ~600 MB
+- `reviews_archive` — cold storage (rating 5), ~3.25M rows, ~2.6 GB
+- `reviews_all` — UNION ALL view for transparent reads
+
+**Write routing:** `rating === 5 ? 'reviews_archive' : 'reviews'`
+**Read queries:** Use `reviews_all` for statistics/JOINs, or `reviews` directly when already filtered to 1-4★
+**Rating change:** If buyer edits review rating (5→4 or 3→5), row is DELETEd from old table and INSERTed into new
+
+**Constraints:**
+```sql
+ALTER TABLE reviews ADD CONSTRAINT chk_reviews_rating_1_4 CHECK (rating BETWEEN 1 AND 4);
+ALTER TABLE reviews_archive ADD CONSTRAINT chk_archive_rating_5 CHECK (rating = 5);
+```
+
+**View:**
+```sql
+CREATE VIEW reviews_all AS
+  SELECT * FROM reviews
+  UNION ALL
+  SELECT * FROM reviews_archive;
+```
+
+**Both tables share identical schema:**
 
 ```sql
 CREATE TABLE reviews (
@@ -530,6 +556,21 @@ CREATE TRIGGER update_reviews_complaint_flags
 **Auto-update logic:**
 - `has_complaint_draft = TRUE` when `complaint_status = 'draft'`
 - `has_complaint = TRUE` when `complaint_status IN ('sent', 'approved', 'rejected', 'pending')`
+
+**`reviews_archive` indexes:**
+```sql
+CREATE INDEX idx_ra_store_date ON reviews_archive(store_id, date DESC);
+CREATE INDEX idx_ra_product_date ON reviews_archive(product_id, date DESC);
+CREATE INDEX idx_ra_store_rating ON reviews_archive(store_id, rating);
+CREATE INDEX idx_ra_marketplace ON reviews_archive(marketplace);
+```
+
+**Key files for write routing:**
+- `src/db/helpers.ts` — `upsertReview()`, `createReview()`, `updateReview()`, `getReviewById()`
+- `src/db/extension-helpers.ts` — `upsertReviewsFromExtension()`
+- `src/db/complaint-helpers.ts` — dual-table UPDATEs
+- `src/lib/review-sync.ts` — deletion detection on both tables
+- `src/app/api/extension/review-statuses/route.ts` — batch UPDATEs on both tables
 
 ---
 
