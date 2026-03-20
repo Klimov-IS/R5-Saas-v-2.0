@@ -8,13 +8,31 @@
  * Rate limiting: 100 requests per minute per token
  * CORS enabled for Chrome Extension
  *
- * @version 4.1.0 — Sprint-012: eliminated N+1, added cache, rating<5 filter (hotfix 500)
- * @date 2026-03-19
+ * @version 4.2.0 — Sprint-012: queryWithTimeout, removed NOT EXISTS from Q2
+ * @date 2026-03-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByApiToken } from '@/db/extension-helpers';
 import { query } from '@/db/client';
+
+/** Run query with timeout — returns empty rows on timeout (graceful degradation for badges) */
+function queryWithTimeout<T extends Record<string, any>>(
+  sql: string,
+  params: any[],
+  timeoutMs: number,
+  label: string
+): Promise<{ rows: T[]; timedOut?: boolean }> {
+  return Promise.race([
+    query<T>(sql, params).then(r => ({ rows: r.rows, timedOut: false })),
+    new Promise<{ rows: T[]; timedOut: boolean }>((resolve) =>
+      setTimeout(() => {
+        console.warn(`[Extension /stores] ${label} timed out after ${timeoutMs}ms — returning empty`);
+        resolve({ rows: [] as T[], timedOut: true });
+      }, timeoutMs)
+    ),
+  ]);
+}
 
 // In-memory cache for stores response (TTL 30s, keyed by userId)
 const storesCache = new Map<string, { data: any; expiresAt: number }>();
@@ -151,13 +169,13 @@ export async function GET(request: NextRequest) {
       .filter(s => s.is_active && ['chats_opened', 'monitoring'].includes(s.stage))
       .map(s => s.id);
 
-    // 6. Three parallel boolean queries — NO product_id ANY() filters.
-    // Benchmark showed ANY(7641 product_ids) causes 49-70s cold-cache penalty.
-    // Without product_id filter: Q1b=9ms, Q2=<500ms, Q3=<500ms.
-    // False positives (~10-20%) acceptable for boolean badge on /stores list.
+    // 6. Three parallel boolean queries with 8s timeout (graceful degradation).
+    // On cold buffer cache (6.25GB reviews table, 4GB RAM), queries can take 60s+.
+    // queryWithTimeout returns empty rows on timeout — badge shows 0 instead of 500.
+    // rating < 5 filter excludes 88.8% of reviews (5★ never used in work).
     const step2Start = Date.now();
     const [draftComplaintsResult, statusParsesResult, pendingChatsResult] = await Promise.all([
-      // ── Q1b: stores with draft complaints (idx_complaints_store_status) ──
+      // ── Q1b: stores with draft complaints (fast, small table) ──
       activeStoreIds.length > 0
         ? query<{ store_id: string }>(
             `SELECT DISTINCT rc.store_id
@@ -168,9 +186,11 @@ export async function GET(request: NextRequest) {
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
-      // ── Q2: stores with pending status parses (idx_reviews_tasks_eligible) ──
+      // ── Q2: stores with pending status parses (8s timeout) ──
+      // NOT EXISTS removed: minor false positive acceptable for boolean badge.
+      // idx_reviews_status_parse_r14 covers this query (rating<5 partial).
       activeStoreIds.length > 0
-        ? query<{ store_id: string }>(
+        ? queryWithTimeout<{ store_id: string }>(
             `SELECT DISTINCT r.store_id
              FROM reviews r
              WHERE r.store_id = ANY($1::text[])
@@ -178,18 +198,17 @@ export async function GET(request: NextRequest) {
                AND r.rating_excluded = FALSE
                AND r.marketplace = 'wb'
                AND r.rating < 5
-               AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')
-               AND NOT EXISTS (
-                 SELECT 1 FROM review_complaints rc
-                 WHERE rc.review_id = r.id AND rc.status = 'draft'
-               )`,
-            [activeStoreIds]
+               AND (r.chat_status_by_review IS NULL OR r.chat_status_by_review = 'unknown')`,
+            [activeStoreIds],
+            8000,
+            'Q2-statusParses'
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
 
-      // ── Q3: stores with pending chats (JOINs only, no product_id array) ──
+      // ── Q3: stores with pending chats (8s timeout) ──
+      // Starts from review_complaints (small), JOINs to reviews/products.
       chatStageStoreIds.length > 0
-        ? query<{ store_id: string }>(
+        ? queryWithTimeout<{ store_id: string }>(
             `SELECT DISTINCT r.store_id
              FROM reviews r
              JOIN review_complaints rc ON rc.review_id = r.id
@@ -209,7 +228,9 @@ export async function GET(request: NextRequest) {
                    AND rcl.review_rating = r.rating
                    AND rcl.review_date BETWEEN r.date - interval '2 minutes' AND r.date + interval '2 minutes'
                )`,
-            [chatStageStoreIds]
+            [chatStageStoreIds],
+            8000,
+            'Q3-pendingChats'
           )
         : Promise.resolve({ rows: [] as { store_id: string }[] }),
     ]);
