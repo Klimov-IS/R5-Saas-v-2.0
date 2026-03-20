@@ -4,6 +4,7 @@
 //   POSTGRES_HOST=... node scripts/migrate-reviews-to-archive.mjs
 //   POSTGRES_HOST=... node scripts/migrate-reviews-to-archive.mjs --dry-run
 //   POSTGRES_HOST=... node scripts/migrate-reviews-to-archive.mjs --batch-size=50000
+//   POSTGRES_HOST=... node scripts/migrate-reviews-to-archive.mjs --resume  # continue after crash
 //
 // Prerequisites:
 //   - Migration 037 must be applied (reviews_archive table + reviews_all view)
@@ -23,6 +24,7 @@ const pg = require2('pg');
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const FORCE = args.includes('--force');
+const RESUME = args.includes('--resume');
 const BATCH_SIZE = parseInt(args.find(a => a.startsWith('--batch-size='))?.split('=')[1] || '100000');
 
 const pool = new pg.Pool({
@@ -33,7 +35,7 @@ const pool = new pg.Pool({
   password: process.env.POSTGRES_PASSWORD,
   ssl: { rejectUnauthorized: false },
   max: 3,
-  statement_timeout: 600000, // 10 min per query (large batches)
+  statement_timeout: 1800000, // 30 min per query (large batches on slow disk)
 });
 
 const fmt = (n) => Number(n).toLocaleString();
@@ -66,19 +68,23 @@ async function main() {
   }
   console.log('  reviews_archive table: EXISTS ✅');
 
-  // 2. Check reviews_archive is empty (or --force)
+  // 2. Check reviews_archive is empty (or --force / --resume)
   const archiveCount = await pool.query('SELECT COUNT(*) as cnt FROM reviews_archive');
   const archiveRows = parseInt(archiveCount.rows[0].cnt);
-  if (archiveRows > 0 && !FORCE) {
-    console.error(`ABORT: reviews_archive has ${fmt(archiveRows)} rows. Use --force to clear before migration.`);
-    process.exit(1);
-  }
-  if (archiveRows > 0 && FORCE) {
+  let resumeFromId = '';
+  if (archiveRows > 0 && RESUME) {
+    const maxIdRes = await pool.query('SELECT MAX(id) as max_id FROM reviews_archive');
+    resumeFromId = maxIdRes.rows[0].max_id || '';
+    console.log(`  reviews_archive has ${fmt(archiveRows)} rows — RESUMING from id=${resumeFromId}`);
+  } else if (archiveRows > 0 && FORCE) {
     console.log(`  reviews_archive has ${fmt(archiveRows)} rows — clearing (--force)...`);
     if (!DRY_RUN) {
       await pool.query('TRUNCATE reviews_archive');
     }
     console.log('  reviews_archive: CLEARED ✅');
+  } else if (archiveRows > 0) {
+    console.error(`ABORT: reviews_archive has ${fmt(archiveRows)} rows. Use --resume to continue or --force to restart.`);
+    process.exit(1);
   } else {
     console.log('  reviews_archive: EMPTY ✅');
   }
@@ -112,8 +118,8 @@ async function main() {
   // ========================================
   console.log('[Phase: COPY] Starting batch copy to reviews_archive...');
   const copyStart = Date.now();
-  let copiedTotal = 0;
-  let lastId = '';  // cursor for pagination
+  let copiedTotal = archiveRows > 0 && RESUME ? archiveRows : 0;
+  let lastId = resumeFromId;  // cursor for pagination (empty string or last archived id)
 
   while (true) {
     const batchRes = await pool.query(`
