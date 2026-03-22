@@ -365,6 +365,7 @@ export async function getPendingChatsCount(
      WHERE r.store_id = $1
        AND rc.status = 'rejected'
        AND pr.work_in_chats = TRUE
+       AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
        AND r.review_status_wb != 'deleted'
        AND r.marketplace = 'wb'
        AND NOT EXISTS (
@@ -396,6 +397,7 @@ export async function getPendingChatsCountOptimized(
      WHERE r.store_id = $1
        AND rc.status = 'rejected'
        AND pr.work_in_chats = TRUE
+       AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
        AND r.review_status_wb != 'deleted'
        AND r.marketplace = 'wb'
        AND (

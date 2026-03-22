@@ -33,6 +33,8 @@ type ProductRule = {
   max_compensation?: string | null;
   compensation_type?: string | null;
   compensation_by?: string | null;
+  work_from_date?: string | null;
+  comment?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -258,7 +260,7 @@ function RulesSummary({ rules }: { rules: ProductRule | null }) {
       </div>
 
       {/* Compensation */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '4px' }}>
         <span style={{ fontWeight: 500, color: 'hsl(var(--muted-foreground))', minWidth: '95px' }}>
           💰 Компенсация:
         </span>
@@ -267,6 +269,20 @@ function RulesSummary({ rules }: { rules: ProductRule | null }) {
             ? `${rules.max_compensation || '500'}₽, ${rules.compensation_type === 'cashback' ? 'кешбек' : 'возврат'}, ${rules.compensation_by === 'r5' ? 'Р5' : 'продавец'}`
             : <span style={{ color: 'hsl(var(--muted-foreground))', fontStyle: 'italic' }}>выключена</span>
           }
+        </span>
+      </div>
+
+      {/* Work from date */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+        <span style={{ fontWeight: 500, color: 'hsl(var(--muted-foreground))', minWidth: '95px' }}>
+          📅 Отзывы от:
+        </span>
+        <span style={{ color: 'hsl(var(--foreground))' }}>
+          {(() => {
+            const d = rules.work_from_date || '2023-10-01';
+            const date = new Date(d + 'T00:00:00');
+            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+          })()}
         </span>
       </div>
     </div>
