@@ -204,7 +204,7 @@ export async function GET(
     const chatRatingsArr = [...chatAllRatings];
 
     // 4. Step 2: Run data queries in parallel (no product_rules JOIN!)
-    const [statusParsesResult, chatOpensResult, chatLinksResult, complaintsResult] = await Promise.all([
+    const [statusParsesResult, chatOpensResult, chatLinksResult, complaintsResult, complaintsCountResult] = await Promise.all([
       // ── Query A: statusParses ──
       // Fetch extra rows (LIMIT 1000) since JS post-filter by work_from_date may reduce count
       statusParseProductIds.length > 0 ? query<{
@@ -240,8 +240,10 @@ export async function GET(
       ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
       // ── Query B: chatOpens (type: "open") ──
+      // Fetch extra rows (LIMIT 400) since JS post-filter by work_from_date may reduce count
       chatTasksAllowed && chatEligibleProductIds.length > 0 ? query<{
         id: string;
+        product_id: string;
         wb_product_id: string;
         rating: number;
         date: string;
@@ -249,7 +251,7 @@ export async function GET(
         text: string;
       }>(
         `SELECT DISTINCT ON (r.id)
-                r.id, p.wb_product_id, r.rating, r.date, r.author, r.text
+                r.id, r.product_id, p.wb_product_id, r.rating, r.date, r.author, r.text
          FROM reviews r
          JOIN review_complaints rc ON rc.review_id = r.id
          JOIN products p ON r.product_id = p.id
@@ -271,20 +273,22 @@ export async function GET(
                                         AND r.date + interval '2 minutes'
            )
          ORDER BY r.id, r.date ASC
-         LIMIT 200`,
+         LIMIT 400`,
         [storeId, chatEligibleProductIds, chatRatingsArr]
       ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
       // ── Query C: chatLinks (type: "link") ──
+      // Fetch extra rows (LIMIT 400) since JS post-filter by work_from_date may reduce count
       chatTasksAllowed && chatEligibleProductIds.length > 0 ? query<{
         id: string;
+        product_id: string;
         wb_product_id: string;
         rating: number;
         date: string;
         author: string;
         text: string;
       }>(
-        `SELECT r.id, p.wb_product_id, r.rating, r.date, r.author, r.text
+        `SELECT r.id, r.product_id, p.wb_product_id, r.rating, r.date, r.author, r.text
          FROM reviews r
          JOIN products p ON r.product_id = p.id
          WHERE r.store_id = $1
@@ -303,7 +307,7 @@ export async function GET(
                                         AND r.date + interval '2 minutes'
            )
          ORDER BY p.wb_product_id, r.date ASC
-         LIMIT 200`,
+         LIMIT 400`,
         [storeId, chatEligibleProductIds, chatRatingsArr]
       ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
@@ -335,21 +339,50 @@ export async function GET(
          LIMIT 500`,
         [storeId]
       ),
+
+      // ── Query E: exact complaint count (lightweight — index only scan) ──
+      query<{ cnt: string }>(
+        `SELECT COUNT(*) as cnt
+         FROM review_complaints rc
+         JOIN reviews r ON r.id = rc.review_id
+         JOIN products p ON r.product_id = p.id
+         WHERE rc.store_id = $1
+           AND rc.status = 'draft'
+           AND r.store_id = $1
+           AND p.work_status = 'active'
+           AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
+           AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
+           AND r.rating_excluded = FALSE`,
+        [storeId]
+      ),
     ]);
 
-    // 5. Post-filter statusParses by per-product work_from_date + rating eligibility
+    // 5. Post-filter by per-product work_from_date + rating eligibility
+    // Helper: check review date against per-product cutoff
+    const isAfterWorkFromDate = (productId: string, reviewDate: string): boolean => {
+      const elig = productEligibility.get(productId);
+      if (!elig) return false;
+      const date = new Date(reviewDate);
+      const cutoff = elig.workFromDate || new Date('2023-10-01');
+      return date >= cutoff;
+    };
+
     const filteredStatusParses = statusParsesResult.rows.filter(row => {
       const elig = productEligibility.get(row.product_id);
       if (!elig) return false;
-
-      // Check work_from_date
-      const reviewDate = new Date(row.date);
-      const cutoff = elig.workFromDate || new Date('2023-10-01');
-      if (reviewDate < cutoff) return false;
-
-      // Check per-product rating eligibility
+      if (!isAfterWorkFromDate(row.product_id, row.date)) return false;
       return elig.complaintRatings.has(row.rating) || elig.chatRatings.has(row.rating);
     }).slice(0, 500);
+
+    // Post-filter chatOpens by work_from_date (protects against complaints filed outside R5)
+    const filteredChatOpens = (chatOpensResult.rows as Array<{ id: string; product_id: string; wb_product_id: string; rating: number; date: string; author: string; text: string }>).filter(row =>
+      isAfterWorkFromDate(row.product_id, row.date)
+    ).slice(0, 200);
+
+    // Post-filter chatLinks by work_from_date
+    const filteredChatLinks = (chatLinksResult.rows as Array<{ id: string; product_id: string; wb_product_id: string; rating: number; date: string; author: string; text: string }>).filter(row =>
+      isAfterWorkFromDate(row.product_id, row.date)
+    ).slice(0, 200);
 
     // 6. Group everything by article (nmId)
     const articles: Record<string, {
@@ -381,7 +414,7 @@ export async function GET(
       });
     }
 
-    for (const row of chatOpensResult.rows) {
+    for (const row of filteredChatOpens) {
       const article = ensureArticle(row.wb_product_id);
       article.chatOpens.push({
         type: 'open' as const,
@@ -394,7 +427,7 @@ export async function GET(
       });
     }
 
-    for (const row of chatLinksResult.rows) {
+    for (const row of filteredChatLinks) {
       const article = ensureArticle(row.wb_product_id);
       article.chatOpens.unshift({
         type: 'link' as const,
@@ -426,22 +459,24 @@ export async function GET(
 
     const elapsed = Date.now() - startTime;
 
+    // Real complaint count from parallel COUNT query (fixes LIMIT 500 cap for large stores)
+    const realComplaintCount = parseInt(complaintsCountResult.rows[0]?.cnt || '0', 10);
+
     const totals = {
       statusParses: filteredStatusParses.length,
-      chatOpens: chatOpensResult.rows.length + chatLinksResult.rows.length,
-      chatOpensNew: chatOpensResult.rows.length,
-      chatLinks: chatLinksResult.rows.length,
-      complaints: complaintsResult.rows.length,
+      chatOpens: filteredChatOpens.length + filteredChatLinks.length,
+      chatOpensNew: filteredChatOpens.length,
+      chatLinks: filteredChatLinks.length,
+      complaints: realComplaintCount,
+      complaintsInPayload: complaintsResult.rows.length,
       articles: Object.keys(articles).length,
     };
-
-    // totalCounts: estimated from LIMIT results (exact COUNTs removed for performance — v2.0)
     const totalCounts = {
       statusParses: totals.statusParses,
       chatOpens: totals.chatOpens,
       chatOpensNew: totals.chatOpensNew,
       chatLinks: totals.chatLinks,
-      complaints: totals.complaints,
+      complaints: realComplaintCount,
     };
 
     console.log(
