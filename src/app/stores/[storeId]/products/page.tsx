@@ -33,6 +33,10 @@ type ProductRule = {
   max_compensation?: string | null;
   compensation_type?: string | null;
   compensation_by?: string | null;
+  per_rating_compensation?: boolean;
+  compensation_1star?: string | null;
+  compensation_2star?: string | null;
+  compensation_3star?: string | null;
   work_from_date?: string | null;
   comment?: string | null;
   created_at: string;
@@ -266,7 +270,9 @@ function RulesSummary({ rules }: { rules: ProductRule | null }) {
         </span>
         <span style={{ color: 'hsl(var(--foreground))' }}>
           {rules.offer_compensation
-            ? `${rules.max_compensation || '500'}₽, ${rules.compensation_type === 'cashback' ? 'кешбек' : 'возврат'}, ${rules.compensation_by === 'r5' ? 'Р5' : 'продавец'}`
+            ? rules.per_rating_compensation
+              ? `1⭐:${rules.compensation_1star || rules.max_compensation || '500'}₽ / 2⭐:${rules.compensation_2star || rules.max_compensation || '500'}₽ / 3⭐:${rules.compensation_3star || rules.max_compensation || '500'}₽, ${rules.compensation_type === 'cashback' ? 'кешбек' : 'возврат'}, ${rules.compensation_by === 'r5' ? 'Р5' : 'продавец'}`
+              : `${rules.max_compensation || '500'}₽, ${rules.compensation_type === 'cashback' ? 'кешбек' : 'возврат'}, ${rules.compensation_by === 'r5' ? 'Р5' : 'продавец'}`
             : <span style={{ color: 'hsl(var(--muted-foreground))', fontStyle: 'italic' }}>выключена</span>
           }
         </span>

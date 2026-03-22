@@ -84,6 +84,10 @@ export async function PUT(
       max_compensation: body.max_compensation ?? null,
       compensation_type: body.compensation_type ?? null,
       compensation_by: body.compensation_by ?? null,
+      per_rating_compensation: body.per_rating_compensation ?? false,
+      compensation_1star: body.per_rating_compensation ? (body.compensation_1star ?? null) : null,
+      compensation_2star: body.per_rating_compensation ? (body.compensation_2star ?? null) : null,
+      compensation_3star: body.per_rating_compensation ? (body.compensation_3star ?? null) : null,
 
       // Дата начала работы и комментарий
       work_from_date: body.work_from_date ?? '2023-10-01',

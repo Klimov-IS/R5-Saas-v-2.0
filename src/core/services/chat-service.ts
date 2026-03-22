@@ -7,6 +7,7 @@
  *   - generateReply: AI context building + generation (PR-05)
  */
 import * as dbHelpers from '@/db/helpers';
+import { getEffectiveCompensation } from '@/db/helpers';
 import * as chatRepo from '@/db/repositories/chat-repository';
 import type { ChatDetailDTO, ChatMessageDTO, ChatDetailResponse } from '@/core/contracts/tma-chat';
 import type { SendMessageResponse, GenerateAiResponse } from '@/core/contracts/tma-chat';
@@ -246,7 +247,8 @@ export async function generateReply(
       const isNegativeReview = reviewRating != null && reviewRating <= 3;
 
       if (rules.offer_compensation && isNegativeReview) {
-        productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ (${rules.compensation_type || 'не указан тип'})`;
+        const effectiveAmount = getEffectiveCompensation(rules, reviewRating);
+        productRulesContext += `\nКомпенсация: до ${effectiveAmount}₽ (${rules.compensation_type || 'не указан тип'})`;
       } else if (reviewRating != null && reviewRating >= 4) {
         if (isOzon) {
           productRulesContext += `\nКомпенсация: не предлагать (оценка ${reviewRating}★ — попросить дополнить отзыв до 5★)`;
@@ -257,10 +259,12 @@ export async function generateReply(
         productRulesContext += `\nКомпенсация: не предлагать`;
       } else if (reviewRating == null && rules.offer_compensation) {
         // Rating unknown (e.g. OZON chats without review_chat_links) — compensation ONLY for target action
+        // Use max_compensation here since we don't know the rating
+        const maxAmount = rules.max_compensation || '?';
         if (isOzon) {
-          productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за дополнение отзыва до 5★. Без согласия на дополнение — не предлагать`;
+          productRulesContext += `\nКомпенсация: до ${maxAmount}₽ — СТРОГО только за дополнение отзыва до 5★. Без согласия на дополнение — не предлагать`;
         } else {
-          productRulesContext += `\nКомпенсация: до ${rules.max_compensation || '?'}₽ — СТРОГО только за удаление или изменение отзыва. Без согласия — не предлагать`;
+          productRulesContext += `\nКомпенсация: до ${maxAmount}₽ — СТРОГО только за удаление или изменение отзыва. Без согласия — не предлагать`;
         }
       }
       if (rules.chat_strategy) {

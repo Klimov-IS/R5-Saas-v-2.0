@@ -19,6 +19,10 @@ export interface CustomRules {
   max_compensation: string;
   compensation_type: 'cashback' | 'refund';
   compensation_by: 'r5' | 'seller';
+  per_rating_compensation: boolean;
+  compensation_1star: string;
+  compensation_2star: string;
+  compensation_3star: string;
   work_from_date: string;
   comment: string;
 }
@@ -46,6 +50,10 @@ const DEFAULT_RULES: CustomRules = {
   max_compensation: '500',
   compensation_type: 'cashback',
   compensation_by: 'r5',
+  per_rating_compensation: false,
+  compensation_1star: '',
+  compensation_2star: '',
+  compensation_3star: '',
   work_from_date: '2023-10-01',
   comment: '',
 };
@@ -337,6 +345,51 @@ export function CustomRulesModal({ isOpen, onClose, onApply, selectedCount }: Cu
                       color: 'hsl(var(--foreground))'
                     }}
                   />
+                </div>
+
+                {/* Per-rating compensation toggle */}
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #86efac',
+                  borderRadius: '6px',
+                  padding: '10px 12px',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: rules.per_rating_compensation ? '10px' : '0' }}>
+                    <input
+                      type="checkbox"
+                      checked={rules.per_rating_compensation}
+                      onChange={(e) => updateRule('per_rating_compensation', e.target.checked)}
+                      style={{ width: '14px', height: '14px', cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '13px', fontWeight: 500 }}>Разный кешбек по звёздам</span>
+                  </label>
+
+                  {rules.per_rating_compensation && (
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      {([1, 2, 3] as const).map(star => (
+                        <div key={star} style={{ flex: '1 1 70px' }}>
+                          <label style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', display: 'block', marginBottom: '4px' }}>
+                            {star}⭐, ₽
+                          </label>
+                          <input
+                            type="text"
+                            value={rules[`compensation_${star}star` as keyof CustomRules] as string}
+                            onChange={(e) => updateRule(`compensation_${star}star` as keyof CustomRules, e.target.value)}
+                            placeholder={rules.max_compensation || '500'}
+                            style={{
+                              width: '100%',
+                              padding: '6px 10px',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px',
+                              fontSize: '13px',
+                              backgroundColor: 'hsl(var(--card))',
+                              color: 'hsl(var(--foreground))'
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>

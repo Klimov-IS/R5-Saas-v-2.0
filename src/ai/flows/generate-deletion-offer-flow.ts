@@ -3,8 +3,8 @@
  * @fileOverview AI Flow for generating deletion offer messages
  *
  * Generates personalized compensation offers for clients willing to delete/modify reviews.
- * Compensation amount is FIXED per product (from product_rules.max_compensation),
- * same for all star ratings (1-2-3★).
+ * Compensation amount comes from product_rules — either a single max_compensation
+ * or per-rating amounts (compensation_1star/2star/3star) when per_rating_compensation=true.
  *
  * Created: 2026-01-16 (Stage 3)
  */
@@ -12,6 +12,7 @@
 import { runChatCompletion } from '../assistant-utils';
 import { z } from 'zod';
 import * as dbHelpers from '@/db/helpers';
+import { getEffectiveCompensation } from '@/db/helpers';
 
 // ============================================================================
 // Input/Output Schemas
@@ -32,6 +33,12 @@ const GenerateDeletionOfferInputSchema = z.object({
   compensationType: z.enum(['cashback', 'refund']).describe('Type of compensation'),
   maxCompensation: z.number().describe('Maximum compensation amount (rubles)'),
   chatStrategy: z.enum(['upgrade_to_5', 'delete', 'both']).optional().describe('Chat strategy'),
+
+  // Per-rating compensation (optional)
+  perRatingCompensation: z.boolean().optional().describe('Whether per-rating compensation is enabled'),
+  compensation1star: z.string().optional().describe('Compensation for 1★ reviews'),
+  compensation2star: z.string().optional().describe('Compensation for 2★ reviews'),
+  compensation3star: z.string().optional().describe('Compensation for 3★ reviews'),
 
   // IDs for logging
   storeId: z.string(),
@@ -57,17 +64,38 @@ export type GenerateDeletionOfferOutput = z.infer<typeof GenerateDeletionOfferOu
 /**
  * Get compensation amount from product rules.
  *
- * Compensation is FIXED per product article — same amount for 1★, 2★, 3★.
- * The value comes from product_rules.max_compensation and is used as-is.
+ * Uses getEffectiveCompensation to resolve per-rating amounts when enabled,
+ * falling back to maxCompensation for all ratings.
  */
 function calculateCompensation(
   reviewRating: number | undefined,
   maxCompensation: number,
-  productPrice?: number
+  perRatingCompensation?: boolean,
+  compensation1star?: string,
+  compensation2star?: string,
+  compensation3star?: string,
 ): {
   amount: number;
   reasoning: string;
 } {
+  if (perRatingCompensation && reviewRating != null) {
+    const effectiveStr = getEffectiveCompensation(
+      {
+        per_rating_compensation: true,
+        compensation_1star: compensation1star || null,
+        compensation_2star: compensation2star || null,
+        compensation_3star: compensation3star || null,
+        max_compensation: String(maxCompensation),
+      },
+      reviewRating
+    );
+    const amount = parseInt(effectiveStr, 10) || maxCompensation;
+    return {
+      amount,
+      reasoning: `Per-rating (${reviewRating}★): ${amount}₽`,
+    };
+  }
+
   return {
     amount: maxCompensation,
     reasoning: `Fixed per product rules: ${maxCompensation}₽`,
@@ -92,7 +120,11 @@ export async function generateDeletionOffer(
     // Stage 1: Calculate compensation
     const compensation = calculateCompensation(
       input.reviewRating,
-      input.maxCompensation
+      input.maxCompensation,
+      input.perRatingCompensation,
+      input.compensation1star,
+      input.compensation2star,
+      input.compensation3star,
     );
 
     console.log(
@@ -220,16 +252,21 @@ export async function generateDeletionOffer(
     console.error('[GENERATE-DELETION-OFFER] Error:', error);
 
     // Fallback to template
+    const fallbackComp = calculateCompensation(
+      input.reviewRating, input.maxCompensation,
+      input.perRatingCompensation, input.compensation1star,
+      input.compensation2star, input.compensation3star,
+    );
     const fallbackMessage = generateFallbackOffer(
       input.clientName,
       input.productName,
-      calculateCompensation(input.reviewRating, input.maxCompensation).amount,
+      fallbackComp.amount,
       input.compensationType
     );
 
     return {
       messageText: fallbackMessage,
-      offerAmount: calculateCompensation(input.reviewRating, input.maxCompensation).amount,
+      offerAmount: fallbackComp.amount,
       strategy: input.chatStrategy || 'both',
       tone: 'professional',
       estimatedSuccessRate: 0.5,
@@ -340,6 +377,10 @@ export async function bulkGenerateDeletionOffers(
         compensationType: (productRule.compensation_type as 'cashback' | 'refund') || 'refund',
         maxCompensation: parseInt(productRule.max_compensation || '500', 10),
         chatStrategy: productRule.chat_strategy,
+        perRatingCompensation: productRule.per_rating_compensation ?? false,
+        compensation1star: productRule.compensation_1star ?? undefined,
+        compensation2star: productRule.compensation_2star ?? undefined,
+        compensation3star: productRule.compensation_3star ?? undefined,
         storeId,
         ownerId: chat.owner_id,
         chatId,

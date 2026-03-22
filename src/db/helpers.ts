@@ -2324,6 +2324,10 @@ export interface ProductRule {
   compensation_type?: string | null;
   max_compensation?: string | null;
   compensation_by?: string | null;
+  per_rating_compensation?: boolean;
+  compensation_1star?: string | null;
+  compensation_2star?: string | null;
+  compensation_3star?: string | null;
 
   // Дата начала работы и комментарий
   work_from_date?: string | null;
@@ -2381,9 +2385,10 @@ export async function upsertProductRule(
       submit_complaints, complaint_rating_1, complaint_rating_2, complaint_rating_3, complaint_rating_4,
       work_in_chats, chat_rating_1, chat_rating_2, chat_rating_3, chat_rating_4, chat_strategy,
       offer_compensation, compensation_type, max_compensation, compensation_by,
+      per_rating_compensation, compensation_1star, compensation_2star, compensation_3star,
       work_from_date, comment,
       created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), NOW())
     ON CONFLICT (product_id) DO UPDATE SET
       submit_complaints = EXCLUDED.submit_complaints,
       complaint_rating_1 = EXCLUDED.complaint_rating_1,
@@ -2400,6 +2405,10 @@ export async function upsertProductRule(
       compensation_type = EXCLUDED.compensation_type,
       max_compensation = EXCLUDED.max_compensation,
       compensation_by = EXCLUDED.compensation_by,
+      per_rating_compensation = EXCLUDED.per_rating_compensation,
+      compensation_1star = EXCLUDED.compensation_1star,
+      compensation_2star = EXCLUDED.compensation_2star,
+      compensation_3star = EXCLUDED.compensation_3star,
       work_from_date = EXCLUDED.work_from_date,
       comment = EXCLUDED.comment,
       updated_at = NOW()
@@ -2422,6 +2431,10 @@ export async function upsertProductRule(
       rule.compensation_type || null,
       rule.max_compensation || null,
       rule.compensation_by || null,
+      rule.per_rating_compensation ?? false,
+      rule.compensation_1star || null,
+      rule.compensation_2star || null,
+      rule.compensation_3star || null,
       rule.work_from_date || '2023-10-01',
       rule.comment || null,
     ]
@@ -2435,6 +2448,27 @@ export async function upsertProductRule(
 export async function deleteProductRule(productId: string): Promise<boolean> {
   const result = await query('DELETE FROM product_rules WHERE product_id = $1', [productId]);
   return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Get effective compensation amount for a specific review rating.
+ * When per_rating_compensation is enabled, returns the rating-specific amount.
+ * Falls back to max_compensation when per-rating is disabled or field is empty.
+ */
+export function getEffectiveCompensation(
+  rule: Pick<ProductRule, 'per_rating_compensation' | 'compensation_1star' | 'compensation_2star' | 'compensation_3star' | 'max_compensation'>,
+  reviewRating: number | null | undefined
+): string {
+  const fallback = rule.max_compensation || '500';
+  if (!rule.per_rating_compensation || reviewRating == null) {
+    return fallback;
+  }
+  switch (reviewRating) {
+    case 1: return rule.compensation_1star || fallback;
+    case 2: return rule.compensation_2star || fallback;
+    case 3: return rule.compensation_3star || fallback;
+    default: return fallback;
+  }
 }
 
 /**

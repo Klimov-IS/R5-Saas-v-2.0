@@ -25,6 +25,10 @@ export type ProductRule = {
   max_compensation?: string | null;
   compensation_type?: string | null;
   compensation_by?: string | null;
+  per_rating_compensation?: boolean;
+  compensation_1star?: string | null;
+  compensation_2star?: string | null;
+  compensation_3star?: string | null;
   work_from_date?: string | null;
   comment?: string | null;
   created_at: string;
@@ -74,6 +78,10 @@ export function RulesConfigSidebar({
   const [maxCompensation, setMaxCompensation] = useState('500');
   const [compensationType, setCompensationType] = useState<'cashback' | 'refund'>('cashback');
   const [compensationBy, setCompensationBy] = useState<'r5' | 'seller'>('r5');
+  const [perRatingCompensation, setPerRatingCompensation] = useState(false);
+  const [compensation1star, setCompensation1star] = useState('');
+  const [compensation2star, setCompensation2star] = useState('');
+  const [compensation3star, setCompensation3star] = useState('');
 
   const [workFromDate, setWorkFromDate] = useState('2023-10-01');
   const [comment, setComment] = useState('');
@@ -98,6 +106,10 @@ export function RulesConfigSidebar({
       setMaxCompensation(currentRules.max_compensation || '500');
       setCompensationType((currentRules.compensation_type as 'cashback' | 'refund') || 'cashback');
       setCompensationBy((currentRules.compensation_by as 'r5' | 'seller') || 'r5');
+      setPerRatingCompensation(currentRules.per_rating_compensation ?? false);
+      setCompensation1star(currentRules.compensation_1star || '');
+      setCompensation2star(currentRules.compensation_2star || '');
+      setCompensation3star(currentRules.compensation_3star || '');
 
       setWorkFromDate(currentRules.work_from_date || '2023-10-01');
       setComment(currentRules.comment || '');
@@ -144,6 +156,10 @@ export function RulesConfigSidebar({
       setMaxCompensation('500');
       setCompensationType('cashback');
       setCompensationBy('r5');
+      setPerRatingCompensation(false);
+      setCompensation1star('');
+      setCompensation2star('');
+      setCompensation3star('');
 
       setWorkFromDate('2023-10-01');
       setComment('');
@@ -184,6 +200,10 @@ export function RulesConfigSidebar({
         max_compensation: maxCompensation,
         compensation_type: compensationType,
         compensation_by: compensationBy,
+        per_rating_compensation: perRatingCompensation,
+        compensation_1star: perRatingCompensation ? (compensation1star || null) : null,
+        compensation_2star: perRatingCompensation ? (compensation2star || null) : null,
+        compensation_3star: perRatingCompensation ? (compensation3star || null) : null,
         work_from_date: workFromDate,
         comment: comment || null,
       };
@@ -596,7 +616,7 @@ export function RulesConfigSidebar({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div>
                     <label style={{ fontSize: '13px', fontWeight: 500, marginBottom: '8px', display: 'block' }}>
-                      Максимальная сумма компенсации, ₽
+                      {perRatingCompensation ? 'Базовая сумма компенсации (фоллбэк), ₽' : 'Максимальная сумма компенсации, ₽'}
                     </label>
                     <input
                       type="number"
@@ -611,6 +631,85 @@ export function RulesConfigSidebar({
                       }}
                       placeholder="500"
                     />
+                  </div>
+
+                  {/* Per-rating compensation toggle */}
+                  <div style={{
+                    background: '#f0fdf4',
+                    border: '1px solid #86efac',
+                    borderRadius: '8px',
+                    padding: '14px',
+                  }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: perRatingCompensation ? '14px' : '0' }}>
+                      <input
+                        type="checkbox"
+                        checked={perRatingCompensation}
+                        onChange={(e) => setPerRatingCompensation(e.target.checked)}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '13px', fontWeight: 500 }}>
+                        Разный кешбек по звёздам
+                      </span>
+                    </label>
+
+                    {perRatingCompensation && (
+                      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                        <div style={{ flex: '1 1 80px' }}>
+                          <label style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', display: 'block', marginBottom: '4px' }}>
+                            1⭐, ₽
+                          </label>
+                          <input
+                            type="number"
+                            value={compensation1star}
+                            onChange={(e) => setCompensation1star(e.target.value)}
+                            placeholder={maxCompensation || '500'}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px',
+                              fontSize: '14px'
+                            }}
+                          />
+                        </div>
+                        <div style={{ flex: '1 1 80px' }}>
+                          <label style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', display: 'block', marginBottom: '4px' }}>
+                            2⭐, ₽
+                          </label>
+                          <input
+                            type="number"
+                            value={compensation2star}
+                            onChange={(e) => setCompensation2star(e.target.value)}
+                            placeholder={maxCompensation || '500'}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px',
+                              fontSize: '14px'
+                            }}
+                          />
+                        </div>
+                        <div style={{ flex: '1 1 80px' }}>
+                          <label style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', display: 'block', marginBottom: '4px' }}>
+                            3⭐, ₽
+                          </label>
+                          <input
+                            type="number"
+                            value={compensation3star}
+                            onChange={(e) => setCompensation3star(e.target.value)}
+                            placeholder={maxCompensation || '500'}
+                            style={{
+                              width: '100%',
+                              padding: '8px 10px',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: '6px',
+                              fontSize: '14px'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>

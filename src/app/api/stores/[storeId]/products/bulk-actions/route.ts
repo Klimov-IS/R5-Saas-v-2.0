@@ -157,6 +157,10 @@ export async function POST(
           max_compensation: rules.max_compensation ?? null,
           compensation_type: rules.compensation_type ?? null,
           compensation_by: rules.compensation_by ?? null,
+          per_rating_compensation: rules.per_rating_compensation ?? false,
+          compensation_1star: rules.per_rating_compensation ? (rules.compensation_1star ?? null) : null,
+          compensation_2star: rules.per_rating_compensation ? (rules.compensation_2star ?? null) : null,
+          compensation_3star: rules.per_rating_compensation ? (rules.compensation_3star ?? null) : null,
         };
 
         for (const productId of product_ids) {
@@ -289,6 +293,10 @@ export async function POST(
               max_compensation: sourceRules.max_compensation,
               compensation_type: sourceRules.compensation_type,
               compensation_by: sourceRules.compensation_by,
+              per_rating_compensation: sourceRules.per_rating_compensation,
+              compensation_1star: sourceRules.compensation_1star,
+              compensation_2star: sourceRules.compensation_2star,
+              compensation_3star: sourceRules.compensation_3star,
             });
             processed++;
 

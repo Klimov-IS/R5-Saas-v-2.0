@@ -168,7 +168,9 @@ export function formatProductRow(
     // Компенсация
     formatBool(rule?.offer_compensation),
     formatCompensationType(rule?.compensation_type),
-    rule?.max_compensation || '—',
+    rule?.per_rating_compensation
+      ? `1⭐:${rule.compensation_1star || rule.max_compensation || '?'} / 2⭐:${rule.compensation_2star || rule.max_compensation || '?'} / 3⭐:${rule.compensation_3star || rule.max_compensation || '?'}`
+      : (rule?.max_compensation || '—'),
     formatCompensationBy(rule?.compensation_by),
     // Мета
     formatDate(rule?.updated_at || product.updated_at),
