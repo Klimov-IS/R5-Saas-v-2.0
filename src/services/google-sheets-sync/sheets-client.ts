@@ -206,10 +206,10 @@ export interface DriveFile {
 }
 
 /**
- * List files in a Google Drive folder
+ * List files in a Google Drive folder (with pagination)
  * @param config - Google API config
  * @param folderId - Google Drive folder ID (from URL)
- * @param pageSize - Max files to return (default 100)
+ * @param pageSize - Files per page (default 100, max 1000)
  */
 export async function listFilesInFolder(
   config: GoogleSheetsConfig,
@@ -217,27 +217,38 @@ export async function listFilesInFolder(
   pageSize: number = 100
 ): Promise<DriveFile[]> {
   const token = await getAccessToken(config);
+  const allFiles: DriveFile[] = [];
+  let pageToken: string | null = null;
 
-  return withRetry(async () => {
-    const q = `'${folderId}' in parents and trashed = false`;
-    const fields = 'files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink)';
+  do {
+    const result = await withRetry(async () => {
+      const q = `'${folderId}' in parents and trashed = false`;
+      const fields = 'nextPageToken,files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink)';
 
-    const url = `${GOOGLE_DRIVE_BASE_URL}/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=${pageSize}&orderBy=name`;
-
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`
+      let url = `${GOOGLE_DRIVE_BASE_URL}/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=${pageSize}&orderBy=name`;
+      if (pageToken) {
+        url += `&pageToken=${encodeURIComponent(pageToken)}`;
       }
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Failed to list files: ${response.status} ${error}`);
+      }
+
+      return response.json();
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Failed to list files: ${response.status} ${error}`);
-    }
+    allFiles.push(...(result.files || []));
+    pageToken = result.nextPageToken || null;
+  } while (pageToken);
 
-    const data = await response.json();
-    return data.files || [];
-  });
+  return allFiles;
 }
 
 /**
