@@ -161,6 +161,8 @@ export async function POST(
           compensation_1star: rules.per_rating_compensation ? (rules.compensation_1star ?? null) : null,
           compensation_2star: rules.per_rating_compensation ? (rules.compensation_2star ?? null) : null,
           compensation_3star: rules.per_rating_compensation ? (rules.compensation_3star ?? null) : null,
+          work_from_date: rules.work_from_date ?? '2023-10-01',
+          comment: rules.comment ?? '',
         };
 
         for (const productId of product_ids) {
@@ -297,6 +299,8 @@ export async function POST(
               compensation_1star: sourceRules.compensation_1star,
               compensation_2star: sourceRules.compensation_2star,
               compensation_3star: sourceRules.compensation_3star,
+              work_from_date: sourceRules.work_from_date,
+              comment: sourceRules.comment,
             });
             processed++;
 
