@@ -23,6 +23,22 @@ import {
 import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
 
 /**
+ * Get today's MSK midnight as a UTC Date.
+ * MSK = UTC+3, so 00:00 MSK = 21:00 UTC previous day.
+ * Shared by hasSellerMessageTodayMSK and isDateTodayMSK.
+ */
+function getMSKMidnightUTC(): Date {
+  const d = new Date();
+  if (d.getUTCHours() >= 21) {
+    d.setUTCHours(21, 0, 0, 0);
+  } else {
+    d.setUTCDate(d.getUTCDate() - 1);
+    d.setUTCHours(21, 0, 0, 0);
+  }
+  return d;
+}
+
+/**
  * Check if a SELLER message exists in chat_messages for today (MSK).
  * Uses the same MSK midnight calculation as the cron processor (cron-jobs.ts:719-729).
  *
@@ -31,14 +47,7 @@ import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
  * update chat.last_message_date but are not real seller messages.
  */
 async function hasSellerMessageTodayMSK(chatId: string): Promise<boolean> {
-  const todayStart = new Date();
-  // MSK midnight (00:00 MSK) = 21:00 UTC previous day
-  if (todayStart.getUTCHours() >= 21) {
-    todayStart.setUTCHours(21, 0, 0, 0);
-  } else {
-    todayStart.setUTCDate(todayStart.getUTCDate() - 1);
-    todayStart.setUTCHours(21, 0, 0, 0);
-  }
+  const todayStart = getMSKMidnightUTC();
   const result = await query(
     `SELECT 1 FROM chat_messages
      WHERE chat_id = $1 AND sender = 'seller' AND timestamp >= $2
@@ -46,6 +55,16 @@ async function hasSellerMessageTodayMSK(chatId: string): Promise<boolean> {
     [chatId, todayStart.toISOString()]
   );
   return result.rows.length > 0;
+}
+
+/**
+ * Check if a given date falls within today (MSK).
+ * Used as fallback for manual TG messages that update chats.last_message_date
+ * but are NOT yet synced to chat_messages table.
+ */
+function isDateTodayMSK(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  return new Date(dateStr) >= getMSKMidnightUTC();
 }
 
 /**
@@ -233,8 +252,13 @@ export async function startSequence(
   }
 
   // Check if a SELLER message was already sent today (MSK) — defer first message to tomorrow.
-  // Uses chat_messages (not chat.last_message_date) to avoid false positives from WB system messages.
-  const sellerSentToday = await hasSellerMessageTodayMSK(chatId);
+  // Two sources:
+  //   1. chat_messages table — catches sequence msgs + synced dialogue (no false positives from system msgs)
+  //   2. chats.last_message_date — catches manual TG sends that aren't yet synced to chat_messages
+  //      (chat-service.sendMessage updates chats table but does NOT write to chat_messages)
+  const sellerInChatMessages = await hasSellerMessageTodayMSK(chatId);
+  const sellerViaChatField = chat.last_message_sender === 'seller' && isDateTodayMSK(chat.last_message_date);
+  const sellerSentToday = sellerInChatMessages || sellerViaChatField;
 
   // Create sequence inside transaction (TOCTOU-safe).
   // Belt: transaction re-checks for active sequence before INSERT.
@@ -279,8 +303,9 @@ export async function startSequence(
   // Attempt to send the first message immediately (skip if deferred to tomorrow)
   let immediateSent = false;
   if (sellerSentToday) {
+    const source = sellerInChatMessages ? 'chat_messages' : 'chats.last_message_date';
     console.log(
-      `[SEQUENCE] Deferred start: chat ${chatId}, seller message sent today (MSK), ` +
+      `[SEQUENCE] Deferred start: chat ${chatId}, seller message sent today (MSK, source=${source}), ` +
       `first sequence message scheduled for tomorrow`
     );
   } else {

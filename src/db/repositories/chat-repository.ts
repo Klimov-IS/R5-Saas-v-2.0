@@ -21,7 +21,8 @@ export async function findChatDetailById(chatId: string, accessibleStoreIds: str
        r.complaint_status, r.review_status_wb, r.product_status_by_review as product_status,
        pr.offer_compensation, pr.max_compensation,
        pr.compensation_type, pr.compensation_by,
-       pr.chat_strategy::text as chat_strategy
+       pr.chat_strategy::text as chat_strategy,
+       pr.comment as product_comment
      FROM chats c
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
@@ -145,7 +146,7 @@ export async function verifyChatAccess(chatId: string, accessibleStoreIds: strin
  */
 export async function findChatForSequence(chatId: string, accessibleStoreIds: string[]) {
   const result = await query(
-    'SELECT id, store_id, owner_id, tag, last_message_date FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
+    'SELECT id, store_id, owner_id, tag, last_message_date, last_message_sender FROM chats WHERE id = $1 AND store_id = ANY($2::text[])',
     [chatId, accessibleStoreIds]
   );
   return result.rows[0] || null;

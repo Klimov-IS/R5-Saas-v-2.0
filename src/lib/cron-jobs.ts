@@ -736,16 +736,22 @@ export function startAutoSequenceProcessor() {
             todayStart.setUTCDate(todayStart.getUTCDate() - 1);
             todayStart.setUTCHours(21, 0, 0, 0);
           }
-          const sellerSentToday = messages.some(
+          // Source 1: chat_messages table (sequence msgs + synced dialogue)
+          const sellerInMessages = messages.some(
             m => m.sender === 'seller' && new Date(m.timestamp) >= todayStart
           );
+          // Source 2: chats.last_message_date (catches manual TG sends not yet synced to chat_messages)
+          const sellerViaChat = chat.last_message_sender === 'seller'
+            && chat.last_message_date && new Date(chat.last_message_date) >= todayStart;
+          const sellerSentToday = sellerInMessages || sellerViaChat;
 
           if (sellerSentToday) {
             // Reschedule to a random slot tomorrow without advancing step
             const nextSlot = getNextSlotTime();
             if (!dryRun) await dbHelpers.rescheduleSequence(seq.id, nextSlot);
             skipped++;
-            console.log(`[CRON] ⏭️  Sequence ${seq.id}: skipped (seller already sent today), rescheduled to tomorrow${dryRun ? ' [DRY RUN]' : ''}`);
+            const skipSource = sellerInMessages ? 'chat_messages' : 'chats.last_message_date';
+            console.log(`[CRON] ⏭️  Sequence ${seq.id}: skipped (seller already sent today, source=${skipSource}), rescheduled to tomorrow${dryRun ? ' [DRY RUN]' : ''}`);
             continue;
           }
 
