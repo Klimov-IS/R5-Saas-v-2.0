@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as dbHelpers from '@/db/helpers';
 import { triggerInstantComplaintGeneration } from '@/services/auto-complaint-generator';
+import { triggerAsyncSync } from '@/services/google-sheets-sync';
 
 /**
  * POST /api/stores/{storeId}/products/bulk-actions
@@ -321,6 +322,11 @@ export async function POST(
           error: 'Unknown action',
           details: `Action ${action} is not implemented`
         }, { status: 400 });
+    }
+
+    // Sync to Google Sheets after any bulk rule change
+    if (processed > 0) {
+      triggerAsyncSync();
     }
 
     return NextResponse.json({
