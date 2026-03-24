@@ -333,10 +333,17 @@ export async function GET(
            AND rc.status = 'draft'
            AND r.store_id = $1
            AND p.work_status = 'active'
+           AND pr.submit_complaints = TRUE
            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
            AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
            AND r.rating_excluded = FALSE
            AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
+           AND (
+             (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
+             (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
+             (r.rating = 3 AND pr.complaint_rating_3 = TRUE) OR
+             (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
+           )
          ORDER BY p.wb_product_id, r.date ASC
          LIMIT 500`,
         [storeId]
@@ -356,7 +363,14 @@ export async function GET(
            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
            AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
            AND r.rating_excluded = FALSE
-           AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')`,
+           AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
+           AND pr.submit_complaints = TRUE
+           AND (
+             (r.rating = 1 AND pr.complaint_rating_1 = TRUE) OR
+             (r.rating = 2 AND pr.complaint_rating_2 = TRUE) OR
+             (r.rating = 3 AND pr.complaint_rating_3 = TRUE) OR
+             (r.rating = 4 AND pr.complaint_rating_4 = TRUE)
+           )`,
         [storeId]
       ),
     ]);
