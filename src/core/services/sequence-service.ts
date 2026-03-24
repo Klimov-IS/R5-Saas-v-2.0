@@ -12,7 +12,7 @@ import type { GetSequenceResponse, StopSequenceResponse, StartSequenceResponse, 
 import { ChatNotFoundError } from '@/core/services/chat-service';
 import * as chatRepo from '@/db/repositories/chat-repository';
 import * as seqRepo from '@/db/repositories/sequence-repository';
-import { transaction } from '@/db/client';
+import { transaction, query } from '@/db/client';
 import { findLinkByChatId, isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 import {
   DEFAULT_FOLLOWUP_TEMPLATES_30D,
@@ -23,13 +23,14 @@ import {
 import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
 
 /**
- * Check if a message timestamp falls within "today" in MSK (UTC+3).
+ * Check if a SELLER message exists in chat_messages for today (MSK).
  * Uses the same MSK midnight calculation as the cron processor (cron-jobs.ts:719-729).
+ *
+ * Important: checks actual chat_messages (sender='seller'), NOT chat.last_message_date.
+ * This avoids false positives from WB system messages ("Чат по товару...") which
+ * update chat.last_message_date but are not real seller messages.
  */
-function isMessageSentTodayMSK(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  const msgDate = new Date(dateStr);
-  if (isNaN(msgDate.getTime())) return false;
+async function hasSellerMessageTodayMSK(chatId: string): Promise<boolean> {
   const todayStart = new Date();
   // MSK midnight (00:00 MSK) = 21:00 UTC previous day
   if (todayStart.getUTCHours() >= 21) {
@@ -38,7 +39,13 @@ function isMessageSentTodayMSK(dateStr: string | null | undefined): boolean {
     todayStart.setUTCDate(todayStart.getUTCDate() - 1);
     todayStart.setUTCHours(21, 0, 0, 0);
   }
-  return msgDate >= todayStart;
+  const result = await query(
+    `SELECT 1 FROM chat_messages
+     WHERE chat_id = $1 AND sender = 'seller' AND timestamp >= $2
+     LIMIT 1`,
+    [chatId, todayStart.toISOString()]
+  );
+  return result.rows.length > 0;
 }
 
 /**
@@ -225,13 +232,14 @@ export async function startSequence(
     throw new SequenceConflictError(chatId, '', 'family');
   }
 
-  // Check if a message was already sent today (MSK) — defer first message to tomorrow
-  const lastMsgToday = isMessageSentTodayMSK(chat.last_message_date);
+  // Check if a SELLER message was already sent today (MSK) — defer first message to tomorrow.
+  // Uses chat_messages (not chat.last_message_date) to avoid false positives from WB system messages.
+  const sellerSentToday = await hasSellerMessageTodayMSK(chatId);
 
   // Create sequence inside transaction (TOCTOU-safe).
   // Belt: transaction re-checks for active sequence before INSERT.
   // Suspenders: UNIQUE partial index (migration 030) catches any remaining race.
-  const nextSendAt = getNextSlotTime(lastMsgToday ? 1 : 0);
+  const nextSendAt = getNextSlotTime(sellerSentToday ? 1 : 0);
   let seq;
   try {
     seq = await transaction(async (client) => {
@@ -270,9 +278,9 @@ export async function startSequence(
 
   // Attempt to send the first message immediately (skip if deferred to tomorrow)
   let immediateSent = false;
-  if (lastMsgToday) {
+  if (sellerSentToday) {
     console.log(
-      `[SEQUENCE] Deferred start: chat ${chatId}, last message sent today (MSK), ` +
+      `[SEQUENCE] Deferred start: chat ${chatId}, seller message sent today (MSK), ` +
       `first sequence message scheduled for tomorrow`
     );
   } else {
@@ -305,13 +313,13 @@ export async function startSequence(
 
   console.log(
     `[SEQUENCE] Manual start: chat ${chatId}, type=${sequenceType}, ` +
-    `${templates.length} msgs, tag=${chatTag}, immediateSent=${immediateSent}, deferred=${lastMsgToday}`
+    `${templates.length} msgs, tag=${chatTag}, immediateSent=${immediateSent}, deferred=${sellerSentToday}`
   );
 
   return {
     success: true,
     immediateSent,
-    deferred: lastMsgToday,
+    deferred: sellerSentToday,
     sequence: {
       id: sequenceId,
       sequenceType,
