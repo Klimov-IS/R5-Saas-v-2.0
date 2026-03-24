@@ -45,6 +45,7 @@ export interface ChatDetailDTO {
   chatStrategy: string | null;
   reviewText: string | null;
   chatUrl: string | null;
+  productComment: string | null;
 }
 
 export interface ChatDetailResponse {

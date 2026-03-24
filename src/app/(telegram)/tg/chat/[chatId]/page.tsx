@@ -38,6 +38,7 @@ interface ChatDetail {
   chatStrategy?: string | null;
   reviewText?: string | null;
   chatUrl?: string | null;
+  productComment?: string | null;
 }
 
 interface SequenceInfo {
@@ -1172,6 +1173,17 @@ export default function TgChatPage() {
                     maxHeight: '80px', overflowY: 'auto',
                   }}>
                     "{chat.reviewText}"
+                  </span>
+                </div>
+              )}
+              {chat.productComment && (
+                <div style={{ fontSize: '13px', color: '#6B7280', padding: '6px 0', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <span style={{ fontWeight: 600, color: '#9CA3AF', minWidth: '70px', fontSize: '12px' }}>Коммент.</span>
+                  <span style={{
+                    fontWeight: 500, color: '#6B7280', fontSize: '12px', lineHeight: 1.5,
+                    maxHeight: '80px', overflowY: 'auto',
+                  }}>
+                    {chat.productComment}
                   </span>
                 </div>
               )}

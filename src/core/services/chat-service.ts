@@ -93,6 +93,7 @@ export async function getChatDetail(
     chatStrategy: chat.chat_strategy ?? null,
     reviewText: chat.review_text ?? null,
     chatUrl: chat.chat_url ?? null,
+    productComment: chat.product_comment ?? null,
   };
 
   return { chat: chatDTO, messages };
