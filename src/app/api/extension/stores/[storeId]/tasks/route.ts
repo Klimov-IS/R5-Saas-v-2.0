@@ -311,7 +311,7 @@ export async function GET(
         [storeId, chatEligibleProductIds, chatRatingsArr]
       ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
-      // ── Query D: complaints (already fast — starts from review_complaints index) ──
+      // ── Query D: complaints (with work_from_date filter via product_rules) ──
       query<{
         id: string;
         wb_product_id: string;
@@ -328,6 +328,7 @@ export async function GET(
          FROM review_complaints rc
          JOIN reviews r ON r.id = rc.review_id
          JOIN products p ON r.product_id = p.id
+         JOIN product_rules pr ON pr.product_id = p.id
          WHERE rc.store_id = $1
            AND rc.status = 'draft'
            AND r.store_id = $1
@@ -335,24 +336,27 @@ export async function GET(
            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
            AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
            AND r.rating_excluded = FALSE
+           AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
          ORDER BY p.wb_product_id, r.date ASC
          LIMIT 500`,
         [storeId]
       ),
 
-      // ── Query E: exact complaint count (lightweight — index only scan) ──
+      // ── Query E: exact complaint count (with work_from_date filter) ──
       query<{ cnt: string }>(
         `SELECT COUNT(*) as cnt
          FROM review_complaints rc
          JOIN reviews r ON r.id = rc.review_id
          JOIN products p ON r.product_id = p.id
+         JOIN product_rules pr ON pr.product_id = p.id
          WHERE rc.store_id = $1
            AND rc.status = 'draft'
            AND r.store_id = $1
            AND p.work_status = 'active'
            AND (r.complaint_status IS NULL OR r.complaint_status IN ('not_sent', 'draft'))
            AND r.review_status_wb IN ('visible', 'unknown', 'temporarily_hidden')
-           AND r.rating_excluded = FALSE`,
+           AND r.rating_excluded = FALSE
+           AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')`,
         [storeId]
       ),
     ]);
