@@ -15,7 +15,7 @@ import {
   clearTokenCache,
   type DriveFile
 } from '@/services/google-sheets-sync/sheets-client';
-import { getGoogleSheetsConfig } from '@/services/google-sheets-sync/sync-service';
+import { getGoogleCredentialsConfig } from '@/services/google-sheets-sync/sync-service';
 import { syncClientDirectory } from '@/services/google-sheets-sync/client-directory';
 import { normalizeStoreName, findMatchingFolder } from '@/services/google-sheets-sync/client-directory/drive-matcher';
 import type { OnboardingResult, OnboardingConfig } from './types';
@@ -85,7 +85,7 @@ export async function onboardStore(
     // Clear token cache to ensure fresh token with new scopes
     clearTokenCache();
 
-    const config = getGoogleSheetsConfig();
+    const config = getGoogleCredentialsConfig();
 
     // 1. Check if folder already exists (idempotency)
     console.log(`[ONBOARDING] Checking for existing folder...`);

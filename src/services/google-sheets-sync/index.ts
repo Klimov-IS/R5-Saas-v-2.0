@@ -10,7 +10,8 @@ export {
   syncProductRulesToSheets,
   triggerAsyncSync,
   isGoogleSheetsConfigured,
-  getGoogleSheetsConfig
+  getGoogleSheetsConfig,
+  getGoogleCredentialsConfig
 } from './sync-service';
 
 export { TABLE_HEADERS, formatProductRow, formatAllProductRows } from './row-formatter';

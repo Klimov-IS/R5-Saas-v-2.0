@@ -19,27 +19,46 @@ import { TABLE_HEADERS, formatProductRow } from './row-formatter';
 import type { SyncResult, GoogleSheetsConfig } from './types';
 
 /**
- * Get primary Google Sheets config from environment variables
+ * Get primary Google Sheets config from environment variables.
+ * Returns null if GOOGLE_SHEETS_SPREADSHEET_ID is not set (primary is optional).
  */
-export function getGoogleSheetsConfig(): GoogleSheetsConfig {
+export function getGoogleSheetsConfig(): GoogleSheetsConfig | null {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
   const sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME || 'Артикулы ТЗ';
   const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
-  if (!spreadsheetId) {
-    throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID is not configured');
-  }
-  if (!serviceAccountEmail) {
-    throw new Error('GOOGLE_SERVICE_ACCOUNT_EMAIL is not configured');
-  }
-  if (!privateKey) {
-    throw new Error('GOOGLE_PRIVATE_KEY is not configured');
+  if (!spreadsheetId || !serviceAccountEmail || !privateKey) {
+    return null;
   }
 
   return {
     spreadsheetId,
     sheetName,
+    serviceAccountEmail,
+    privateKey
+  };
+}
+
+/**
+ * Get Google API credentials (for Drive/Sheets operations that only need auth).
+ * Uses primary config spreadsheetId as placeholder, or secondary if primary is not set.
+ */
+export function getGoogleCredentialsConfig(): GoogleSheetsConfig {
+  const serviceAccountEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  if (!serviceAccountEmail || !privateKey) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_PRIVATE_KEY are required');
+  }
+
+  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+    || process.env.GOOGLE_SHEETS_SECONDARY_SPREADSHEET_ID
+    || '';
+
+  return {
+    spreadsheetId,
+    sheetName: '',
     serviceAccountEmail,
     privateKey
   };
@@ -120,9 +139,29 @@ export async function syncProductRulesToSheets(): Promise<SyncResult> {
     const primaryConfig = getGoogleSheetsConfig();
     const secondaryConfigs = getSecondaryGoogleSheetsConfigs();
 
-    console.log(`[GoogleSheetsSync] Primary target: ${primaryConfig.spreadsheetId} / "${primaryConfig.sheetName}"`);
+    const allTargets: GoogleSheetsConfig[] = [];
+    if (primaryConfig) {
+      console.log(`[GoogleSheetsSync] Primary target: ${primaryConfig.spreadsheetId} / "${primaryConfig.sheetName}"`);
+      allTargets.push(primaryConfig);
+    } else {
+      console.log('[GoogleSheetsSync] Primary target: not configured, skipping');
+    }
+    for (const cfg of secondaryConfigs) {
+      allTargets.push(cfg);
+    }
     if (secondaryConfigs.length > 0) {
       console.log(`[GoogleSheetsSync] Secondary targets: ${secondaryConfigs.length} sheets`);
+    }
+
+    if (allTargets.length === 0) {
+      console.log('[GoogleSheetsSync] No targets configured. Nothing to sync.');
+      return {
+        success: true,
+        rowsWritten: 0,
+        storesProcessed: 0,
+        productsProcessed: 0,
+        duration_ms: Date.now() - startTime
+      };
     }
 
     // 2. Get all active stores
@@ -131,10 +170,7 @@ export async function syncProductRulesToSheets(): Promise<SyncResult> {
 
     if (stores.length === 0) {
       console.log('[GoogleSheetsSync] No active stores found. Writing empty sheets.');
-      await clearAndWriteRows(primaryConfig, TABLE_HEADERS, []);
-
-      // Also clear secondary sheets
-      for (const config of secondaryConfigs) {
+      for (const config of allTargets) {
         await clearAndWriteRows(config, TABLE_HEADERS, []);
       }
 
@@ -163,19 +199,17 @@ export async function syncProductRulesToSheets(): Promise<SyncResult> {
 
     console.log(`[GoogleSheetsSync] Total rows to write: ${allRows.length}`);
 
-    // 4. Write to primary Google Sheets (comments now come from DB via product_rules.comment)
-    const { updatedRows } = await clearAndWriteRows(primaryConfig, TABLE_HEADERS, allRows);
-
-    // 5. Write to all secondary sheets (same data)
-    for (const config of secondaryConfigs) {
-      console.log(`[GoogleSheetsSync] Syncing to secondary sheet: "${config.sheetName}"...`);
-      await clearAndWriteRows(config, TABLE_HEADERS, allRows);
+    // 4. Write to all target sheets
+    let updatedRows = 0;
+    for (const config of allTargets) {
+      console.log(`[GoogleSheetsSync] Syncing to sheet: "${config.sheetName}"...`);
+      const result = await clearAndWriteRows(config, TABLE_HEADERS, allRows);
+      updatedRows = result.updatedRows;
     }
 
     const duration = Date.now() - startTime;
-    const totalSheets = 1 + secondaryConfigs.length;
     console.log(`[GoogleSheetsSync] ✅ Sync completed in ${duration}ms`);
-    console.log(`[GoogleSheetsSync] Stats: ${stores.length} stores, ${totalProducts} products, ${updatedRows} rows, ${totalSheets} sheets`);
+    console.log(`[GoogleSheetsSync] Stats: ${stores.length} stores, ${totalProducts} products, ${updatedRows} rows, ${allTargets.length} sheets`);
 
     return {
       success: true,
@@ -261,12 +295,17 @@ export function triggerAsyncSync(): void {
 }
 
 /**
- * Check if Google Sheets sync is configured
+ * Check if Google Sheets sync is configured (primary or secondary)
  */
 export function isGoogleSheetsConfigured(): boolean {
-  return !!(
-    process.env.GOOGLE_SHEETS_SPREADSHEET_ID &&
+  const hasCredentials = !!(
     process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
     process.env.GOOGLE_PRIVATE_KEY
   );
+  const hasPrimary = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  const hasSecondary = !!(
+    process.env.GOOGLE_SHEETS_SECONDARY_SPREADSHEET_ID &&
+    process.env.GOOGLE_SHEETS_SECONDARY_SHEETS
+  );
+  return hasCredentials && (hasPrimary || hasSecondary);
 }

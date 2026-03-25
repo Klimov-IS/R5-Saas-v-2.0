@@ -47,11 +47,11 @@ export async function GET() {
 
     return NextResponse.json({
       configured: true,
-      config: {
+      config: config ? {
         spreadsheetId: config.spreadsheetId,
         sheetName: config.sheetName,
         serviceAccountEmail: config.serviceAccountEmail
-      },
+      } : { note: 'Primary not configured, using secondary only' },
       lastSync: lastSyncResult
     });
   } catch (error: any) {

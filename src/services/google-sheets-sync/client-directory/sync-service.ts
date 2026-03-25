@@ -19,7 +19,7 @@ import {
   listFilesInFolder,
   type DriveFile
 } from '../sheets-client';
-import { getGoogleSheetsConfig } from '../sync-service';
+import { getGoogleCredentialsConfig } from '../sync-service';
 import type { GoogleSheetsConfig } from '../types';
 import type {
   StoreData,
@@ -238,8 +238,8 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
   console.log('[ClientDirectorySync] Starting sync...');
 
   try {
-    // 1. Get config
-    const config = getGoogleSheetsConfig();
+    // 1. Get config (uses credentials + secondary spreadsheet ID)
+    const config = getGoogleCredentialsConfig();
     const sheetConfig: GoogleSheetsConfig = {
       ...config,
       sheetName: CLIENT_DIRECTORY_SHEET

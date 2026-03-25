@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getGoogleSheetsConfig } from '@/services/google-sheets-sync/sync-service';
+import { getGoogleCredentialsConfig } from '@/services/google-sheets-sync/sync-service';
 import { clearTokenCache } from '@/services/google-sheets-sync/sheets-client';
 
 const GOOGLE_SHEETS_BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     clearTokenCache();
-    const config = getGoogleSheetsConfig();
+    const config = getGoogleCredentialsConfig();
 
     // Get access token
     const tokenResponse = await getAccessToken(config);

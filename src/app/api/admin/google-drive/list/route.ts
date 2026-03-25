@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { getGoogleSheetsConfig } from '@/services/google-sheets-sync/sync-service';
+import { getGoogleCredentialsConfig } from '@/services/google-sheets-sync/sync-service';
 import { listFilesInFolder, clearTokenCache } from '@/services/google-sheets-sync/sheets-client';
 
 /**
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Clear old token cache (might have old scopes)
     clearTokenCache();
 
-    const config = getGoogleSheetsConfig();
+    const config = getGoogleCredentialsConfig();
     const files = await listFilesInFolder(config, folderId);
 
     return NextResponse.json({
