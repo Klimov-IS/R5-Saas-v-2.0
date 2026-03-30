@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Trash2 } from 'lucide-react';
 import { toast } from '@/lib/toast';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'wbrm_0ab7137430d4fb62948db3a7d9b4b997';
 
@@ -28,6 +28,9 @@ interface EditStoreModalProps {
 export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     inn: '',
@@ -42,7 +45,7 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Pre-fill form when store changes
+  // Pre-fill form when store changes, reset delete confirm
   useEffect(() => {
     if (store) {
       setFormData({
@@ -57,6 +60,8 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
         chat_api_token: store.chat_api_token ? '••••••••' : '',
         is_active: store.is_active,
       });
+      setShowDeleteConfirm(false);
+      setDeleteConfirmName('');
     }
   }, [store]);
 
@@ -159,6 +164,40 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!store || deleteConfirmName !== store.name) return;
+
+    setIsDeleting(true);
+    const loadingToast = toast.loading('Удаление...', 'Удаляем магазин и все связанные данные');
+
+    try {
+      const response = await fetch(`/api/stores/${store.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${API_KEY}` },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Не удалось удалить магазин');
+      }
+
+      toast.dismiss(loadingToast);
+      await queryClient.invalidateQueries({ queryKey: ['stores'] });
+      toast.success('Магазин удалён', `Магазин "${store.name}" и все данные удалены безвозвратно`);
+      setShowDeleteConfirm(false);
+      setDeleteConfirmName('');
+      onClose();
+    } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error(
+        'Ошибка удаления',
+        error instanceof Error ? error.message : 'Не удалось удалить магазин'
+      );
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -661,6 +700,140 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
                 }}>
                   Неактивный магазин скрыт из автоматизаций и синхронизации
                 </p>
+              )}
+            </div>
+
+            {/* Danger Zone — Delete Store */}
+            <div style={{
+              borderTop: '1px solid hsl(var(--destructive) / 0.3)',
+              paddingTop: '16px',
+              marginTop: '4px'
+            }}>
+              {!showDeleteConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={isSubmitting}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    fontWeight: 500,
+                    color: 'hsl(var(--destructive))',
+                    backgroundColor: 'transparent',
+                    border: '1px solid hsl(var(--destructive) / 0.3)',
+                    borderRadius: '6px',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s',
+                    opacity: isSubmitting ? 0.5 : 1
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSubmitting) {
+                      e.currentTarget.style.backgroundColor = 'hsl(var(--destructive) / 0.1)';
+                      e.currentTarget.style.borderColor = 'hsl(var(--destructive))';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                    e.currentTarget.style.borderColor = 'hsl(var(--destructive) / 0.3)';
+                  }}
+                >
+                  <Trash2 style={{ width: '16px', height: '16px' }} />
+                  Удалить магазин
+                </button>
+              ) : (
+                <div style={{
+                  padding: '16px',
+                  backgroundColor: 'hsl(var(--destructive) / 0.05)',
+                  border: '1px solid hsl(var(--destructive) / 0.3)',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}>
+                  <p style={{
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: 'hsl(var(--destructive))'
+                  }}>
+                    Безвозвратное удаление
+                  </p>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'hsl(var(--muted-foreground))'
+                  }}>
+                    Будут удалены все отзывы, чаты, сообщения, товары, жалобы и другие данные этого магазина. Это действие нельзя отменить.
+                  </p>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'hsl(var(--foreground))'
+                  }}>
+                    Введите название магазина <strong>{store.name}</strong> для подтверждения:
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteConfirmName}
+                    onChange={(e) => setDeleteConfirmName(e.target.value)}
+                    disabled={isDeleting}
+                    placeholder={store.name}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '1px solid hsl(var(--destructive) / 0.3)',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      outline: 'none',
+                      backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--foreground))',
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmName(''); }}
+                      disabled={isDeleting}
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'hsl(var(--foreground))',
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '6px',
+                        cursor: isDeleting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={isDeleting || deleteConfirmName !== store.name}
+                      style={{
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        color: 'white',
+                        backgroundColor: deleteConfirmName === store.name
+                          ? 'hsl(var(--destructive))'
+                          : 'hsl(var(--muted-foreground))',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: (isDeleting || deleteConfirmName !== store.name) ? 'not-allowed' : 'pointer',
+                        opacity: (isDeleting || deleteConfirmName !== store.name) ? 0.5 : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {isDeleting && <Loader2 className="spinner" style={{ width: '14px', height: '14px' }} />}
+                      {isDeleting ? 'Удаление...' : 'Удалить безвозвратно'}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>

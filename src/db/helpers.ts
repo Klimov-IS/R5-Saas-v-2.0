@@ -562,8 +562,56 @@ export async function updateStore(
 }
 
 export async function deleteStore(id: string): Promise<boolean> {
-  const result = await query('DELETE FROM stores WHERE id = $1', [id]);
-  return (result.rowCount ?? 0) > 0;
+  return transaction(async (client) => {
+    // Delete in dependency order (children first)
+    // 1. Audit / logs
+    await client.query('DELETE FROM chat_status_history WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM ai_logs WHERE store_id = $1', [id]);
+
+    // 2. Chat-related
+    await client.query('DELETE FROM chat_auto_sequences WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM chat_messages WHERE store_id = $1', [id]);
+
+    // 3. Review-related linking
+    await client.query('DELETE FROM review_chat_links WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM review_statuses_from_extension WHERE store_id = $1', [id]);
+
+    // 4. Complaints
+    await client.query('DELETE FROM complaint_details WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM review_complaints WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM complaint_backfill_jobs WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM complaint_daily_limits WHERE store_id = $1', [id]);
+
+    // 5. Chats
+    await client.query('DELETE FROM chats WHERE store_id = $1', [id]);
+
+    // 6. Reviews (both tables)
+    await client.query('DELETE FROM reviews WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM reviews_archive WHERE store_id = $1', [id]);
+
+    // 7. Questions
+    await client.query('DELETE FROM questions WHERE store_id = $1', [id]);
+
+    // 8. Product rules (references products.id, not store_id directly)
+    await client.query(
+      'DELETE FROM product_rules WHERE product_id IN (SELECT id FROM products WHERE store_id = $1)',
+      [id]
+    );
+
+    // 9. Products
+    await client.query('DELETE FROM products WHERE store_id = $1', [id]);
+
+    // 10. Store config
+    await client.query('DELETE FROM store_faq WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM store_guides WHERE store_id = $1', [id]);
+    await client.query('DELETE FROM manager_tasks WHERE store_id = $1', [id]);
+
+    // 11. Finally delete the store itself
+    const result = await client.query('DELETE FROM stores WHERE id = $1', [id]);
+
+    console.log(`[DELETE-STORE] Store ${id} and all related data deleted successfully`);
+    return (result.rowCount ?? 0) > 0;
+  });
 }
 
 // ============================================================================
