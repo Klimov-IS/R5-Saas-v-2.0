@@ -65,7 +65,7 @@ function formatStage(stage: string | null): string {
  */
 export interface ManualFields {
   contact: string;  // D — Контакт
-  task: string;     // R — Задача
+  task: string;     // S — Задача
 }
 
 /**
@@ -83,7 +83,7 @@ const EMPTY_METRICS: StoreMetrics = { hasChatWork: false, activeProducts: 0, neg
 
 /**
  * Format store data into a row for the sheet.
- * Column order: A-R (18 columns), matches CLIENT_DIRECTORY_HEADERS.
+ * Column order: A-S (19 columns), matches CLIENT_DIRECTORY_HEADERS.
  */
 export function formatClientRow(
   store: StoreData,
@@ -96,20 +96,21 @@ export function formatClientRow(
     store.name,                                  // B: Название
     store.inn || '',                             // C: ИНН (from DB)
     manual.contact,                              // D: Контакт (manual)
-    store.cost_cd || '',                         // E: Стоимость ЦД (from DB)
-    formatDate(store.created_at),                // F: Дата подключения
-    formatHasAnyApi(store),                      // G: API (✅ if any token)
-    driveMatch.folderLink || '',                 // H: Папка клиента
-    driveMatch.reportLink || '',                 // I: Отчёт
-    driveMatch.screenshotsLink || '',            // J: Скриншоты
-    formatDateTime(new Date()),                  // K: Обновлено
-    formatStatus(store.is_active),               // L: Статус
-    formatDate(store.deactivated_at),            // M: Отключён (auto)
-    formatStage(store.stage),                    // N: Этап (auto from DB)
-    metrics.hasChatWork ? '✅' : '❌',            // O: Работа в чатах (auto)
-    String(metrics.activeProducts),              // P: Артикулы (auto)
-    String(metrics.negativeReviews),             // Q: Отзывы 1-3★ (auto)
-    manual.task                                  // R: Задача (manual)
+    store.referral || '',                        // E: Реферал (from DB)
+    store.cost_cd || '',                         // F: Стоимость ЦД (from DB)
+    formatDate(store.created_at),                // G: Дата подключения
+    formatHasAnyApi(store),                      // H: API (✅ if any token)
+    driveMatch.folderLink || '',                 // I: Папка клиента
+    driveMatch.reportLink || '',                 // J: Отчёт
+    driveMatch.screenshotsLink || '',            // K: Скриншоты
+    formatDateTime(new Date()),                  // L: Обновлено
+    formatStatus(store.is_active),               // M: Статус
+    formatDate(store.deactivated_at),            // N: Отключён (auto)
+    formatStage(store.stage),                    // O: Этап (auto from DB)
+    metrics.hasChatWork ? '✅' : '❌',            // P: Работа в чатах (auto)
+    String(metrics.activeProducts),              // Q: Артикулы (auto)
+    String(metrics.negativeReviews),             // R: Отзывы 1-3★ (auto)
+    manual.task                                  // S: Задача (manual)
   ];
 }
 
@@ -140,13 +141,13 @@ export function columnToLetter(column: number): string {
  * @param sheetName - Sheet name
  * @param rowNumber - 1-based row number
  * @param startCol - 0-based start column (default: 0 = A)
- * @param endCol - 0-based end column (default: 17 = R)
+ * @param endCol - 0-based end column (default: 18 = S)
  */
 export function buildRowRange(
   sheetName: string,
   rowNumber: number,
   startCol: number = 0,
-  endCol: number = 17 // R column (18 columns: A-R)
+  endCol: number = 18 // S column (19 columns: A-S)
 ): string {
   const startLetter = columnToLetter(startCol);
   const endLetter = columnToLetter(endCol);

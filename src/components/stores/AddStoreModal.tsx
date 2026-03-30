@@ -21,6 +21,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
     name: '',
     inn: '',
     cost_cd: '',
+    referral: '',
     api_token: '',
     content_api_token: '',
     feedbacks_api_token: '',
@@ -74,6 +75,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
           name: formData.name.trim(),
           inn: formData.inn.trim() || undefined,
           costCd: formData.cost_cd.trim() || undefined,
+          referral: formData.referral.trim() || undefined,
           apiToken: formData.api_token.trim(),
           contentApiToken: formData.content_api_token.trim(),
           feedbacksApiToken: formData.feedbacks_api_token.trim(),
@@ -105,6 +107,7 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
         name: '',
         inn: '',
         cost_cd: '',
+        referral: '',
         api_token: '',
         content_api_token: '',
         feedbacks_api_token: '',
@@ -353,6 +356,47 @@ export function AddStoreModal({ isOpen, onClose }: AddStoreModalProps) {
                   }}
                 />
               </div>
+            </div>
+
+            {/* Referral */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: 'hsl(var(--muted-foreground))',
+                marginBottom: '6px'
+              }}>
+                Реферал
+              </label>
+              <input
+                type="text"
+                value={formData.referral}
+                onChange={(e) => handleChange('referral', e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Имя реферала"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  transition: 'all 0.2s',
+                  backgroundColor: 'hsl(var(--card))',
+                  color: 'hsl(var(--foreground))',
+                  cursor: isSubmitting ? 'not-allowed' : 'text',
+                  opacity: isSubmitting ? 0.6 : 1
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px hsla(var(--primary), 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'hsl(var(--border))';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
             </div>
 
             {/* API Token */}

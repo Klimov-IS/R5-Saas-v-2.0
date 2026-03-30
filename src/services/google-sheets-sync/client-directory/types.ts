@@ -19,6 +19,7 @@ export interface StoreData {
   name: string;
   inn: string | null;
   cost_cd: string | null;
+  referral: string | null;
   is_active: boolean;
   deactivated_at: Date | null;
   stage: string | null;
@@ -64,27 +65,28 @@ export interface ClientDirectorySyncResult {
 
 /**
  * Column indices in the sheet (0-based)
- * Total: 18 columns (A-R)
+ * Total: 19 columns (A-S)
  */
 export const COLUMN_INDICES = {
   STORE_ID: 0,        // A
   NAME: 1,            // B
-  INN: 2,             // C  (manual)
+  INN: 2,             // C
   CONTACT: 3,         // D  (manual)
-  COST_CD: 4,         // E  (manual)
-  CONNECTED_AT: 5,    // F
-  API: 6,             // G  (✅ if any token exists)
-  FOLDER_LINK: 7,     // H
-  REPORT_LINK: 8,     // I
-  SCREENSHOTS: 9,     // J
-  UPDATED_AT: 10,     // K
-  STATUS: 11,         // L
-  DEACTIVATED_AT: 12, // M  (auto — date when deactivated)
-  STAGE: 13,          // N  (auto from DB)
-  CHAT_WORK: 14,      // O  (auto — computed)
-  PRODUCTS: 15,       // P  (auto — computed)
-  REVIEWS: 16,        // Q  (auto — computed)
-  TASK: 17            // R  (manual)
+  REFERRAL: 4,        // E  (from DB)
+  COST_CD: 5,         // F
+  CONNECTED_AT: 6,    // G
+  API: 7,             // H  (✅ if any token exists)
+  FOLDER_LINK: 8,     // I
+  REPORT_LINK: 9,     // J
+  SCREENSHOTS: 10,    // K
+  UPDATED_AT: 11,     // L
+  STATUS: 12,         // M
+  DEACTIVATED_AT: 13, // N  (auto — date when deactivated)
+  STAGE: 14,          // O  (auto from DB)
+  CHAT_WORK: 15,      // P  (auto — computed)
+  PRODUCTS: 16,       // Q  (auto — computed)
+  REVIEWS: 17,        // R  (auto — computed)
+  TASK: 18            // S  (manual)
 } as const;
 
 /**
@@ -95,6 +97,7 @@ export const CLIENT_DIRECTORY_HEADERS = [
   'Название',
   'ИНН',
   'Контакт',
+  'Реферал',
   'Стоимость ЦД',
   'Дата подключения',
   'API',

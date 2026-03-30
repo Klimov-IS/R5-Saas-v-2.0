@@ -37,6 +37,7 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
   const [storeName, setStoreName] = useState('');
   const [inn, setInn] = useState('');
   const [costCd, setCostCd] = useState('');
+  const [referral, setReferral] = useState('');
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -47,6 +48,7 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
     setStoreName('');
     setInn('');
     setCostCd('');
+    setReferral('');
     setValidation(null);
     setErrors({});
   };
@@ -133,6 +135,7 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
           name: storeName.trim(),
           inn: inn.trim() || undefined,
           costCd: costCd.trim() || undefined,
+          referral: referral.trim() || undefined,
         }),
       });
 
@@ -505,6 +508,35 @@ export function AddOzonStoreModal({ isOpen, onClose }: AddOzonStoreModalProps) {
                         }}
                       />
                     </div>
+                  </div>
+
+                  {/* Referral */}
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '12px',
+                      color: 'hsl(var(--muted-foreground))',
+                      marginBottom: '4px',
+                    }}>
+                      Реферал
+                    </label>
+                    <input
+                      type="text"
+                      value={referral}
+                      onChange={(e) => setReferral(e.target.value)}
+                      disabled={isCreating}
+                      placeholder="Имя реферала"
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '4px',
+                        fontSize: '14px',
+                        outline: 'none',
+                        backgroundColor: 'hsl(var(--card))',
+                        color: 'hsl(var(--foreground))',
+                      }}
+                    />
                   </div>
 
                   {/* Company */}

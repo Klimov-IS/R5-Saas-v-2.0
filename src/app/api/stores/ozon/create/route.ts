@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { clientId, apiKey, name, inn: bodyInn, costCd } = body;
+    const { clientId, apiKey, name, inn: bodyInn, costCd, referral } = body;
 
     if (!clientId || !apiKey) {
       return NextResponse.json(
@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
       ozon_subscription: subscription,
       inn: bodyInn || null,
       cost_cd: costCd || null,
+      referral: referral || null,
       owner_id: userSettings.id,
       org_id: orgId,
       is_active: true,

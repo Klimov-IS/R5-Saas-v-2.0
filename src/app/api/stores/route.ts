@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { id, name, inn, costCd, apiToken, contentApiToken, feedbacksApiToken, chatApiToken } = body;
+        const { id, name, inn, costCd, referral, apiToken, contentApiToken, feedbacksApiToken, chatApiToken } = body;
 
         if (!id || !name || !apiToken) {
             return NextResponse.json({
@@ -146,6 +146,7 @@ export async function POST(request: NextRequest) {
             chat_api_token: chatApiToken || apiToken,
             inn: inn || null,
             cost_cd: costCd || null,
+            referral: referral || null,
             owner_id: userSettings.id,
             org_id: orgId,
             is_active: true,

@@ -71,12 +71,13 @@ export async function PUT(
 
     const { storeId } = params;
     const body = await request.json();
-    const { name, inn, costCd, apiToken, contentApiToken, feedbacksApiToken, chatApiToken, status } = body;
+    const { name, inn, costCd, referral, apiToken, contentApiToken, feedbacksApiToken, chatApiToken, status } = body;
 
     const updates: any = {};
     if (name !== undefined) updates.name = name;
     if (inn !== undefined) updates.inn = inn;
     if (costCd !== undefined) updates.cost_cd = costCd;
+    if (referral !== undefined) updates.referral = referral;
     if (apiToken !== undefined) updates.api_token = apiToken;
     if (contentApiToken !== undefined) updates.content_api_token = contentApiToken;
     if (feedbacksApiToken !== undefined) updates.feedbacks_api_token = feedbacksApiToken;

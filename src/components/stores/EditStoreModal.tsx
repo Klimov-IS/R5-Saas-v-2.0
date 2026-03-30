@@ -11,6 +11,7 @@ interface Store {
   name: string;
   inn?: string;
   cost_cd?: string;
+  referral?: string;
   api_token: string;
   content_api_token: string;
   feedbacks_api_token: string;
@@ -31,6 +32,7 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
     name: '',
     inn: '',
     cost_cd: '',
+    referral: '',
     api_token: '',
     content_api_token: '',
     feedbacks_api_token: '',
@@ -47,6 +49,7 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
         name: store.name,
         inn: store.inn || '',
         cost_cd: store.cost_cd || '',
+        referral: store.referral || '',
         // Show masked token instead of real value for security
         api_token: '••••••••',
         content_api_token: store.content_api_token ? '••••••••' : '',
@@ -94,6 +97,7 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
         name: formData.name.trim(),
         inn: formData.inn.trim() || null,
         costCd: formData.cost_cd.trim() || null,
+        referral: formData.referral.trim() || null,
         is_active: formData.is_active,
       };
 
@@ -381,6 +385,47 @@ export function EditStoreModal({ isOpen, onClose, store }: EditStoreModalProps) 
                   }}
                 />
               </div>
+            </div>
+
+            {/* Referral */}
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: 'hsl(var(--muted-foreground))',
+                marginBottom: '6px'
+              }}>
+                Реферал
+              </label>
+              <input
+                type="text"
+                value={formData.referral}
+                onChange={(e) => handleChange('referral', e.target.value)}
+                disabled={isSubmitting}
+                placeholder="Имя реферала"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  outline: 'none',
+                  transition: 'all 0.2s',
+                  backgroundColor: 'hsl(var(--card))',
+                  color: 'hsl(var(--foreground))',
+                  cursor: isSubmitting ? 'not-allowed' : 'text',
+                  opacity: isSubmitting ? 0.6 : 1
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'hsl(var(--primary))';
+                  e.currentTarget.style.boxShadow = '0 0 0 3px hsla(var(--primary), 0.1)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'hsl(var(--border))';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              />
             </div>
 
             {/* API Token */}
