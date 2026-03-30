@@ -71,6 +71,13 @@ export async function GET(request: NextRequest) {
             id: store.id,
             name: store.name,
             marketplace: store.marketplace || 'wb',
+            inn: store.inn || null,
+            cost_cd: store.cost_cd || null,
+            referral: store.referral || null,
+            api_token: store.api_token,
+            content_api_token: store.content_api_token || null,
+            feedbacks_api_token: store.feedbacks_api_token || null,
+            chat_api_token: store.chat_api_token || null,
             is_active: store.is_active,
             stage: store.stage,
             product_count: typeof store.product_count === 'string'
