@@ -408,7 +408,8 @@ export async function getStores(ownerId?: string): Promise<Store[]> {
       SELECT store_id, COUNT(*)::int AS cnt FROM products GROUP BY store_id
     )
     SELECT
-      s.id, s.name, s.marketplace, s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
+      s.id, s.name, s.marketplace, s.inn, s.cost_cd, s.referral,
+      s.api_token, s.content_api_token, s.feedbacks_api_token, s.chat_api_token,
       s.ozon_client_id, s.ozon_api_key, s.ozon_subscription,
       s.owner_id, s.org_id, s.is_active, s.stage,
       s.last_product_update_status, s.last_product_update_date, s.last_product_update_error,
