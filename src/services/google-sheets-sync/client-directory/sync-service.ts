@@ -354,7 +354,20 @@ export async function syncClientDirectory(): Promise<ClientDirectorySyncResult> 
       });
     }
 
-    console.log(`[ClientDirectorySync] Updates: ${updatedCount}, New: ${appendedCount}, Dupes cleared: ${duplicateRows.length}`);
+    // 8d. Clear orphan rows — stores deleted from DB but still in sheet
+    const dbStoreIds = new Set(stores.map(s => s.id));
+    let orphansCleared = 0;
+    for (const [sheetStoreId, rowNum] of storeRowMap.entries()) {
+      if (!dbStoreIds.has(sheetStoreId)) {
+        updates.push({
+          range: buildRowRange(CLIENT_DIRECTORY_SHEET, rowNum),
+          values: [emptyRow]
+        });
+        orphansCleared++;
+      }
+    }
+
+    console.log(`[ClientDirectorySync] Updates: ${updatedCount}, New: ${appendedCount}, Dupes cleared: ${duplicateRows.length}, Orphans cleared: ${orphansCleared}`);
 
     // 9. Single batchUpdate call for everything
     const result = await batchUpdateRows(sheetConfig, updates);
