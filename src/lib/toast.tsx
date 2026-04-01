@@ -101,8 +101,7 @@ export function CustomToast({ t }: { t: HotToast }) {
           )}
         </div>
 
-        {t.type !== 'loading' && (
-          <button
+        <button
             onClick={() => hotToast.dismiss(t.id)}
             style={{
               flexShrink: 0,
@@ -125,7 +124,6 @@ export function CustomToast({ t }: { t: HotToast }) {
           >
             <X style={{ width: '16px', height: '16px' }} />
           </button>
-        )}
       </div>
     </>
   );
