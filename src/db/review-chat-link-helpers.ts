@@ -358,21 +358,40 @@ export async function getPendingChatsCount(
 ): Promise<number> {
   const result = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT r.id) as count
-     FROM reviews_all r
-     JOIN review_complaints rc ON rc.review_id = r.id
+     FROM reviews r
      JOIN products p ON r.product_id = p.id
      JOIN product_rules pr ON pr.product_id = p.id
+     LEFT JOIN review_complaints rc ON rc.review_id = r.id AND rc.status = 'rejected'
      WHERE r.store_id = $1
-       AND rc.status = 'rejected'
        AND pr.work_in_chats = TRUE
        AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
        AND r.review_status_wb != 'deleted'
        AND r.marketplace = 'wb'
+       AND r.chat_status_by_review = 'available'
+       AND r.rating_excluded = FALSE
+       AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
+       AND (
+         (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
+         (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
+         (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
+         (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+       )
+       AND (
+         -- Path A: has rejected complaint → count (any rating)
+         rc.id IS NOT NULL
+         OR
+         -- Path B: 4★ with no complaint filed → count directly
+         (r.rating = 4 AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent'))
+       )
        AND NOT EXISTS (
          SELECT 1 FROM review_chat_links rcl
          WHERE rcl.store_id = r.store_id
-           AND rcl.review_key LIKE r.id || '%'
+           AND rcl.review_nm_id = p.wb_product_id
+           AND rcl.review_rating = r.rating
+           AND rcl.review_date BETWEEN r.date - interval '2 minutes'
+                                    AND r.date + interval '2 minutes'
        )`,
+    // NOTE: uses 'reviews' table — only 1-4★ ratings (was reviews_all, optimized)
     [storeId]
   );
   return parseInt(result.rows[0]?.count || '0', 10);
@@ -391,20 +410,29 @@ export async function getPendingChatsCountOptimized(
   const result = await query<{ count: string }>(
     `SELECT COUNT(DISTINCT r.id) as count
      FROM reviews r
-     JOIN review_complaints rc ON rc.review_id = r.id
      JOIN products p ON r.product_id = p.id
      JOIN product_rules pr ON pr.product_id = p.id
+     LEFT JOIN review_complaints rc ON rc.review_id = r.id AND rc.status = 'rejected'
      WHERE r.store_id = $1
-       AND rc.status = 'rejected'
        AND pr.work_in_chats = TRUE
        AND r.date >= COALESCE(pr.work_from_date, '2023-10-01')
        AND r.review_status_wb != 'deleted'
        AND r.marketplace = 'wb'
+       AND r.chat_status_by_review = 'available'
+       AND r.rating_excluded = FALSE
+       AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
        AND (
          (r.rating = 1 AND pr.chat_rating_1 = TRUE) OR
          (r.rating = 2 AND pr.chat_rating_2 = TRUE) OR
          (r.rating = 3 AND pr.chat_rating_3 = TRUE) OR
          (r.rating = 4 AND pr.chat_rating_4 = TRUE)
+       )
+       AND (
+         -- Path A: has rejected complaint → count as pending chat (any rating)
+         rc.id IS NOT NULL
+         OR
+         -- Path B: 4★ with no complaint filed → count as pending chat directly
+         (r.rating = 4 AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent'))
        )
        AND NOT EXISTS (
          SELECT 1 FROM review_chat_links rcl

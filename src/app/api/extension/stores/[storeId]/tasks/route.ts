@@ -240,6 +240,9 @@ export async function GET(
       ) : Promise.resolve({ rows: [], rowCount: 0 } as any),
 
       // ── Query B: chatOpens (type: "open") ──
+      // Two paths to chat opening:
+      //   Path A: any rating with rejected complaint → open chat
+      //   Path B: 4★ without complaint (complaint_rating_4=false) → open chat directly
       // Fetch extra rows (LIMIT 400) since JS post-filter by work_from_date may reduce count
       chatTasksAllowed && chatEligibleProductIds.length > 0 ? query<{
         id: string;
@@ -253,17 +256,23 @@ export async function GET(
         `SELECT DISTINCT ON (r.id)
                 r.id, r.product_id, p.wb_product_id, r.rating, r.date, r.author, r.text
          FROM reviews r
-         JOIN review_complaints rc ON rc.review_id = r.id
          JOIN products p ON r.product_id = p.id
+         LEFT JOIN review_complaints rc ON rc.review_id = r.id AND rc.status = 'rejected'
          WHERE r.store_id = $1
            AND r.product_id = ANY($2::text[])
            AND r.rating = ANY($3::int[])
-           AND rc.status = 'rejected'
            AND r.chat_status_by_review = 'available'
            AND r.review_status_wb IN ('visible', 'unknown')
            AND r.rating_excluded = FALSE
            AND r.marketplace = 'wb'
            AND (r.complaint_status IS NULL OR r.complaint_status NOT IN ('approved', 'pending'))
+           AND (
+             -- Path A: has rejected complaint → open chat (any rating)
+             rc.id IS NOT NULL
+             OR
+             -- Path B: 4★ with no complaint filed → open chat directly
+             (r.rating = 4 AND (r.complaint_status IS NULL OR r.complaint_status = 'not_sent'))
+           )
            AND NOT EXISTS (
              SELECT 1 FROM review_chat_links rcl
              WHERE rcl.store_id = r.store_id
