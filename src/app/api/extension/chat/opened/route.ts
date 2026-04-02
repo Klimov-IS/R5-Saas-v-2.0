@@ -175,6 +175,19 @@ export async function POST(request: NextRequest) {
       chat_id: chatId,
     });
 
+    // 7. Mark review as 'opened' so it won't appear in chatOpens again
+    if (created && reviewId) {
+      try {
+        await query(
+          `UPDATE reviews SET chat_status_by_review = 'opened', updated_at = NOW() WHERE id = $1`,
+          [reviewId]
+        );
+      } catch (err) {
+        // Non-fatal: duplicate prevention still works via NOT EXISTS on review_chat_links
+        console.warn('[Extension Chat API] Failed to update chat_status_by_review:', err);
+      }
+    }
+
     console.log(
       `[Extension Chat API] Chat ${created ? 'created' : 'exists'}: ` +
       `store=${storeId} reviewKey=${reviewKey} reviewId=${reviewId || 'pending'} chatId=${chatId || 'none'}` +

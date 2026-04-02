@@ -322,6 +322,7 @@ export async function findPendingLinksWithoutChatId(
 /**
  * Fuzzy match a review by context (nmId + rating + date ±2 minutes).
  * Returns the closest matching review ID.
+ * Uses 'reviews' table (not reviews_all) — chats are only for 1-4★.
  */
 export async function matchReviewByContext(
   storeId: string,
@@ -331,7 +332,7 @@ export async function matchReviewByContext(
 ): Promise<string | null> {
   const result = await query<{ id: string }>(
     `SELECT r.id
-     FROM reviews_all r
+     FROM reviews r
      JOIN products p ON r.product_id = p.id
      WHERE r.store_id = $1
        AND p.wb_product_id = $2
