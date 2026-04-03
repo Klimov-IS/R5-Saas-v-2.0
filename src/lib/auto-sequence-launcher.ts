@@ -22,6 +22,7 @@ import {
   getNextSlotTime,
 } from '@/lib/auto-sequence-templates';
 import type { ChatStatus, ChatTag } from '@/db/helpers';
+import { CHAT_ALLOWED_STAGES } from '@/types/stores';
 
 /**
  * Attempt to auto-start a 30-day sequence for a review-linked chat.
@@ -35,9 +36,12 @@ export async function maybeStartAutoSequence(
   storeId: string
 ): Promise<boolean> {
   try {
-    // Guard: skip if store is inactive
+    // Guard: skip if store is inactive or stage doesn't allow chat work
     const store = await dbHelpers.getStoreById(storeId);
     if (!store || !store.is_active) {
+      return false;
+    }
+    if (!CHAT_ALLOWED_STAGES.includes(store.stage as any)) {
       return false;
     }
 

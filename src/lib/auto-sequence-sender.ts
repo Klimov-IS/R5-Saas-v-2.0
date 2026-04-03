@@ -6,6 +6,7 @@
 import * as dbHelpers from '@/db/helpers';
 import { getDaysUntilNextMessage, type SequenceMessage } from '@/lib/auto-sequence-templates';
 import { sendMessageToMarketplace } from '@/core/services/message-sender';
+import { CHAT_ALLOWED_STAGES } from '@/types/stores';
 
 interface SendSequenceMessageParams {
   sequenceId: string;
@@ -43,6 +44,9 @@ export async function sendSequenceMessage(
   }
   if (!store.is_active) {
     return { sent: false, error: 'permanent', errorMessage: 'Store is inactive (is_active=false)' };
+  }
+  if (!CHAT_ALLOWED_STAGES.includes(store.stage as any)) {
+    return { sent: false, error: 'permanent', errorMessage: `Store stage=${store.stage} not in allowed stages` };
   }
 
   // Send message via shared marketplace dispatch (no replySign — helper fetches it for WB)

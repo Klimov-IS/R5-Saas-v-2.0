@@ -18,6 +18,7 @@ import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MES
 import type { SequenceMessage } from '@/lib/auto-sequence-templates';
 import { isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
+import { CHAT_ALLOWED_STAGES } from '@/types/stores';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -705,6 +706,14 @@ export function startAutoSequenceProcessor() {
             if (!dryRun) await dbHelpers.stopSequence(seq.id, 'store_deactivated');
             stopped++;
             console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (store ${seq.store_id} inactive)${dryRun ? ' [DRY RUN]' : ''}`);
+            continue;
+          }
+
+          // Check stop condition: store stage not allowed for chat work?
+          if (!CHAT_ALLOWED_STAGES.includes(seqStore.stage as any)) {
+            if (!dryRun) await dbHelpers.stopSequence(seq.id, 'store_stage_paused');
+            stopped++;
+            console.log(`[CRON] 🛑 Sequence ${seq.id}: stopped (store stage=${seqStore.stage})${dryRun ? ' [DRY RUN]' : ''}`);
             continue;
           }
 
