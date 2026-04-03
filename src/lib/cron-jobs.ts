@@ -1468,7 +1468,7 @@ export function startResolvedReviewCloser() {
            END as close_reason
          FROM chats c
          INNER JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
-         LEFT JOIN reviews_all r ON rcl.review_id = r.id
+         LEFT JOIN reviews r ON rcl.review_id = r.id
          WHERE c.status != 'closed'
            AND (
              r.complaint_status = 'approved'

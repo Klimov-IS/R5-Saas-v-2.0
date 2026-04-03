@@ -104,26 +104,25 @@ export async function upsertReviewsFromExtension(
         rev.wb_article
       );
 
-      // 2. Check if review exists (in either table)
+      // 2. Check if review exists
       const existingReview = await query(
         'SELECT id, rating FROM reviews WHERE id = $1',
         [rev.review_id]
       );
-      let isNewReview = !existingReview.rows[0];
-      if (isNewReview) {
-        const archiveCheck = await query(
-          'SELECT id, rating FROM reviews_archive WHERE id = $1',
-          [rev.review_id]
-        );
-        isNewReview = !archiveCheck.rows[0];
+      const isNewReview = !existingReview.rows[0];
+
+      // Sprint-016: Skip 5★ reviews — only increment counter
+      if (rev.rating === 5) {
+        if (isNewReview) {
+          await query('UPDATE stores SET review_count_5star = review_count_5star + 1 WHERE id = $1', [storeId]);
+          result.created++;
+        }
+        continue;
       }
 
-      // 3. Upsert review — route by rating (Sprint-013)
-      const targetTable = rev.rating === 5 ? 'reviews_archive' : 'reviews';
-      const otherTable = rev.rating === 5 ? 'reviews' : 'reviews_archive';
-
+      // 3. Upsert review
       await query(
-        `INSERT INTO ${targetTable} (
+        `INSERT INTO reviews (
           id, product_id, store_id, owner_id, rating, text, author, date,
           review_status_wb, product_status_by_review, chat_status_by_review, complaint_status,
           purchase_date, parsed_at, page_number,
@@ -138,16 +137,16 @@ export async function upsertReviewsFromExtension(
           product_status_by_review = EXCLUDED.product_status_by_review,
           chat_status_by_review = CASE
             WHEN EXCLUDED.chat_status_by_review = 'unknown'
-              THEN COALESCE(${targetTable}.chat_status_by_review, 'unknown'::chat_status_by_review)
-            WHEN ${targetTable}.chat_status_by_review = 'opened' AND EXCLUDED.chat_status_by_review != 'opened'
-              THEN ${targetTable}.chat_status_by_review
-            ELSE COALESCE(EXCLUDED.chat_status_by_review, ${targetTable}.chat_status_by_review)
+              THEN COALESCE(reviews.chat_status_by_review, 'unknown'::chat_status_by_review)
+            WHEN reviews.chat_status_by_review = 'opened' AND EXCLUDED.chat_status_by_review != 'opened'
+              THEN reviews.chat_status_by_review
+            ELSE COALESCE(EXCLUDED.chat_status_by_review, reviews.chat_status_by_review)
           END,
           complaint_status = CASE
-            WHEN ${targetTable}.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
+            WHEN reviews.complaint_status IN ('sent', 'pending', 'approved', 'rejected', 'reconsidered')
               AND EXCLUDED.complaint_status IN ('not_sent', 'draft')
-              THEN ${targetTable}.complaint_status
-            ELSE COALESCE(EXCLUDED.complaint_status, ${targetTable}.complaint_status)
+              THEN reviews.complaint_status
+            ELSE COALESCE(EXCLUDED.complaint_status, reviews.complaint_status)
           END,
           purchase_date = EXCLUDED.purchase_date,
           parsed_at = EXCLUDED.parsed_at,
@@ -172,9 +171,6 @@ export async function upsertReviewsFromExtension(
         ]
       );
 
-      // Clean up other table in case rating changed
-      await query(`DELETE FROM ${otherTable} WHERE id = $1`, [rev.review_id]);
-
       if (isNewReview) {
         result.created++;
       } else {
@@ -191,9 +187,9 @@ export async function upsertReviewsFromExtension(
     }
   }
 
-  // Update store total_reviews count (from both tables)
+  // Update store total_reviews count (reviews table + 5★ counter)
   const countResult = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM reviews_all WHERE store_id = $1',
+    'SELECT (SELECT COUNT(*) FROM reviews WHERE store_id = $1) + (SELECT COALESCE(review_count_5star, 0) FROM stores WHERE id = $1) as count',
     [storeId]
   );
 
@@ -304,30 +300,41 @@ export async function autoGenerateComplaintsForReviews(
  * @returns Statistics object
  */
 export async function getStoreReviewsStats(storeId: string) {
-  // Reviews stats
-  const reviewsStatsResult = await query<{
-    total: string;
-    rating_1: string;
-    rating_2: string;
-    rating_3: string;
-    rating_4: string;
-    rating_5: string;
-    avg_rating: string;
-  }>(
-    `SELECT
-      COUNT(*) as total,
-      COUNT(*) FILTER (WHERE rating = 1) as rating_1,
-      COUNT(*) FILTER (WHERE rating = 2) as rating_2,
-      COUNT(*) FILTER (WHERE rating = 3) as rating_3,
-      COUNT(*) FILTER (WHERE rating = 4) as rating_4,
-      COUNT(*) FILTER (WHERE rating = 5) as rating_5,
-      COALESCE(AVG(rating), 0) as avg_rating
-    FROM reviews_all
-    WHERE store_id = $1`,
-    [storeId]
-  );
+  // Reviews stats (Sprint-016: reviews table + stores.review_count_5star)
+  const [reviewsStatsResult, storeCount5Result] = await Promise.all([
+    query<{
+      total: string;
+      rating_1: string;
+      rating_2: string;
+      rating_3: string;
+      rating_4: string;
+      avg_rating: string;
+    }>(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE rating = 1) as rating_1,
+        COUNT(*) FILTER (WHERE rating = 2) as rating_2,
+        COUNT(*) FILTER (WHERE rating = 3) as rating_3,
+        COUNT(*) FILTER (WHERE rating = 4) as rating_4,
+        COALESCE(AVG(rating), 0) as avg_rating
+      FROM reviews
+      WHERE store_id = $1`,
+      [storeId]
+    ),
+    query<{ review_count_5star: number }>(
+      `SELECT COALESCE(review_count_5star, 0) as review_count_5star FROM stores WHERE id = $1`,
+      [storeId]
+    ),
+  ]);
 
   const reviewsStats = reviewsStatsResult.rows[0];
+  const count5star = storeCount5Result.rows[0]?.review_count_5star || 0;
+  const totalReviews14 = parseInt(reviewsStats.total, 10);
+  const totalAll = totalReviews14 + count5star;
+  // Recalculate avg_rating including 5★
+  const avgRating = totalAll > 0
+    ? (parseFloat(reviewsStats.avg_rating) * totalReviews14 + 5 * count5star) / totalAll
+    : 0;
 
   // Complaints stats
   const complaintsStatsResult = await query<{
@@ -380,18 +387,18 @@ export async function getStoreReviewsStats(storeId: string) {
 
   return {
     reviews: {
-      total: parseInt(reviewsStats.total, 10),
+      total: totalAll,
       by_rating: {
         '1': parseInt(reviewsStats.rating_1, 10),
         '2': parseInt(reviewsStats.rating_2, 10),
         '3': parseInt(reviewsStats.rating_3, 10),
         '4': parseInt(reviewsStats.rating_4, 10),
-        '5': parseInt(reviewsStats.rating_5, 10),
+        '5': count5star,
       },
       negative: parseInt(reviewsStats.rating_1, 10) +
                 parseInt(reviewsStats.rating_2, 10) +
                 parseInt(reviewsStats.rating_3, 10),
-      avg_rating: parseFloat(reviewsStats.avg_rating),
+      avg_rating: avgRating,
     },
     complaints: {
       total: parseInt(complaintsStats.total, 10),

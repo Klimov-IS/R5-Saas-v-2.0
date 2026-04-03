@@ -246,7 +246,7 @@ export async function findLinkWithReviewByChatId(
   const result = await query<ReviewChatLink & { review_text?: string | null }>(
     `SELECT rcl.*, r.text as review_text
      FROM review_chat_links rcl
-     LEFT JOIN reviews_all r ON rcl.review_id = r.id
+     LEFT JOIN reviews r ON rcl.review_id = r.id
      WHERE rcl.chat_id = $1 LIMIT 1`,
     [chatId]
   );
@@ -274,7 +274,7 @@ export async function isReviewResolvedForChat(
   }>(
     `SELECT r.complaint_status, r.review_status_wb, r.rating_excluded
      FROM review_chat_links rcl
-     JOIN reviews_all r ON rcl.review_id = r.id
+     JOIN reviews r ON rcl.review_id = r.id
      WHERE rcl.chat_id = $1
      LIMIT 1`,
     [chatId]
@@ -322,7 +322,7 @@ export async function findPendingLinksWithoutChatId(
 /**
  * Fuzzy match a review by context (nmId + rating + date ±2 minutes).
  * Returns the closest matching review ID.
- * Uses 'reviews' table (not reviews_all) — chats are only for 1-4★.
+ * Uses 'reviews' table — chats are only for 1-4★.
  */
 export async function matchReviewByContext(
   storeId: string,
@@ -392,7 +392,7 @@ export async function getPendingChatsCount(
            AND rcl.review_date BETWEEN r.date - interval '2 minutes'
                                     AND r.date + interval '2 minutes'
        )`,
-    // NOTE: uses 'reviews' table — only 1-4★ ratings (was reviews_all, optimized)
+    // NOTE: uses 'reviews' table — only 1-4★ ratings (was reviews, optimized)
     [storeId]
   );
   return parseInt(result.rows[0]?.count || '0', 10);

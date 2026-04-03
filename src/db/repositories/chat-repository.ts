@@ -26,7 +26,7 @@ export async function findChatDetailById(chatId: string, accessibleStoreIds: str
      FROM chats c
      JOIN stores s ON c.store_id = s.id
      LEFT JOIN review_chat_links rcl ON rcl.chat_id = c.id AND rcl.store_id = c.store_id
-     LEFT JOIN reviews_all r ON rcl.review_id = r.id
+     LEFT JOIN reviews r ON rcl.review_id = r.id
      LEFT JOIN products p ON p.store_id = c.store_id
        AND ((c.marketplace = 'wb' AND c.product_nm_id = p.wb_product_id)
          OR (c.marketplace = 'ozon' AND (c.product_nm_id = p.ozon_sku OR c.product_nm_id = p.ozon_fbs_sku)))

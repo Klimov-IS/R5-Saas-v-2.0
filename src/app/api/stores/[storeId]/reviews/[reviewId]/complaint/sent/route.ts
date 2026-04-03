@@ -145,7 +145,7 @@ export async function POST(
       product_id: string;
     }>(
       `SELECT id, store_id, product_id
-       FROM reviews_all
+       FROM reviews
        WHERE id = $1`,
       [reviewId]
     );
@@ -235,8 +235,8 @@ export async function POST(
       [now, complaint.id]
     );
 
-    // Update denormalized fields in reviews table (Sprint-013: try both tables)
-    const revUpd = await query(
+    // Update denormalized fields in reviews table
+    await query(
       `UPDATE reviews
        SET
          has_complaint = true,
@@ -245,17 +245,6 @@ export async function POST(
        WHERE id = $2`,
       [now, reviewId]
     );
-    if ((revUpd.rowCount || 0) === 0) {
-      await query(
-        `UPDATE reviews_archive
-         SET
-           has_complaint = true,
-           complaint_status = 'sent',
-           updated_at = $1
-         WHERE id = $2`,
-        [now, reviewId]
-      );
-    }
 
     // Return success response
     return NextResponse.json(

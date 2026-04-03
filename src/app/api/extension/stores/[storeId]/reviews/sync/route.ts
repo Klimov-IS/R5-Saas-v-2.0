@@ -105,19 +105,12 @@ export async function POST(
 
     for (const review of body.reviews) {
       try {
-        // Check if review exists (Sprint-013: check both tables)
-        let existingReview = await query(
+        // Check if review exists
+        const existingReview = await query(
           `SELECT id, review_status_wb, complaint_status FROM reviews WHERE id = $1`,
           [review.id]
         );
-        let reviewTable = 'reviews';
-        if (existingReview.rows.length === 0) {
-          existingReview = await query(
-            `SELECT id, review_status_wb, complaint_status FROM reviews_archive WHERE id = $1`,
-            [review.id]
-          );
-          reviewTable = 'reviews_archive';
-        }
+        const reviewTable = 'reviews';
 
         if (existingReview.rows.length > 0) {
           // UPDATE existing review with downgrade protection:

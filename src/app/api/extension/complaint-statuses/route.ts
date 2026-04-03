@@ -258,8 +258,7 @@ export async function POST(request: NextRequest) {
          RETURNING r.id, v.new_status, v.filed_by, v.filed_date`;
       const bulkParams = [storeId, productIds, ratings, dateMinutes, statuses, filedBys, filedDates];
       const r1 = await client.query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(complaintBulkSql('reviews'), bulkParams);
-      const r2 = await client.query<{ id: string; new_status: string; filed_by: string; filed_date: string | null }>(complaintBulkSql('reviews_archive'), bulkParams);
-      const bulkUpdateResult = { rows: [...r1.rows, ...r2.rows], rowCount: (r1.rowCount || 0) + (r2.rowCount || 0) };
+      const bulkUpdateResult = { rows: r1.rows, rowCount: r1.rowCount || 0 };
 
       const rvUpdated = bulkUpdateResult.rowCount || 0;
       console.log(`[Extension ComplaintStatuses] Reviews updated: ${rvUpdated}`);

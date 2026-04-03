@@ -158,19 +158,10 @@ export async function bulkCreateComplaints(inputs: CreateReviewComplaintInput[])
     params
   );
 
-  // Update denormalized fields in reviews table (bulk update)
-  // Sprint-013: complaints only exist on 1-4★, but run on both tables for safety
+  // Update denormalized fields in reviews table
   const reviewIds = validatedInputs.map(i => i.review_id);
   await query(
     `UPDATE reviews
-     SET has_complaint = TRUE,
-         has_complaint_draft = TRUE,
-         complaint_status = 'draft'
-     WHERE id = ANY($1::text[])`,
-    [reviewIds]
-  );
-  await query(
-    `UPDATE reviews_archive
      SET has_complaint = TRUE,
          has_complaint_draft = TRUE,
          complaint_status = 'draft'
@@ -232,8 +223,8 @@ export async function createComplaint(input: CreateReviewComplaintInput): Promis
     ]
   );
 
-  // Update denormalized fields in reviews table (Sprint-013: both tables)
-  const updResult = await query(
+  // Update denormalized fields in reviews table
+  await query(
     `UPDATE reviews
      SET has_complaint = TRUE,
          has_complaint_draft = TRUE,
@@ -241,16 +232,6 @@ export async function createComplaint(input: CreateReviewComplaintInput): Promis
      WHERE id = $1`,
     [input.review_id]
   );
-  if ((updResult.rowCount || 0) === 0) {
-    await query(
-      `UPDATE reviews_archive
-       SET has_complaint = TRUE,
-           has_complaint_draft = TRUE,
-           complaint_status = 'draft'
-       WHERE id = $1`,
-      [input.review_id]
-    );
-  }
 
   return result.rows[0];
 }
@@ -423,8 +404,8 @@ export async function markComplaintAsSent(
     [input.sent_by_user_id, reviewId]
   );
 
-  // Update denormalized fields in reviews table (Sprint-013: both tables)
-  const sentUpd = await query(
+  // Update denormalized fields in reviews table
+  await query(
     `UPDATE reviews
      SET has_complaint = TRUE,
          has_complaint_draft = FALSE,
@@ -433,17 +414,6 @@ export async function markComplaintAsSent(
      WHERE id = $1`,
     [reviewId]
   );
-  if ((sentUpd.rowCount || 0) === 0) {
-    await query(
-      `UPDATE reviews_archive
-       SET has_complaint = TRUE,
-           has_complaint_draft = FALSE,
-           complaint_sent_date = NOW(),
-           complaint_status = 'pending'
-       WHERE id = $1`,
-      [reviewId]
-    );
-  }
 
   return result.rows[0] || null;
 }
@@ -466,24 +436,15 @@ export async function updateComplaintModeration(
     [input.status, input.moderated_at, input.wb_response || null, reviewId]
   );
 
-  // Sync complaint_status to reviews table for UI consistency (Sprint-013: both tables)
+  // Sync complaint_status to reviews table for UI consistency
   if (result.rows[0]) {
-    const modUpd = await query(
+    await query(
       `UPDATE reviews
        SET complaint_status = $1::complaint_status,
            updated_at = NOW()
        WHERE id = $2`,
       [input.status, reviewId]
     );
-    if ((modUpd.rowCount || 0) === 0) {
-      await query(
-        `UPDATE reviews_archive
-         SET complaint_status = $1::complaint_status,
-             updated_at = NOW()
-         WHERE id = $2`,
-        [input.status, reviewId]
-      );
-    }
   }
 
   return result.rows[0] || null;
@@ -498,9 +459,9 @@ export async function deleteComplaint(reviewId: string): Promise<boolean> {
     [reviewId]
   );
 
-  // Update denormalized fields in reviews table (Sprint-013: both tables)
+  // Update denormalized fields in reviews table
   if ((result.rowCount ?? 0) > 0) {
-    const delUpd = await query(
+    await query(
       `UPDATE reviews
        SET has_complaint = FALSE,
            has_complaint_draft = FALSE,
@@ -508,16 +469,6 @@ export async function deleteComplaint(reviewId: string): Promise<boolean> {
        WHERE id = $1`,
       [reviewId]
     );
-    if ((delUpd.rowCount || 0) === 0) {
-      await query(
-        `UPDATE reviews_archive
-         SET has_complaint = FALSE,
-             has_complaint_draft = FALSE,
-             complaint_status = 'not_sent'
-         WHERE id = $1`,
-        [reviewId]
-      );
-    }
   }
 
   return (result.rowCount ?? 0) > 0;

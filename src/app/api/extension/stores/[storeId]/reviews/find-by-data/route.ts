@@ -125,7 +125,7 @@ export async function POST(
         rc.id as complaint_id,
         rc.complaint_text,
         rc.status as complaint_status
-      FROM reviews_all r
+      FROM reviews r
       INNER JOIN products p ON p.id = r.product_id
       LEFT JOIN review_complaints rc ON rc.review_id = r.id
       WHERE r.store_id = $1

@@ -313,7 +313,7 @@ export async function refreshReviewsForStore(storeId: string, mode: 'full' | 'in
 
                 // Step 1: Get all non-deleted review IDs in DB for this store + date range
                 const dbReviewsResult = await query<{ id: string }>(
-                    `SELECT id FROM reviews_all
+                    `SELECT id FROM reviews
                      WHERE store_id = $1
                        AND date >= $2
                        AND date <= $3
@@ -341,8 +341,8 @@ export async function refreshReviewsForStore(storeId: string, mode: 'full' | 'in
                 } else {
                     console.log(`[DELETED DETECTION] Found ${missingIds.length}/${dbReviewIds.size} potentially deleted reviews for store ${storeId}`);
 
-                    // Step 4: Mark as deleted (Sprint-013: both tables)
-                    const markResult1 = await query<{ id: string }>(
+                    // Step 4: Mark as deleted
+                    const markResult = await query<{ id: string }>(
                         `UPDATE reviews
                          SET review_status_wb = 'deleted',
                              deleted_from_wb_at = NOW(),
@@ -353,21 +353,6 @@ export async function refreshReviewsForStore(storeId: string, mode: 'full' | 'in
                          RETURNING id`,
                         [missingIds, storeId]
                     );
-                    const markResult2 = await query<{ id: string }>(
-                        `UPDATE reviews_archive
-                         SET review_status_wb = 'deleted',
-                             deleted_from_wb_at = NOW(),
-                             updated_at = NOW()
-                         WHERE id = ANY($1)
-                           AND store_id = $2
-                           AND review_status_wb IN ('unknown', 'visible')
-                         RETURNING id`,
-                        [missingIds, storeId]
-                    );
-                    const markResult = {
-                        rows: [...markResult1.rows, ...markResult2.rows],
-                        rowCount: (markResult1.rowCount ?? 0) + (markResult2.rowCount ?? 0),
-                    };
 
                     const markedCount = markResult.rowCount ?? 0;
                     console.log(`[DELETED DETECTION] Marked ${markedCount} reviews as deleted`);
@@ -390,14 +375,6 @@ export async function refreshReviewsForStore(storeId: string, mode: 'full' | 'in
                             const cancelledReviewIds = complaintResult.rows.map(r => r.review_id);
                             await query(
                                 `UPDATE reviews
-                                 SET complaint_status = 'not_applicable',
-                                     has_complaint_draft = FALSE,
-                                     updated_at = NOW()
-                                 WHERE id = ANY($1)`,
-                                [cancelledReviewIds]
-                            );
-                            await query(
-                                `UPDATE reviews_archive
                                  SET complaint_status = 'not_applicable',
                                      has_complaint_draft = FALSE,
                                      updated_at = NOW()
@@ -436,17 +413,8 @@ export async function refreshReviewsForStore(storeId: string, mode: 'full' | 'in
 
                 if ((restoredComplaints.rowCount ?? 0) > 0) {
                     const restoredReviewIds = restoredComplaints.rows.map(r => r.review_id);
-                    // Sprint-013: both tables
                     await query(
                         `UPDATE reviews
-                         SET complaint_status = 'draft',
-                             has_complaint_draft = TRUE,
-                             updated_at = NOW()
-                         WHERE id = ANY($1)`,
-                        [restoredReviewIds]
-                    );
-                    await query(
-                        `UPDATE reviews_archive
                          SET complaint_status = 'draft',
                              has_complaint_draft = TRUE,
                              updated_at = NOW()

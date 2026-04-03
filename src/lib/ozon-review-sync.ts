@@ -49,7 +49,7 @@ export async function refreshOzonReviews(storeId: string): Promise<string> {
 
     // Pre-fetch existing OZON review IDs for incremental sync
     const existingIds = await query<{ id: string }>(
-      'SELECT id FROM reviews_all WHERE store_id = $1 AND marketplace = $2',
+      'SELECT id FROM reviews WHERE store_id = $1 AND marketplace = $2',
       [storeId, 'ozon']
     );
     const knownReviewIds = new Set(existingIds.rows.map(r => r.id));

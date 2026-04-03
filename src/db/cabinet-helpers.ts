@@ -87,7 +87,7 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
             last_product_update_status, last_product_update_date,
             last_review_update_status, last_review_update_date,
             last_chat_update_status, last_chat_update_date,
-            owner_id
+            owner_id, COALESCE(review_count_5star, 0) as review_count_5star
      FROM stores WHERE id = $1`,
     [storeId]
   );
@@ -119,10 +119,10 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
       [storeId]
     ),
 
-    // Query 3: Rating breakdown (Sprint-013: use reviews_all for all ratings)
+    // Query 3: Rating breakdown (Sprint-016: reviews table + stores.review_count_5star)
     query(
       `SELECT rating, COUNT(*) AS count
-       FROM reviews_all
+       FROM reviews
        WHERE store_id = $1
        GROUP BY rating
        ORDER BY rating DESC`,
@@ -142,10 +142,10 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
       [storeId]
     ),
 
-    // Query 5: Deleted reviews count (Sprint-013: use reviews_all)
+    // Query 5: Deleted reviews count
     query(
       `SELECT COUNT(*) AS deleted_count
-       FROM reviews_all
+       FROM reviews
        WHERE store_id = $1 AND deleted_from_wb_at IS NOT NULL`,
       [storeId]
     ),
@@ -258,11 +258,12 @@ export async function getCabinetData(storeId: string): Promise<CabinetData | nul
     deletions: { total: toNum(deletionResult.rows[0]?.deleted_count) },
   };
 
-  // Rating breakdown
+  // Rating breakdown (1-4★ from reviews table, 5★ from stores.review_count_5star)
   const ratingBreakdown: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   for (const row of ratingResult.rows) {
     ratingBreakdown[row.rating] = toNum(row.count);
   }
+  ratingBreakdown[5] = toNum(s.review_count_5star);
 
   // Complaints
   const cr = complaintResult.rows[0];

@@ -206,9 +206,8 @@ export async function POST(
       RETURNING r.id`;
     const reparseParams = [eligProductIds, eligRatings, storeId];
     const r1 = await query<{ id: string }>(reparseSql('reviews'), reparseParams);
-    const r2 = await query<{ id: string }>(reparseSql('reviews_archive'), reparseParams);
 
-    const resetCount = r1.rows.length + r2.rows.length;
+    const resetCount = r1.rows.length;
     const storeName = storeResult.rows[0].name;
 
     console.log(`[Extension Reparse] ✅ ${storeName}: сброшено ${resetCount} отзывов, пропущено ${ratingExcluded} (rating_excluded)`);
