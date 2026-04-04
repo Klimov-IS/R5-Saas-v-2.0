@@ -2,13 +2,13 @@
 
 **Version:** 2.1.0
 **Last Updated:** 2026-02-20
-**Production URL:** http://158.160.229.16
+**Production URL:** http://158.160.139.99
 
 ---
 
 ## Overview
 
-This API provides endpoints for the Chrome Extension "R5 подача жалоб" to fetch and submit generated complaints to Wildberries.
+This API provides endpoints for the Chrome Extension "R5 РїРѕРґР°С‡Р° Р¶Р°Р»РѕР±" to fetch and submit generated complaints to Wildberries.
 
 ## Authentication
 
@@ -21,7 +21,7 @@ Authorization: Bearer your_api_token_here
 ### Getting Your API Token
 
 1. Log into the WB Reputation Manager dashboard
-2. Navigate to Settings → API Tokens
+2. Navigate to Settings в†’ API Tokens
 3. Generate a new token for your store
 4. Copy the token securely (shown only once)
 
@@ -73,10 +73,10 @@ Authorization: Bearer your_api_token_here
     "productId": "123456789",
     "rating": 1,
     "reviewDate": "2026-01-28T10:15:30.000Z",
-    "reviewText": "Плохое качество товара",
-    "authorName": "Иван И.",
+    "reviewText": "РџР»РѕС…РѕРµ РєР°С‡РµСЃС‚РІРѕ С‚РѕРІР°СЂР°",
+    "authorName": "РРІР°РЅ Р.",
     "createdAt": "2026-01-28T11:00:00.000Z",
-    "complaintText": "```json\n{\"reasonId\":\"1\",\"reasonName\":\"Оскорбление\",\"complaintText\":\"Отзыв содержит оскорбительные выражения...\"}\n```",
+    "complaintText": "```json\n{\"reasonId\":\"1\",\"reasonName\":\"РћСЃРєРѕСЂР±Р»РµРЅРёРµ\",\"complaintText\":\"РћС‚Р·С‹РІ СЃРѕРґРµСЂР¶РёС‚ РѕСЃРєРѕСЂР±РёС‚РµР»СЊРЅС‹Рµ РІС‹СЂР°Р¶РµРЅРёСЏ...\"}\n```",
     "status": "draft",
     "attempts": 0,
     "lastAttemptAt": null
@@ -214,7 +214,7 @@ The `complaintText` field contains complaint data wrapped in markdown code block
 **Format:**
 ```
 ```json
-{"reasonId":"1","reasonName":"Оскорбление","complaintText":"..."}
+{"reasonId":"1","reasonName":"РћСЃРєРѕСЂР±Р»РµРЅРёРµ","complaintText":"..."}
 ```
 ```
 
@@ -230,7 +230,7 @@ function parseComplaintText(complaintText) {
 }
 
 const complaint = parseComplaintText(response.complaintText);
-// Result: { reasonId: "1", reasonName: "Оскорбление", complaintText: "..." }
+// Result: { reasonId: "1", reasonName: "РћСЃРєРѕСЂР±Р»РµРЅРёРµ", complaintText: "..." }
 ```
 
 ---
@@ -272,7 +272,7 @@ async function fetchAllComplaints(storeId, token) {
 
   while (true) {
     const response = await fetch(
-      `http://158.160.229.16/api/stores/${storeId}/complaints?skip=${skip}&take=${take}`,
+      `http://158.160.139.99/api/stores/${storeId}/complaints?skip=${skip}&take=${take}`,
       {
         headers: { 'Authorization': `Bearer ${token}` }
       }
@@ -346,7 +346,7 @@ async function markAsSent(storeId, reviewId, token) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch(
-        `http://158.160.229.16/api/stores/${storeId}/reviews/${reviewId}/complaint/sent`,
+        `http://158.160.139.99/api/stores/${storeId}/reviews/${reviewId}/complaint/sent`,
         {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -406,18 +406,18 @@ Content-Type: application/json
   "storeId": "store_123",
   "complaint": {
     "checkDate": "20.02.2026",
-    "cabinetName": "МойМагазин",
+    "cabinetName": "РњРѕР№РњР°РіР°Р·РёРЅ",
     "articul": "149325538",
     "reviewId": "",
     "feedbackRating": 1,
-    "feedbackDate": "18 февр. 2026 г. в 21:45",
+    "feedbackDate": "18 С„РµРІСЂ. 2026 Рі. РІ 21:45",
     "complaintSubmitDate": "15.02.2026",
-    "status": "Одобрена",
+    "status": "РћРґРѕР±СЂРµРЅР°",
     "hasScreenshot": true,
     "fileName": "149325538_18.02.26_21-45.png",
     "driveLink": "https://drive.google.com/file/d/abc123/view",
-    "complaintCategory": "Отзыв не относится к товару",
-    "complaintText": "Жалоба от: 20.02.2026\n\nОтзыв покупателя не содержит оценки качества..."
+    "complaintCategory": "РћС‚Р·С‹РІ РЅРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє С‚РѕРІР°СЂСѓ",
+    "complaintText": "Р–Р°Р»РѕР±Р° РѕС‚: 20.02.2026\n\nРћС‚Р·С‹РІ РїРѕРєСѓРїР°С‚РµР»СЏ РЅРµ СЃРѕРґРµСЂР¶РёС‚ РѕС†РµРЅРєРё РєР°С‡РµСЃС‚РІР°..."
   }
 }
 ```
@@ -426,25 +426,25 @@ Content-Type: application/json
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `checkDate` | string | Yes | Дата проверки, DD.MM.YYYY |
-| `cabinetName` | string | Yes | Название магазина WB |
-| `articul` | string | Yes | Артикул WB (nmId) |
-| `reviewId` | string | No | ID отзыва (зарезервировано, пока пустая строка) |
-| `feedbackRating` | number/string | Yes | Рейтинг отзыва 1-5 |
-| `feedbackDate` | string | Yes | Дата отзыва в оригинальном формате WB |
-| `complaintSubmitDate` | string | No | Дата подачи жалобы DD.MM.YYYY или DD.MM |
-| `status` | string | No | Всегда "Одобрена" |
-| `hasScreenshot` | boolean | No | Всегда true |
-| `fileName` | string | Yes | Имя файла скриншота |
-| `driveLink` | string | No | Ссылка на скриншот в Google Drive |
-| `complaintCategory` | string | Yes | Категория жалобы WB |
-| `complaintText` | string | Yes | Полный текст жалобы |
+| `checkDate` | string | Yes | Р”Р°С‚Р° РїСЂРѕРІРµСЂРєРё, DD.MM.YYYY |
+| `cabinetName` | string | Yes | РќР°Р·РІР°РЅРёРµ РјР°РіР°Р·РёРЅР° WB |
+| `articul` | string | Yes | РђСЂС‚РёРєСѓР» WB (nmId) |
+| `reviewId` | string | No | ID РѕС‚Р·С‹РІР° (Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°РЅРѕ, РїРѕРєР° РїСѓСЃС‚Р°СЏ СЃС‚СЂРѕРєР°) |
+| `feedbackRating` | number/string | Yes | Р РµР№С‚РёРЅРі РѕС‚Р·С‹РІР° 1-5 |
+| `feedbackDate` | string | Yes | Р”Р°С‚Р° РѕС‚Р·С‹РІР° РІ РѕСЂРёРіРёРЅР°Р»СЊРЅРѕРј С„РѕСЂРјР°С‚Рµ WB |
+| `complaintSubmitDate` | string | No | Р”Р°С‚Р° РїРѕРґР°С‡Рё Р¶Р°Р»РѕР±С‹ DD.MM.YYYY РёР»Рё DD.MM |
+| `status` | string | No | Р’СЃРµРіРґР° "РћРґРѕР±СЂРµРЅР°" |
+| `hasScreenshot` | boolean | No | Р’СЃРµРіРґР° true |
+| `fileName` | string | Yes | РРјСЏ С„Р°Р№Р»Р° СЃРєСЂРёРЅС€РѕС‚Р° |
+| `driveLink` | string | No | РЎСЃС‹Р»РєР° РЅР° СЃРєСЂРёРЅС€РѕС‚ РІ Google Drive |
+| `complaintCategory` | string | Yes | РљР°С‚РµРіРѕСЂРёСЏ Р¶Р°Р»РѕР±С‹ WB |
+| `complaintText` | string | Yes | РџРѕР»РЅС‹Р№ С‚РµРєСЃС‚ Р¶Р°Р»РѕР±С‹ |
 
 **Deduplication:** `storeId` + `articul` + `feedbackDate` + `fileName`
 
-**filed_by detection:** If `complaintText` starts with "Жалоба от:" → `r5`, otherwise → `seller`.
+**filed_by detection:** If `complaintText` starts with "Р–Р°Р»РѕР±Р° РѕС‚:" в†’ `r5`, otherwise в†’ `seller`.
 
-**Response — Created:**
+**Response вЂ” Created:**
 ```json
 {
   "success": true,
@@ -454,7 +454,7 @@ Content-Type: application/json
 }
 ```
 
-**Response — Duplicate:**
+**Response вЂ” Duplicate:**
 ```json
 {
   "success": true,
@@ -478,7 +478,7 @@ Content-Type: application/json
 ## Support
 
 **Issues:** Report bugs or request features via GitHub Issues
-**Production Dashboard:** http://158.160.229.16
+**Production Dashboard:** http://158.160.139.99
 **Technical Contact:** See project README
 
 ---
@@ -486,7 +486,7 @@ Content-Type: application/json
 ## Changelog
 
 ### Version 2.1.0 (2026-02-20)
-- POST /api/extension/complaint-details — approved complaint data from extension (source of truth for billing/reporting)
+- POST /api/extension/complaint-details вЂ” approved complaint data from extension (source of truth for billing/reporting)
 
 ### Version 2.0.0 (2026-01-28)
 - GET /api/stores/:storeId/complaints endpoint

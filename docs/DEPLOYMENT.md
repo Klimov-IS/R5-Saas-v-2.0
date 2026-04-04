@@ -8,19 +8,19 @@
 
 ### Server Details
 - **Provider:** Yandex Cloud Compute
-- **IP Address:** 158.160.229.16
-- **Domain:** `rating5.ru` (через Cloudflare)
+- **IP Address:** 158.160.139.99
+- **Domain:** `rating5.ru` (С‡РµСЂРµР· Cloudflare)
 - **Region:** ru-central1-d
 - **OS:** Ubuntu 24.04 LTS
 - **Resources:** 2 vCPU, 4GB RAM, 20GB SSD
 - **SSH Key:** `~/.ssh/yandex-cloud-wb-reputation`
-- **SSH User:** `ubuntu` (NEVER use `sudo pm2` — creates separate root daemon)
-- **Public IP Type:** Динамический (⚠️ меняется при остановке VM! Рекомендуется зарезервировать статический)
-- **IP History:** `158.160.217.236` (до 2026-02-25) → `158.160.229.16` (с 2026-02-25)
+- **SSH User:** `ubuntu` (NEVER use `sudo pm2` вЂ” creates separate root daemon)
+- **Public IP Type:** Р”РёРЅР°РјРёС‡РµСЃРєРёР№ (вљ пёЏ РјРµРЅСЏРµС‚СЃСЏ РїСЂРё РѕСЃС‚Р°РЅРѕРІРєРµ VM! Р РµРєРѕРјРµРЅРґСѓРµС‚СЃСЏ Р·Р°СЂРµР·РµСЂРІРёСЂРѕРІР°С‚СЊ СЃС‚Р°С‚РёС‡РµСЃРєРёР№)
+- **IP History:** `158.160.217.236` (РґРѕ 2026-02-25) в†' `158.160.157.62` (2026-02-25 .. 2026-04-01) в†' `158.160.139.99` (СЃ 2026-04-01)
 
 ### Network Architecture
 ```
-User → HTTPS → Cloudflare (edge SSL, CDN, proxy) → HTTPS → Nginx → Next.js :3000
+User в†’ HTTPS в†’ Cloudflare (edge SSL, CDN, proxy) в†’ HTTPS в†’ Nginx в†’ Next.js :3000
 ```
 
 - **Domain:** `rating5.ru` (registrar: nic.ru, DNS: Cloudflare)
@@ -29,7 +29,7 @@ User → HTTPS → Cloudflare (edge SSL, CDN, proxy) → HTTPS → Nginx → Nex
 - **Cloudflare NS:** `lisa.ns.cloudflare.com`, `pedro.ns.cloudflare.com`
 
 ### Application Configuration
-- **Process Manager:** PM2 (4 processes: app cluster ×2, cron trigger fork, tg-bot fork)
+- **Process Manager:** PM2 (4 processes: app cluster Г—2, cron trigger fork, tg-bot fork)
 - **Web Server:** Nginx (reverse proxy, SSL termination)
 - **Node.js:** v22.21.0
 - **Port:** 3000 (internal), 80/443 (external via Nginx)
@@ -41,7 +41,7 @@ User → HTTPS → Cloudflare (edge SSL, CDN, proxy) → HTTPS → Nginx → Nex
 ### Connect to Production Server
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 ```
 
 ### One-Line Commands (from local machine)
@@ -50,13 +50,13 @@ Execute commands remotely without keeping SSH session open:
 
 ```bash
 # Check application status
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 status"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 status"
 
 # View recent logs
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs wb-reputation --lines 50 --nostream"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 logs wb-reputation --lines 50 --nostream"
 
 # Check disk space
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "df -h"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "df -h"
 ```
 
 ---
@@ -68,7 +68,7 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "df -h"
 Run from **local machine** (one-line, zero-downtime):
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
@@ -76,7 +76,7 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
 1. Pulls latest code from GitHub (`main` branch)
 2. Installs/updates dependencies (`npm ci --production=false`)
 3. Rebuilds Next.js application (`npm run build`)
-4. Restarts ALL PM2 processes (`pm2 restart all`) — includes app, cron, tg-bot
+4. Restarts ALL PM2 processes (`pm2 restart all`) вЂ” includes app, cron, tg-bot
 5. Shows application status
 
 **Duration:** ~2-3 minutes
@@ -91,7 +91,7 @@ If you need more control or troubleshooting:
 
 ```bash
 # 1. SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 # 2. Navigate to project
 cd /var/www/wb-reputation
@@ -108,10 +108,10 @@ npm run build
 # 6. Reload PM2 (zero-downtime)
 pm2 reload wb-reputation
 
-# 6a. ОБЯЗАТЕЛЬНО: перезапустить cron-процесс после reload Next.js
-# pm2 reload сбрасывает in-memory шедулеры внутри Next.js.
-# wb-reputation-cron триггерит /api/cron/trigger только один раз при старте,
-# поэтому его нужно перезапустить чтобы шедулеры переинициализировались.
+# 6a. РћР‘РЇР—РђРўР•Р›Р¬РќРћ: РїРµСЂРµР·Р°РїСѓСЃС‚РёС‚СЊ cron-РїСЂРѕС†РµСЃСЃ РїРѕСЃР»Рµ reload Next.js
+# pm2 reload СЃР±СЂР°СЃС‹РІР°РµС‚ in-memory С€РµРґСѓР»РµСЂС‹ РІРЅСѓС‚СЂРё Next.js.
+# wb-reputation-cron С‚СЂРёРіРіРµСЂРёС‚ /api/cron/trigger С‚РѕР»СЊРєРѕ РѕРґРёРЅ СЂР°Р· РїСЂРё СЃС‚Р°СЂС‚Рµ,
+# РїРѕСЌС‚РѕРјСѓ РµРіРѕ РЅСѓР¶РЅРѕ РїРµСЂРµР·Р°РїСѓСЃС‚РёС‚СЊ С‡С‚РѕР±С‹ С€РµРґСѓР»РµСЂС‹ РїРµСЂРµРёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°Р»РёСЃСЊ.
 pm2 restart wb-reputation-cron
 
 # 7. Check status
@@ -119,7 +119,7 @@ pm2 status
 pm2 logs wb-reputation --lines 50
 ```
 
-> ⚠️ **Без шага 6a** адаптивный диалоговый синк (каждые 5/15/60 мин) и другие автоматические задачи перестанут работать до следующего перезапуска `wb-reputation-cron`.
+> вљ пёЏ **Р‘РµР· С€Р°РіР° 6a** Р°РґР°РїС‚РёРІРЅС‹Р№ РґРёР°Р»РѕРіРѕРІС‹Р№ СЃРёРЅРє (РєР°Р¶РґС‹Рµ 5/15/60 РјРёРЅ) Рё РґСЂСѓРіРёРµ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРёРµ Р·Р°РґР°С‡Рё РїРµСЂРµСЃС‚Р°РЅСѓС‚ СЂР°Р±РѕС‚Р°С‚СЊ РґРѕ СЃР»РµРґСѓСЋС‰РµРіРѕ РїРµСЂРµР·Р°РїСѓСЃРєР° `wb-reputation-cron`.
 
 ---
 
@@ -145,7 +145,7 @@ After deployment, verify these endpoints:
 curl https://rating5.ru/health
 
 # Health check (direct IP)
-curl http://158.160.229.16/health
+curl http://158.160.139.99/health
 
 # API authentication
 curl -X GET "https://rating5.ru/api/stores" \
@@ -214,7 +214,7 @@ Located at `/var/www/wb-reputation/ecosystem.config.js`:
 | `wb-reputation-cron` | fork | 1 | Cron trigger (calls `/api/cron/trigger`, then heartbeat) |
 | `wb-reputation-tg-bot` | fork | 1 | Telegram bot (long-polling, standalone Node.js) |
 
-**Note:** CRON jobs run **inside** the Next.js process via `instrumentation.ts`. The `wb-reputation-cron` process is a fallback trigger that ensures CRON init after server is ready. No duplication — `initializeServer()` has an `initialized` flag.
+**Note:** CRON jobs run **inside** the Next.js process via `instrumentation.ts`. The `wb-reputation-cron` process is a fallback trigger that ensures CRON init after server is ready. No duplication вЂ” `initializeServer()` has an `initialized` flag.
 
 ```javascript
 module.exports = {
@@ -273,7 +273,7 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
 
-    # www → non-www redirect
+    # www в†’ non-www redirect
     if ($host = www.rating5.ru) {
         return 301 https://rating5.ru$request_uri;
     }
@@ -296,7 +296,7 @@ server {
 # IP-based access (legacy, backward compatibility)
 server {
     listen 80;
-    server_name 158.160.229.16;
+    server_name 158.160.139.99;
     # ... (existing proxy + flower market config)
 }
 ```
@@ -313,10 +313,10 @@ server {
 
 ### Cloudflare Configuration
 
-- **DNS:** A records `rating5.ru` + `www` → `158.160.229.16` (Proxied ON)
-- **SSL/TLS:** Full (Strict) — Cloudflare validates origin cert
+- **DNS:** A records `rating5.ru` + `www` в†’ `158.160.139.99` (Proxied ON)
+- **SSL/TLS:** Full (Strict) вЂ” Cloudflare validates origin cert
 - **Security:** Bot Fight Mode OFF (required for Telegram Mini App WebView)
-- **Cloudflare panel:** [dash.cloudflare.com](https://dash.cloudflare.com) → rating5.ru
+- **Cloudflare panel:** [dash.cloudflare.com](https://dash.cloudflare.com) в†’ rating5.ru
 
 ### Nginx Commands
 
@@ -392,7 +392,7 @@ pm2 reload wb-reputation
 
 ```bash
 # SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 # Navigate to project
 cd /var/www/wb-reputation
@@ -418,9 +418,9 @@ node -e "
 Migration files are in `migrations/` folder (001-024).
 
 **Latest migrations:**
-- `009_telegram_integration.sql` — Telegram Mini App tables
-- `010_auth_and_roles.sql` — Auth system (organizations, members, invites)
-- `024_update_completion_reason_check.sql` — Chat tag refactoring: 12 tags reduced to 4 + NULL (deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed). Removed tags: active, untagged, successful, unsuccessful, no_reply, completed, refund_requested, spam. Disabled AI flows: classify-chat-tag, classify-chat-deletion. Removed sequence type: refund_followup. Deployed 2026-03-06.
+- `009_telegram_integration.sql` вЂ” Telegram Mini App tables
+- `010_auth_and_roles.sql` вЂ” Auth system (organizations, members, invites)
+- `024_update_completion_reason_check.sql` вЂ” Chat tag refactoring: 12 tags reduced to 4 + NULL (deletion_candidate, deletion_offered, deletion_agreed, deletion_confirmed). Removed tags: active, untagged, successful, unsuccessful, no_reply, completed, refund_requested, spam. Disabled AI flows: classify-chat-tag, classify-chat-deletion. Removed sequence type: refund_followup. Deployed 2026-03-06.
 
 ---
 
@@ -480,7 +480,7 @@ If deployment causes issues:
 
 ```bash
 # 1. SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 # 2. Navigate to project
 cd /var/www/wb-reputation
@@ -506,17 +506,17 @@ pm2 logs wb-reputation
 
 **IMPORTANT:** CRON jobs live **in-memory** inside the Next.js process and are initialized via `instrumentation.ts` + `/api/cron/trigger`.
 
-### ⚠️ После каждого `pm2 reload wb-reputation` — обязателен перезапуск cron:
+### вљ пёЏ РџРѕСЃР»Рµ РєР°Р¶РґРѕРіРѕ `pm2 reload wb-reputation` вЂ” РѕР±СЏР·Р°С‚РµР»РµРЅ РїРµСЂРµР·Р°РїСѓСЃРє cron:
 
 ```bash
-pm2 reload wb-reputation      # сбрасывает in-memory шедулеры в Next.js
-pm2 restart wb-reputation-cron  # wb-reputation-cron триггерит /api/cron/trigger заново
+pm2 reload wb-reputation      # СЃР±СЂР°СЃС‹РІР°РµС‚ in-memory С€РµРґСѓР»РµСЂС‹ РІ Next.js
+pm2 restart wb-reputation-cron  # wb-reputation-cron С‚СЂРёРіРіРµСЂРёС‚ /api/cron/trigger Р·Р°РЅРѕРІРѕ
 ```
 
-**Почему:** `wb-reputation-cron` (процесс `start-cron.js`) вызывает `/api/cron/trigger` только один раз при своём старте. После `pm2 reload wb-reputation` Next.js перезапускается, шедулеры теряются, а cron-процесс продолжает жить и не перетриггеривает. Без перезапуска cron-процесса диалоговый синк и другие задачи останавливаются.
+**РџРѕС‡РµРјСѓ:** `wb-reputation-cron` (РїСЂРѕС†РµСЃСЃ `start-cron.js`) РІС‹Р·С‹РІР°РµС‚ `/api/cron/trigger` С‚РѕР»СЊРєРѕ РѕРґРёРЅ СЂР°Р· РїСЂРё СЃРІРѕС‘Рј СЃС‚Р°СЂС‚Рµ. РџРѕСЃР»Рµ `pm2 reload wb-reputation` Next.js РїРµСЂРµР·Р°РїСѓСЃРєР°РµС‚СЃСЏ, С€РµРґСѓР»РµСЂС‹ С‚РµСЂСЏСЋС‚СЃСЏ, Р° cron-РїСЂРѕС†РµСЃСЃ РїСЂРѕРґРѕР»Р¶Р°РµС‚ Р¶РёС‚СЊ Рё РЅРµ РїРµСЂРµС‚СЂРёРіРіРµСЂРёРІР°РµС‚. Р‘РµР· РїРµСЂРµР·Р°РїСѓСЃРєР° cron-РїСЂРѕС†РµСЃСЃР° РґРёР°Р»РѕРіРѕРІС‹Р№ СЃРёРЅРє Рё РґСЂСѓРіРёРµ Р·Р°РґР°С‡Рё РѕСЃС‚Р°РЅР°РІР»РёРІР°СЋС‚СЃСЏ.
 
-**Метод 1 (update-app.sh) использует `pm2 restart all`** → затрагивает все процессы → OK.
-**Метод 2 (ручной) с `pm2 reload wb-reputation`** → требует ручного `pm2 restart wb-reputation-cron`.
+**РњРµС‚РѕРґ 1 (update-app.sh) РёСЃРїРѕР»СЊР·СѓРµС‚ `pm2 restart all`** в†’ Р·Р°С‚СЂР°РіРёРІР°РµС‚ РІСЃРµ РїСЂРѕС†РµСЃСЃС‹ в†’ OK.
+**РњРµС‚РѕРґ 2 (СЂСѓС‡РЅРѕР№) СЃ `pm2 reload wb-reputation`** в†’ С‚СЂРµР±СѓРµС‚ СЂСѓС‡РЅРѕРіРѕ `pm2 restart wb-reputation-cron`.
 
 - **9 active jobs:** hourly review sync, nightly full review sync (22:00 MSK, all 12 chunks), adaptive dialogue sync (5min/15min/60min), daily product sync, backfill worker, stores cache, Google Sheets, client directory, auto-sequence processor
 - See [CRON_JOBS.md](./CRON_JOBS.md) for details
@@ -525,7 +525,7 @@ pm2 restart wb-reputation-cron  # wb-reputation-cron триггерит /api/cro
 
 ## Telegram Bot Process
 
-TG бот — отдельный PM2 процесс (`wb-reputation-tg-bot`), long-polling, не зависит от Next.js.
+TG Р±РѕС‚ вЂ” РѕС‚РґРµР»СЊРЅС‹Р№ PM2 РїСЂРѕС†РµСЃСЃ (`wb-reputation-tg-bot`), long-polling, РЅРµ Р·Р°РІРёСЃРёС‚ РѕС‚ Next.js.
 
 ### Commands
 
@@ -539,16 +539,16 @@ pm2 logs wb-reputation-tg-bot --lines 50 --nostream
 # Restart bot
 pm2 restart wb-reputation-tg-bot
 
-# Stop bot (не влияет на основное приложение)
+# Stop bot (РЅРµ РІР»РёСЏРµС‚ РЅР° РѕСЃРЅРѕРІРЅРѕРµ РїСЂРёР»РѕР¶РµРЅРёРµ)
 pm2 stop wb-reputation-tg-bot
 ```
 
 ### Setup (first time)
 
-1. Create bot via [@BotFather](https://t.me/BotFather) → get token
+1. Create bot via [@BotFather](https://t.me/BotFather) в†’ get token
 2. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_MINI_APP_URL` to `.env.production`
 3. Run `pm2 start ecosystem.config.js --only wb-reputation-tg-bot && pm2 save`
-4. Configure Menu Button in BotFather → URL: `https://<domain>/tg`
+4. Configure Menu Button in BotFather в†’ URL: `https://<domain>/tg`
 
 ### Troubleshooting
 
@@ -557,9 +557,9 @@ pm2 stop wb-reputation-tg-bot
 pm2 logs wb-reputation-tg-bot --err --lines 30
 
 # Common issues:
-# - Missing TELEGRAM_BOT_TOKEN → add to .env.production
-# - Database connection → check POSTGRES_* vars in .env.production
-# - Log permissions → chown ubuntu:ubuntu logs/tg-bot-*.log
+# - Missing TELEGRAM_BOT_TOKEN в†’ add to .env.production
+# - Database connection в†’ check POSTGRES_* vars in .env.production
+# - Log permissions в†’ chown ubuntu:ubuntu logs/tg-bot-*.log
 ```
 
 ---
@@ -600,8 +600,8 @@ pm2 logs wb-reputation --err --lines 100
 
 ## Emergency Contacts
 
-- **Production URL:** https://rating5.ru (primary), http://158.160.229.16 (direct IP)
-- **Cloudflare:** [dash.cloudflare.com](https://dash.cloudflare.com) → rating5.ru
+- **Production URL:** https://rating5.ru (primary), http://158.160.139.99 (direct IP)
+- **Cloudflare:** [dash.cloudflare.com](https://dash.cloudflare.com) в†’ rating5.ru
 - **GitHub Repo:** https://github.com/Klimov-IS/R5-Saas-v-2.0
 - **Telegram Bot:** [@R5_chat_bot](https://t.me/R5_chat_bot)
 - **Documentation:** See `/docs` folder
@@ -612,16 +612,16 @@ pm2 logs wb-reputation --err --lines 100
 
 | Task | Command |
 |------|---------|
-| Deploy (one-line) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "cd /var/www/wb-reputation && bash deploy/update-app.sh"` |
-| Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 status"` |
-| View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs wb-reputation --lines 50 --nostream"` |
-| Reload app (zero-downtime) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 reload wb-reputation"` |
-| **Reload + перезапуск cron** | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 reload wb-reputation && pm2 restart wb-reputation-cron"` |
-| Restart all | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 restart all"` |
-| TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
-| Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 restart wb-reputation-tg-bot"` |
-| Test SSL | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "curl -sI https://rating5.ru/health"` |
-| Check nginx | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "sudo nginx -t"` |
+| Deploy (one-line) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "cd /var/www/wb-reputation && bash deploy/update-app.sh"` |
+| Check status | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 status"` |
+| View logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 logs wb-reputation --lines 50 --nostream"` |
+| Reload app (zero-downtime) | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 reload wb-reputation"` |
+| **Reload + РїРµСЂРµР·Р°РїСѓСЃРє cron** | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 reload wb-reputation && pm2 restart wb-reputation-cron"` |
+| Restart all | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 restart all"` |
+| TG bot logs | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 logs wb-reputation-tg-bot --lines 50 --nostream"` |
+| Restart TG bot | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 restart wb-reputation-tg-bot"` |
+| Test SSL | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "curl -sI https://rating5.ru/health"` |
+| Check nginx | `ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "sudo nginx -t"` |
 
 ---
 

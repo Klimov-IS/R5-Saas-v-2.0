@@ -4,7 +4,7 @@
 **ORM:** None (raw SQL via `pg` library)
 **Connection Pool:** Max 50 connections
 **Marketplaces:** Wildberries, OZON
-**Last Updated:** 2026-03-13
+**Last Updated:** 2026-04-04
 
 ---
 
@@ -273,6 +273,7 @@ CREATE TABLE stores (
   -- Denormalized counts (for performance)
   total_reviews              INTEGER DEFAULT 0,
   total_chats                INTEGER DEFAULT 0,
+  review_count_5star         INTEGER DEFAULT 0,  -- 5★ reviews counter (migration 040, replaces reviews_archive)
   chat_tag_counts            JSONB DEFAULT '{}'::jsonb,
 
   -- AI Personalization
@@ -395,35 +396,28 @@ CREATE INDEX idx_products_ozon_offer_id ON products(ozon_offer_id);
 
 ---
 
-### `reviews` + `reviews_archive` (Sprint-013 Table Split)
+### `reviews` (Sprint-016 Consolidation)
 
 **Purpose:** Customer reviews from WB Feedbacks API + Extension parsing
 
-**Architecture (Sprint-013, 2026-03-20):**
-The reviews data is split into two physical tables by rating:
-- `reviews` — working set (ratings 1-4), ~410K rows, ~600 MB
-- `reviews_archive` — cold storage (rating 5), ~3.25M rows, ~2.6 GB
-- `reviews_all` — UNION ALL view for transparent reads
+**Architecture (Sprint-013 split → Sprint-016 consolidation, 2026-04-03):**
+- `reviews` — single table, ratings 1-4★ only, ~350K rows, ~517 MB
+- `stores.review_count_5star` — INTEGER counter for 5★ reviews (no row storage)
+- `reviews_archive` — **DROPPED** in migration 040 (was 3.25M rows, 2.6 GB)
+- `reviews_all` — **DROPPED** in migration 040 (was UNION ALL view)
 
-**Write routing:** `rating === 5 ? 'reviews_archive' : 'reviews'`
-**Read queries:** Use `reviews_all` for statistics/JOINs, or `reviews` directly when already filtered to 1-4★
-**Rating change:** If buyer edits review rating (5→4 or 3→5), row is DELETEd from old table and INSERTed into new
+**Why:** 5★ reviews had zero business value as rows (no complaints, chats, or AI work). Storing only a counter saved ~3.4 GB.
+
+**Write routing:** `rating === 5` → increment `stores.review_count_5star`, skip INSERT; else INSERT into `reviews`
+**Read queries:** All queries use `reviews` directly. For 5★ count, use `stores.review_count_5star`
+**Avg rating formula:** `(sum_14star + 5 * count_5star) / (count_14star + count_5star)`
 
 **Constraints:**
 ```sql
 ALTER TABLE reviews ADD CONSTRAINT chk_reviews_rating_1_4 CHECK (rating BETWEEN 1 AND 4);
-ALTER TABLE reviews_archive ADD CONSTRAINT chk_archive_rating_5 CHECK (rating = 5);
 ```
 
-**View:**
-```sql
-CREATE VIEW reviews_all AS
-  SELECT * FROM reviews
-  UNION ALL
-  SELECT * FROM reviews_archive;
-```
-
-**Both tables share identical schema:**
+**Schema:**
 
 ```sql
 CREATE TABLE reviews (
@@ -557,20 +551,12 @@ CREATE TRIGGER update_reviews_complaint_flags
 - `has_complaint_draft = TRUE` when `complaint_status = 'draft'`
 - `has_complaint = TRUE` when `complaint_status IN ('sent', 'approved', 'rejected', 'pending')`
 
-**`reviews_archive` indexes:**
-```sql
-CREATE INDEX idx_ra_store_date ON reviews_archive(store_id, date DESC);
-CREATE INDEX idx_ra_product_date ON reviews_archive(product_id, date DESC);
-CREATE INDEX idx_ra_store_rating ON reviews_archive(store_id, rating);
-CREATE INDEX idx_ra_marketplace ON reviews_archive(marketplace);
-```
-
-**Key files for write routing:**
-- `src/db/helpers.ts` — `upsertReview()`, `createReview()`, `updateReview()`, `getReviewById()`
-- `src/db/extension-helpers.ts` — `upsertReviewsFromExtension()`
-- `src/db/complaint-helpers.ts` — dual-table UPDATEs
-- `src/lib/review-sync.ts` — deletion detection on both tables
-- `src/app/api/extension/review-statuses/route.ts` — batch UPDATEs on both tables
+**Key files for write routing (post migration 040):**
+- `src/db/helpers.ts` — `upsertReview()`, `createReview()`, `getReviewById()` — single-table, 5★ → counter increment
+- `src/db/helpers.ts` — `cleanupInactiveStoreData()` — cleanup operational data for inactive stores
+- `src/db/extension-helpers.ts` — `upsertReviewsFromExtension()` — skips 5★, increments counter
+- `src/db/complaint-helpers.ts` — complaint logic unchanged (1-3★ only)
+- `src/lib/review-sync.ts` — deletion detection on `reviews` only
 
 ---
 
@@ -1711,6 +1697,7 @@ Key migrations:
 25. `028_schema_integrity_improvements.sql` - FK constraints on store_faq/store_guides/chat_auto_sequences, stores.status CHECK, questions.marketplace + product_nm_id TEXT, performance indexes
 26. `029_drop_dead_columns.sql` - Drop 14 dead columns: reviews (draft_reply_thread_id, complaint_generated_at, complaint_reason_id, complaint_category), chats (sent_no_reply_messages x2), user_settings (no_reply_messages x2, no_reply_trigger_phrase2, assistant_* x5)
 27. **`999_emergency_prevent_duplicate_sequences.sql`** - **EMERGENCY (2026-03-13):** Database-level duplicate prevention for auto-sequences. Created UNIQUE INDEX `idx_unique_active_sequence_per_chat` on (chat_id) WHERE status='active', helper function `start_auto_sequence_safe()`, monitoring view `v_duplicate_sequences`, released 2 stale processing locks. Context: Fixed 3× duplicate message sends (2 main app cluster instances + 1 cron process sending same messages). Deployed during emergency sprint. See [Emergency Sprint Docs](../docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/) for full context.
+28. **`040_drop_reviews_archive.sql`** - **Sprint-016 (2026-04-03):** Added `stores.review_count_5star` INTEGER counter, populated from `reviews_archive`, dropped `reviews_all` view, dropped `reviews_archive` table. Freed 3.4 GB (48% of DB). 5★ reviews now tracked only as counter, not as individual rows. DB went from 7.1 GB → 1.1 GB (combined with inactive store cleanup + VACUUM FULL).
 
 **Note:** Despite folder name, this project uses **Yandex PostgreSQL**, not Supabase.
 
@@ -1722,13 +1709,13 @@ Key migrations:
 
 **Benefits:**
 - Fast filtering without JOINs (`has_complaint`, `is_product_active`)
-- Pre-computed counts (`total_reviews`, `total_chats`)
+- Pre-computed counts (`total_reviews`, `total_chats`, `review_count_5star`)
 
 **Costs:**
 - Extra storage
 - Sync complexity (triggers maintain consistency)
 
-**Decision:** Worth it for 1M+ reviews scale
+**Decision:** Worth it for production scale. Sprint-016 further optimized by replacing 3.25M rows of 5★ reviews with a single counter (`review_count_5star`)
 
 ### 2. Index Maintenance
 

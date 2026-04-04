@@ -1,99 +1,99 @@
 # Extension API - Complete Documentation
 
-> **Backend API для интеграции с Chrome Extension (R5 Complaints System)**
+> **Backend API РґР»СЏ РёРЅС‚РµРіСЂР°С†РёРё СЃ Chrome Extension (R5 Complaints System)**
 
-**Версия:** 2.2.3
-**Дата обновления:** 2026-03-14
-**Статус:** Production Ready
-
----
-
-## Обзор
-
-WB Reputation Manager работает в паре с Chrome Extension для автоматизации подачи жалоб на отзывы Wildberries.
-
-### Архитектура интеграции
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                      Chrome Extension                                │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  1. Парсит отзывы со страницы WB seller cabinet             │    │
-│  │  2. Отправляет статусы в Backend (review-statuses)          │    │
-│  │  3. Получает готовые жалобы (complaints)                    │    │
-│  │  4. Подает жалобы в WB                                      │    │
-│  │  5. Обновляет статусы после подачи                          │    │
-│  │  6. Проверяет статусы жалоб (complaint-statuses)            │    │
-│  │  7. Скриншотит одобренные и шлёт детали (complaint-details) │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                              │                                       │
-│                              ▼                                       │
-└────────────── HTTP API ──────┼────────────────────────────────────────
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Backend API                                  │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  - /api/extension/review-statuses     (статусы отзывов)     │    │
-│  │  - /api/extension/stores              (список магазинов)    │    │
-│  │  - /api/extension/stores/:id/complaints (очередь жалоб)     │    │
-│  │  - /api/extension/stores/:id/stats    (статистика)          │    │
-│  │  - /api/extension/complaint-statuses  (статусы жалоб WB)    │    │
-│  │  - /api/extension/complaint-details   (одобренные жалобы)   │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                              │                                       │
-│                              ▼                                       │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │  PostgreSQL:                                                 │    │
-│  │  - review_statuses_from_extension (статусы от Extension)     │    │
-│  │  - reviews (основная таблица отзывов)                       │    │
-│  │  - review_complaints (AI-черновики жалоб)                   │    │
-│  │  - complaint_details (одобренные жалобы — source of truth)  │    │
-│  │  - review_chat_links (связка отзыв↔чат)                    │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
-```
+**Р’РµСЂСЃРёСЏ:** 2.2.3
+**Р”Р°С‚Р° РѕР±РЅРѕРІР»РµРЅРёСЏ:** 2026-03-14
+**РЎС‚Р°С‚СѓСЃ:** Production Ready
 
 ---
 
-## Этапы работы с кабинетом (Store Lifecycle)
+## РћР±Р·РѕСЂ
 
-Каждый магазин проходит последовательные этапы работы. API учитывает текущий этап и **не выдаёт задачи по чатам**, если кабинет ещё не дошёл до соответствующего этапа.
+WB Reputation Manager СЂР°Р±РѕС‚Р°РµС‚ РІ РїР°СЂРµ СЃ Chrome Extension РґР»СЏ Р°РІС‚РѕРјР°С‚РёР·Р°С†РёРё РїРѕРґР°С‡Рё Р¶Р°Р»РѕР± РЅР° РѕС‚Р·С‹РІС‹ Wildberries.
 
-### Порядок этапов
+### РђСЂС…РёС‚РµРєС‚СѓСЂР° РёРЅС‚РµРіСЂР°С†РёРё
 
-| # | Stage | Описание | Чат-задачи |
+```
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+в”‚                      Chrome Extension                                в”‚
+в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ    в”‚
+в”‚  в”‚  1. РџР°СЂСЃРёС‚ РѕС‚Р·С‹РІС‹ СЃРѕ СЃС‚СЂР°РЅРёС†С‹ WB seller cabinet             в”‚    в”‚
+в”‚  в”‚  2. РћС‚РїСЂР°РІР»СЏРµС‚ СЃС‚Р°С‚СѓСЃС‹ РІ Backend (review-statuses)          в”‚    в”‚
+в”‚  в”‚  3. РџРѕР»СѓС‡Р°РµС‚ РіРѕС‚РѕРІС‹Рµ Р¶Р°Р»РѕР±С‹ (complaints)                    в”‚    в”‚
+в”‚  в”‚  4. РџРѕРґР°РµС‚ Р¶Р°Р»РѕР±С‹ РІ WB                                      в”‚    в”‚
+в”‚  в”‚  5. РћР±РЅРѕРІР»СЏРµС‚ СЃС‚Р°С‚СѓСЃС‹ РїРѕСЃР»Рµ РїРѕРґР°С‡Рё                          в”‚    в”‚
+в”‚  в”‚  6. РџСЂРѕРІРµСЂСЏРµС‚ СЃС‚Р°С‚СѓСЃС‹ Р¶Р°Р»РѕР± (complaint-statuses)            в”‚    в”‚
+в”‚  в”‚  7. РЎРєСЂРёРЅС€РѕС‚РёС‚ РѕРґРѕР±СЂРµРЅРЅС‹Рµ Рё С€Р»С‘С‚ РґРµС‚Р°Р»Рё (complaint-details) в”‚    в”‚
+в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”    в”‚
+в”‚                              в”‚                                       в”‚
+в”‚                              в–ј                                       в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ HTTP API в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”јв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+                               в”‚
+                               в–ј
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+в”‚                         Backend API                                  в”‚
+в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ    в”‚
+в”‚  в”‚  - /api/extension/review-statuses     (СЃС‚Р°С‚СѓСЃС‹ РѕС‚Р·С‹РІРѕРІ)     в”‚    в”‚
+в”‚  в”‚  - /api/extension/stores              (СЃРїРёСЃРѕРє РјР°РіР°Р·РёРЅРѕРІ)    в”‚    в”‚
+в”‚  в”‚  - /api/extension/stores/:id/complaints (РѕС‡РµСЂРµРґСЊ Р¶Р°Р»РѕР±)     в”‚    в”‚
+в”‚  в”‚  - /api/extension/stores/:id/stats    (СЃС‚Р°С‚РёСЃС‚РёРєР°)          в”‚    в”‚
+в”‚  в”‚  - /api/extension/complaint-statuses  (СЃС‚Р°С‚СѓСЃС‹ Р¶Р°Р»РѕР± WB)    в”‚    в”‚
+в”‚  в”‚  - /api/extension/complaint-details   (РѕРґРѕР±СЂРµРЅРЅС‹Рµ Р¶Р°Р»РѕР±С‹)   в”‚    в”‚
+в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”    в”‚
+в”‚                              в”‚                                       в”‚
+в”‚                              в–ј                                       в”‚
+в”‚  в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ    в”‚
+в”‚  в”‚  PostgreSQL:                                                 в”‚    в”‚
+в”‚  в”‚  - review_statuses_from_extension (СЃС‚Р°С‚СѓСЃС‹ РѕС‚ Extension)     в”‚    в”‚
+в”‚  в”‚  - reviews (РѕСЃРЅРѕРІРЅР°СЏ С‚Р°Р±Р»РёС†Р° РѕС‚Р·С‹РІРѕРІ)                       в”‚    в”‚
+в”‚  в”‚  - review_complaints (AI-С‡РµСЂРЅРѕРІРёРєРё Р¶Р°Р»РѕР±)                   в”‚    в”‚
+в”‚  в”‚  - complaint_details (РѕРґРѕР±СЂРµРЅРЅС‹Рµ Р¶Р°Р»РѕР±С‹ вЂ” source of truth)  в”‚    в”‚
+в”‚  в”‚  - review_chat_links (СЃРІСЏР·РєР° РѕС‚Р·С‹РІв†”С‡Р°С‚)                    в”‚    в”‚
+в”‚  в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”    в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
+```
+
+---
+
+## Р­С‚Р°РїС‹ СЂР°Р±РѕС‚С‹ СЃ РєР°Р±РёРЅРµС‚РѕРј (Store Lifecycle)
+
+РљР°Р¶РґС‹Р№ РјР°РіР°Р·РёРЅ РїСЂРѕС…РѕРґРёС‚ РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅС‹Рµ СЌС‚Р°РїС‹ СЂР°Р±РѕС‚С‹. API СѓС‡РёС‚С‹РІР°РµС‚ С‚РµРєСѓС‰РёР№ СЌС‚Р°Рї Рё **РЅРµ РІС‹РґР°С‘С‚ Р·Р°РґР°С‡Рё РїРѕ С‡Р°С‚Р°Рј**, РµСЃР»Рё РєР°Р±РёРЅРµС‚ РµС‰С‘ РЅРµ РґРѕС€С‘Р» РґРѕ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РµРіРѕ СЌС‚Р°РїР°.
+
+### РџРѕСЂСЏРґРѕРє СЌС‚Р°РїРѕРІ
+
+| # | Stage | РћРїРёСЃР°РЅРёРµ | Р§Р°С‚-Р·Р°РґР°С‡Рё |
 |---|-------|----------|:----------:|
-| 0 | `contract` | Договор | — |
-| 1 | `access_received` | Доступ получен | — |
-| 2 | `cabinet_connected` | Кабинет подключён | — |
-| 3 | `complaints_submitted` | Подаём жалобы | — |
-| 4 | `chats_opened` | Открываем чаты | **Да** |
-| 5 | `monitoring` | Кабинет на контроле | **Да** |
-| — | `client_paused` | На паузе | — |
-| — | `client_lost` | Потеря | — |
+| 0 | `contract` | Р”РѕРіРѕРІРѕСЂ | вЂ” |
+| 1 | `access_received` | Р”РѕСЃС‚СѓРї РїРѕР»СѓС‡РµРЅ | вЂ” |
+| 2 | `cabinet_connected` | РљР°Р±РёРЅРµС‚ РїРѕРґРєР»СЋС‡С‘РЅ | вЂ” |
+| 3 | `complaints_submitted` | РџРѕРґР°С‘Рј Р¶Р°Р»РѕР±С‹ | вЂ” |
+| 4 | `chats_opened` | РћС‚РєСЂС‹РІР°РµРј С‡Р°С‚С‹ | **Р”Р°** |
+| 5 | `monitoring` | РљР°Р±РёРЅРµС‚ РЅР° РєРѕРЅС‚СЂРѕР»Рµ | **Р”Р°** |
+| вЂ” | `client_paused` | РќР° РїР°СѓР·Рµ | вЂ” |
+| вЂ” | `client_lost` | РџРѕС‚РµСЂСЏ | вЂ” |
 
-### Правило stage guard (Sprint 008)
+### РџСЂР°РІРёР»Рѕ stage guard (Sprint 008)
 
-Задачи по открытию чатов (`chatOpens`, `chatLinks`) возвращаются **только** для кабинетов на этапе `chats_opened` или `monitoring`. Для кабинетов на более ранних этапах (например, `complaints_submitted`) — массивы `chatOpens` и `chatLinks` всегда пусты, а `pendingChatsCount = 0`.
+Р—Р°РґР°С‡Рё РїРѕ РѕС‚РєСЂС‹С‚РёСЋ С‡Р°С‚РѕРІ (`chatOpens`, `chatLinks`) РІРѕР·РІСЂР°С‰Р°СЋС‚СЃСЏ **С‚РѕР»СЊРєРѕ** РґР»СЏ РєР°Р±РёРЅРµС‚РѕРІ РЅР° СЌС‚Р°РїРµ `chats_opened` РёР»Рё `monitoring`. Р”Р»СЏ РєР°Р±РёРЅРµС‚РѕРІ РЅР° Р±РѕР»РµРµ СЂР°РЅРЅРёС… СЌС‚Р°РїР°С… (РЅР°РїСЂРёРјРµСЂ, `complaints_submitted`) вЂ” РјР°СЃСЃРёРІС‹ `chatOpens` Рё `chatLinks` РІСЃРµРіРґР° РїСѓСЃС‚С‹, Р° `pendingChatsCount = 0`.
 
-Это гарантирует, что расширение не откроет чаты до согласования с клиентом.
+Р­С‚Рѕ РіР°СЂР°РЅС‚РёСЂСѓРµС‚, С‡С‚Рѕ СЂР°СЃС€РёСЂРµРЅРёРµ РЅРµ РѕС‚РєСЂРѕРµС‚ С‡Р°С‚С‹ РґРѕ СЃРѕРіР»Р°СЃРѕРІР°РЅРёСЏ СЃ РєР»РёРµРЅС‚РѕРј.
 
-> **Жалобы и парсинг статусов** — `complaints` доступны на любом этапе. `statusParses` доступны на любом этапе для рейтингов, подходящих под жалобы (`submit_complaints`). Рейтинги, подходящие **только** под чат-правила (`work_in_chats` без `submit_complaints`), попадают в `statusParses` только при `stage IN ('chats_opened', 'monitoring')`. (Sprint 009)
+> **Р–Р°Р»РѕР±С‹ Рё РїР°СЂСЃРёРЅРі СЃС‚Р°С‚СѓСЃРѕРІ** вЂ” `complaints` РґРѕСЃС‚СѓРїРЅС‹ РЅР° Р»СЋР±РѕРј СЌС‚Р°РїРµ. `statusParses` РґРѕСЃС‚СѓРїРЅС‹ РЅР° Р»СЋР±РѕРј СЌС‚Р°РїРµ РґР»СЏ СЂРµР№С‚РёРЅРіРѕРІ, РїРѕРґС…РѕРґСЏС‰РёС… РїРѕРґ Р¶Р°Р»РѕР±С‹ (`submit_complaints`). Р РµР№С‚РёРЅРіРё, РїРѕРґС…РѕРґСЏС‰РёРµ **С‚РѕР»СЊРєРѕ** РїРѕРґ С‡Р°С‚-РїСЂР°РІРёР»Р° (`work_in_chats` Р±РµР· `submit_complaints`), РїРѕРїР°РґР°СЋС‚ РІ `statusParses` С‚РѕР»СЊРєРѕ РїСЂРё `stage IN ('chats_opened', 'monitoring')`. (Sprint 009)
 
 ---
 
-## Аутентификация
+## РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ
 
-Все endpoints требуют Bearer Token в заголовке:
+Р’СЃРµ endpoints С‚СЂРµР±СѓСЋС‚ Bearer Token РІ Р·Р°РіРѕР»РѕРІРєРµ:
 
 ```http
 Authorization: Bearer wbrm_<token>
 ```
 
-**Формат токена:** `wbrm_` + 32-символьный хеш
+**Р¤РѕСЂРјР°С‚ С‚РѕРєРµРЅР°:** `wbrm_` + 32-СЃРёРјРІРѕР»СЊРЅС‹Р№ С…РµС€
 
-**Где получить:** Токены хранятся в таблице `user_settings.api_key`
+**Р“РґРµ РїРѕР»СѓС‡РёС‚СЊ:** РўРѕРєРµРЅС‹ С…СЂР°РЅСЏС‚СЃСЏ РІ С‚Р°Р±Р»РёС†Рµ `user_settings.api_key`
 
 **Rate limit:** 100 requests/minute
 
@@ -103,11 +103,11 @@ Authorization: Bearer wbrm_<token>
 
 ### 1. Review Statuses Sync (NEW)
 
-**Назначение:** Синхронизация статусов отзывов от Extension для фильтрации перед генерацией GPT жалоб. Экономит ~80% токенов.
+**РќР°Р·РЅР°С‡РµРЅРёРµ:** РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ СЃС‚Р°С‚СѓСЃРѕРІ РѕС‚Р·С‹РІРѕРІ РѕС‚ Extension РґР»СЏ С„РёР»СЊС‚СЂР°С†РёРё РїРµСЂРµРґ РіРµРЅРµСЂР°С†РёРµР№ GPT Р¶Р°Р»РѕР±. Р­РєРѕРЅРѕРјРёС‚ ~80% С‚РѕРєРµРЅРѕРІ.
 
 #### POST /api/extension/review-statuses
 
-Принимает статусы отзывов, спарсенные Extension с WB seller cabinet.
+РџСЂРёРЅРёРјР°РµС‚ СЃС‚Р°С‚СѓСЃС‹ РѕС‚Р·С‹РІРѕРІ, СЃРїР°СЂСЃРµРЅРЅС‹Рµ Extension СЃ WB seller cabinet.
 
 **Request:**
 
@@ -127,7 +127,7 @@ Authorization: Bearer wbrm_<token>
       "productId": "649502497",
       "rating": 1,
       "reviewDate": "2026-01-07T20:09:37.000Z",
-      "statuses": ["Жалоба отклонена", "Выкуп"],
+      "statuses": ["Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР°", "Р’С‹РєСѓРї"],
       "canSubmitComplaint": false,
       "chatStatus": "chat_available",
       "ratingExcluded": false
@@ -137,8 +137,8 @@ Authorization: Bearer wbrm_<token>
 ```
 
 **Fields:**
-- `ratingExcluded` (boolean, optional, default: false) — WB transparent rating: `true` = review excluded from product rating calculation. Reviews with `ratingExcluded: true` are removed from all task queues.
-- `chatStatus` (string, optional) — Chat button state: `chat_not_activated` | `chat_available` | `chat_opened`
+- `ratingExcluded` (boolean, optional, default: false) вЂ” WB transparent rating: `true` = review excluded from product rating calculation. Reviews with `ratingExcluded: true` are removed from all task queues.
+- `chatStatus` (string, optional) вЂ” Chat button state: `chat_not_activated` | `chat_available` | `chat_opened`
 
 **Response 200:**
 
@@ -151,11 +151,11 @@ Authorization: Bearer wbrm_<token>
     "updated": 5,
     "errors": 0
   },
-  "message": "Статусы успешно синхронизированы"
+  "message": "РЎС‚Р°С‚СѓСЃС‹ СѓСЃРїРµС€РЅРѕ СЃРёРЅС…СЂРѕРЅРёР·РёСЂРѕРІР°РЅС‹"
 }
 ```
 
-**Лимиты:**
+**Р›РёРјРёС‚С‹:**
 - Max 100 reviews per request
 - Max request size: 1 MB
 
@@ -163,7 +163,7 @@ Authorization: Bearer wbrm_<token>
 
 #### GET /api/extension/review-statuses
 
-Получение сохраненных статусов (для тестирования и верификации).
+РџРѕР»СѓС‡РµРЅРёРµ СЃРѕС…СЂР°РЅРµРЅРЅС‹С… СЃС‚Р°С‚СѓСЃРѕРІ (РґР»СЏ С‚РµСЃС‚РёСЂРѕРІР°РЅРёСЏ Рё РІРµСЂРёС„РёРєР°С†РёРё).
 
 **Request:**
 
@@ -174,11 +174,11 @@ Authorization: Bearer wbrm_<token>
 
 **Query Parameters:**
 
-| Параметр | Тип | Обязательно | Описание |
+| РџР°СЂР°РјРµС‚СЂ | РўРёРї | РћР±СЏР·Р°С‚РµР»СЊРЅРѕ | РћРїРёСЃР°РЅРёРµ |
 |----------|-----|-------------|----------|
-| storeId | string | Да | ID магазина |
-| limit | number | Нет | Лимит записей (default: 50, max: 100) |
-| canSubmit | string | Нет | Фильтр: 'true', 'false', 'all' (default: 'all') |
+| storeId | string | Р”Р° | ID РјР°РіР°Р·РёРЅР° |
+| limit | number | РќРµС‚ | Р›РёРјРёС‚ Р·Р°РїРёСЃРµР№ (default: 50, max: 100) |
+| canSubmit | string | РќРµС‚ | Р¤РёР»СЊС‚СЂ: 'true', 'false', 'all' (default: 'all') |
 
 **Response 200:**
 
@@ -193,7 +193,7 @@ Authorization: Bearer wbrm_<token>
         "productId": "649502497",
         "rating": 1,
         "reviewDate": "2026-01-07T20:09:37.000Z",
-        "statuses": ["Жалоба отклонена", "Выкуп"],
+        "statuses": ["Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР°", "Р’С‹РєСѓРї"],
         "canSubmitComplaint": false,
         "ratingExcluded": false,
         "parsedAt": "2026-02-01T12:00:00.000Z",
@@ -215,7 +215,7 @@ Authorization: Bearer wbrm_<token>
 
 #### GET /api/extension/stores
 
-Получение списка магазинов пользователя.
+РџРѕР»СѓС‡РµРЅРёРµ СЃРїРёСЃРєР° РјР°РіР°Р·РёРЅРѕРІ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.
 
 **Response 200:**
 
@@ -223,7 +223,7 @@ Authorization: Bearer wbrm_<token>
 [
   {
     "id": "7kKX9WgLvOPiXYIHk6hi",
-    "name": "ИП Артюшина",
+    "name": "РРџ РђСЂС‚СЋС€РёРЅР°",
     "isActive": true,
     "draftComplaintsCount": 45,
     "pendingChatsCount": 12,
@@ -234,26 +234,26 @@ Authorization: Bearer wbrm_<token>
 
 **Response Fields:**
 
-| Поле | Тип | Описание |
+| РџРѕР»Рµ | РўРёРї | РћРїРёСЃР°РЅРёРµ |
 |------|-----|----------|
-| id | string | Уникальный ID магазина |
-| name | string | Название магазина |
-| isActive | boolean | Активен ли магазин (status = 'active') |
-| draftComplaintsCount | number | Количество жалоб в статусе `draft` **только для активных товаров** (`work_status = 'active'`) |
-| pendingChatsCount | number | Количество чатов к открытию/привязке. Сумма chatOpens (rejected complaint + available chat) и chatLinks (opened chat без связки в review_chat_links). Аналог `totalCounts.chatOpens` из `/tasks` |
-| pendingStatusParsesCount | number | Количество отзывов, требующих парсинга статусов расширением (`chat_status_by_review IS NULL` или `unknown`). Аналог `totalCounts.statusParses` из `/tasks` |
+| id | string | РЈРЅРёРєР°Р»СЊРЅС‹Р№ ID РјР°РіР°Р·РёРЅР° |
+| name | string | РќР°Р·РІР°РЅРёРµ РјР°РіР°Р·РёРЅР° |
+| isActive | boolean | РђРєС‚РёРІРµРЅ Р»Рё РјР°РіР°Р·РёРЅ (status = 'active') |
+| draftComplaintsCount | number | РљРѕР»РёС‡РµСЃС‚РІРѕ Р¶Р°Р»РѕР± РІ СЃС‚Р°С‚СѓСЃРµ `draft` **С‚РѕР»СЊРєРѕ РґР»СЏ Р°РєС‚РёРІРЅС‹С… С‚РѕРІР°СЂРѕРІ** (`work_status = 'active'`) |
+| pendingChatsCount | number | РљРѕР»РёС‡РµСЃС‚РІРѕ С‡Р°С‚РѕРІ Рє РѕС‚РєСЂС‹С‚РёСЋ/РїСЂРёРІСЏР·РєРµ. РЎСѓРјРјР° chatOpens (rejected complaint + available chat) Рё chatLinks (opened chat Р±РµР· СЃРІСЏР·РєРё РІ review_chat_links). РђРЅР°Р»РѕРі `totalCounts.chatOpens` РёР· `/tasks` |
+| pendingStatusParsesCount | number | РљРѕР»РёС‡РµСЃС‚РІРѕ РѕС‚Р·С‹РІРѕРІ, С‚СЂРµР±СѓСЋС‰РёС… РїР°СЂСЃРёРЅРіР° СЃС‚Р°С‚СѓСЃРѕРІ СЂР°СЃС€РёСЂРµРЅРёРµРј (`chat_status_by_review IS NULL` РёР»Рё `unknown`). РђРЅР°Р»РѕРі `totalCounts.statusParses` РёР· `/tasks` |
 
-> **Важно:** Все счётчики учитывают только активные магазины (`status = 'active'`), активные товары (`work_status = 'active'`) и применяют фильтры `product_rules` (рейтинги, флаги `submit_complaints`/`work_in_chats`). 5★ отзывы полностью исключены. Если товар поставлен на стоп — его данные не считаются.
+> **Р’Р°Р¶РЅРѕ:** Р’СЃРµ СЃС‡С‘С‚С‡РёРєРё СѓС‡РёС‚С‹РІР°СЋС‚ С‚РѕР»СЊРєРѕ Р°РєС‚РёРІРЅС‹Рµ РјР°РіР°Р·РёРЅС‹ (`status = 'active'`), Р°РєС‚РёРІРЅС‹Рµ С‚РѕРІР°СЂС‹ (`work_status = 'active'`) Рё РїСЂРёРјРµРЅСЏСЋС‚ С„РёР»СЊС‚СЂС‹ `product_rules` (СЂРµР№С‚РёРЅРіРё, С„Р»Р°РіРё `submit_complaints`/`work_in_chats`). 5в… РѕС‚Р·С‹РІС‹ РїРѕР»РЅРѕСЃС‚СЊСЋ РёСЃРєР»СЋС‡РµРЅС‹. Р•СЃР»Рё С‚РѕРІР°СЂ РїРѕСЃС‚Р°РІР»РµРЅ РЅР° СЃС‚РѕРї вЂ” РµРіРѕ РґР°РЅРЅС‹Рµ РЅРµ СЃС‡РёС‚Р°СЋС‚СЃСЏ.
 
-> **Stage guard (v2.2.0):** `pendingChatsCount` возвращается `0` для магазинов, чей этап ниже `chats_opened`. Чат-задачи доступны только на этапах `chats_opened` и `monitoring`. См. раздел [Этапы работы с кабинетом](#этапы-работы-с-кабинетом-store-lifecycle).
+> **Stage guard (v2.2.0):** `pendingChatsCount` РІРѕР·РІСЂР°С‰Р°РµС‚СЃСЏ `0` РґР»СЏ РјР°РіР°Р·РёРЅРѕРІ, С‡РµР№ СЌС‚Р°Рї РЅРёР¶Рµ `chats_opened`. Р§Р°С‚-Р·Р°РґР°С‡Рё РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РЅР° СЌС‚Р°РїР°С… `chats_opened` Рё `monitoring`. РЎРј. СЂР°Р·РґРµР» [Р­С‚Р°РїС‹ СЂР°Р±РѕС‚С‹ СЃ РєР°Р±РёРЅРµС‚РѕРј](#СЌС‚Р°РїС‹-СЂР°Р±РѕС‚С‹-СЃ-РєР°Р±РёРЅРµС‚РѕРј-store-lifecycle).
 
-> **Date filter (v2.2.2):** `pendingStatusParsesCount` учитывает `product_rules.work_from_date` — отзывы до этой даты (по умолчанию `2023-10-01`) не включаются в счётчик. Аналогично в `statusParses` и `totalCounts` в `/tasks`.
+> **Date filter (v2.2.2):** `pendingStatusParsesCount` СѓС‡РёС‚С‹РІР°РµС‚ `product_rules.work_from_date` вЂ” РѕС‚Р·С‹РІС‹ РґРѕ СЌС‚РѕР№ РґР°С‚С‹ (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ `2023-10-01`) РЅРµ РІРєР»СЋС‡Р°СЋС‚СЃСЏ РІ СЃС‡С‘С‚С‡РёРє. РђРЅР°Р»РѕРіРёС‡РЅРѕ РІ `statusParses` Рё `totalCounts` РІ `/tasks`.
 
-**Производительность (2026-03-02):**
-- 3 параллельных запроса через `Promise.all`, ~2s на 76 магазинов / 2.7M отзывов
-- Q1 (drafts): subquery scoped к `store_id IN (owner's stores)` — 165ms
-- Q2 (statusParses): reversed JOIN `FROM products → reviews`, использует partial index `idx_reviews_parse_pending` — 1.7s
-- Q3 (pendingChats): использует `idx_rcl_matching` для NOT EXISTS — 2s
+**РџСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚СЊ (2026-03-02):**
+- 3 РїР°СЂР°Р»Р»РµР»СЊРЅС‹С… Р·Р°РїСЂРѕСЃР° С‡РµСЂРµР· `Promise.all`, ~2s РЅР° 76 РјР°РіР°Р·РёРЅРѕРІ / 2.7M РѕС‚Р·С‹РІРѕРІ
+- Q1 (drafts): subquery scoped Рє `store_id IN (owner's stores)` вЂ” 165ms
+- Q2 (statusParses): reversed JOIN `FROM products в†’ reviews`, РёСЃРїРѕР»СЊР·СѓРµС‚ partial index `idx_reviews_parse_pending` вЂ” 1.7s
+- Q3 (pendingChats): РёСЃРїРѕР»СЊР·СѓРµС‚ `idx_rcl_matching` РґР»СЏ NOT EXISTS вЂ” 2s
 
 ---
 
@@ -272,7 +272,7 @@ Returns active products for a store (only `work_status = 'active'`).
       "id": "7kKX9WgLvOPiXYIHk6hi_766104062",
       "wb_product_id": "766104062",
       "vendor_code": "ART-001-BLK",
-      "name": "Футболка мужская оверсайз хлопок",
+      "name": "Р¤СѓС‚Р±РѕР»РєР° РјСѓР¶СЃРєР°СЏ РѕРІРµСЂСЃР°Р№Р· С…Р»РѕРїРѕРє",
       "work_status": "active",
       "rules": {
         "submit_complaints": true,
@@ -303,11 +303,11 @@ Returns active products for a store (only `work_status = 'active'`).
 
 Returns all extension tasks grouped by article. Main endpoint for the status checker extension.
 
-> **Stage guard (v2.2.0+):** Если `stores.stage` не в `['chats_opened', 'monitoring']`, массивы `chatOpens` и `chatLinks` всегда пусты (SQL-запросы не выполняются), а `totalCounts` для чатов = 0. `statusParses` для chat-only рейтингов (без `submit_complaints`) также исключаются до этапа чатов (Sprint 009). `complaints` возвращаются независимо от этапа.
+> **Stage guard (v2.2.0+):** Р•СЃР»Рё `stores.stage` РЅРµ РІ `['chats_opened', 'monitoring']`, РјР°СЃСЃРёРІС‹ `chatOpens` Рё `chatLinks` РІСЃРµРіРґР° РїСѓСЃС‚С‹ (SQL-Р·Р°РїСЂРѕСЃС‹ РЅРµ РІС‹РїРѕР»РЅСЏСЋС‚СЃСЏ), Р° `totalCounts` РґР»СЏ С‡Р°С‚РѕРІ = 0. `statusParses` РґР»СЏ chat-only СЂРµР№С‚РёРЅРіРѕРІ (Р±РµР· `submit_complaints`) С‚Р°РєР¶Рµ РёСЃРєР»СЋС‡Р°СЋС‚СЃСЏ РґРѕ СЌС‚Р°РїР° С‡Р°С‚РѕРІ (Sprint 009). `complaints` РІРѕР·РІСЂР°С‰Р°СЋС‚СЃСЏ РЅРµР·Р°РІРёСЃРёРјРѕ РѕС‚ СЌС‚Р°РїР°.
 >
-> **Date filter (v2.2.2):** `statusParses` и `totalCounts.statusParses` исключают отзывы до `product_rules.work_from_date` (по умолчанию `2023-10-01`). Отзывы до этой даты не могут иметь жалоб и чатов — парсинг бесполезен.
+> **Date filter (v2.2.2):** `statusParses` Рё `totalCounts.statusParses` РёСЃРєР»СЋС‡Р°СЋС‚ РѕС‚Р·С‹РІС‹ РґРѕ `product_rules.work_from_date` (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ `2023-10-01`). РћС‚Р·С‹РІС‹ РґРѕ СЌС‚РѕР№ РґР°С‚С‹ РЅРµ РјРѕРіСѓС‚ РёРјРµС‚СЊ Р¶Р°Р»РѕР± Рё С‡Р°С‚РѕРІ вЂ” РїР°СЂСЃРёРЅРі Р±РµСЃРїРѕР»РµР·РµРЅ.
 >
-> **Draft exclusion (v2.2.3):** Отзывы с draft-жалобами (`review_complaints.status = 'draft'`) исключены из `statusParses`. Расширение и так зайдёт на страницу ради подачи жалобы и спарсит статус как побочный эффект. После подачи жалобы (статус → sent/rejected) отзыв вернётся в statusParses если chat_status всё ещё неизвестен.
+> **Draft exclusion (v2.2.3):** РћС‚Р·С‹РІС‹ СЃ draft-Р¶Р°Р»РѕР±Р°РјРё (`review_complaints.status = 'draft'`) РёСЃРєР»СЋС‡РµРЅС‹ РёР· `statusParses`. Р Р°СЃС€РёСЂРµРЅРёРµ Рё С‚Р°Рє Р·Р°Р№РґС‘С‚ РЅР° СЃС‚СЂР°РЅРёС†Сѓ СЂР°РґРё РїРѕРґР°С‡Рё Р¶Р°Р»РѕР±С‹ Рё СЃРїР°СЂСЃРёС‚ СЃС‚Р°С‚СѓСЃ РєР°Рє РїРѕР±РѕС‡РЅС‹Р№ СЌС„С„РµРєС‚. РџРѕСЃР»Рµ РїРѕРґР°С‡Рё Р¶Р°Р»РѕР±С‹ (СЃС‚Р°С‚СѓСЃ в†’ sent/rejected) РѕС‚Р·С‹РІ РІРµСЂРЅС‘С‚СЃСЏ РІ statusParses РµСЃР»Рё chat_status РІСЃС‘ РµС‰С‘ РЅРµРёР·РІРµСЃС‚РµРЅ.
 
 **Response 200:**
 
@@ -323,8 +323,8 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
           "reviewKey": "766104062_1_2026-01-15T10:30",
           "rating": 1,
           "date": "2026-01-15T10:30:37.000Z",
-          "authorName": "Покупатель А.",
-          "text": "Ужасное качество...",
+          "authorName": "РџРѕРєСѓРїР°С‚РµР»СЊ Рђ.",
+          "text": "РЈР¶Р°СЃРЅРѕРµ РєР°С‡РµСЃС‚РІРѕ...",
           "currentComplaintStatus": "draft",
           "currentChatStatus": null,
           "currentReviewStatus": null
@@ -362,7 +362,7 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
 
 | Field | Type | Description |
 |-------|------|-------------|
-| reviewKey | string | `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}` — key for matching reviews on WB |
+| reviewKey | string | `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}` вЂ” key for matching reviews on WB |
 | currentComplaintStatus | string\|null | `null`, `draft`, `pending`, `approved`, `rejected` |
 
 **Limits:**
@@ -375,15 +375,15 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
 
 #### GET /api/extension/stores/{storeId}/complaints
 
-Получение очереди жалоб для массовой подачи.
+РџРѕР»СѓС‡РµРЅРёРµ РѕС‡РµСЂРµРґРё Р¶Р°Р»РѕР± РґР»СЏ РјР°СЃСЃРѕРІРѕР№ РїРѕРґР°С‡Рё.
 
 **Query Parameters:**
 
-| Параметр | Тип | Default | Описание |
+| РџР°СЂР°РјРµС‚СЂ | РўРёРї | Default | РћРїРёСЃР°РЅРёРµ |
 |----------|-----|---------|----------|
-| filter | string | 'draft' | Фильтр статуса: 'draft', 'all' |
-| limit | number | 100 | Лимит (max: 500) |
-| rating | string | '1,2,3' | Рейтинги через запятую |
+| filter | string | 'draft' | Р¤РёР»СЊС‚СЂ СЃС‚Р°С‚СѓСЃР°: 'draft', 'all' |
+| limit | number | 100 | Р›РёРјРёС‚ (max: 500) |
+| rating | string | '1,2,3' | Р РµР№С‚РёРЅРіРё С‡РµСЂРµР· Р·Р°РїСЏС‚СѓСЋ |
 
 **Response 200:**
 
@@ -394,13 +394,13 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
       "id": "MDZTXVilHWCXBK1YZx4u",
       "productId": "649502497",
       "rating": 1,
-      "text": "Текст отзыва...",
-      "authorName": "Алина",
+      "text": "РўРµРєСЃС‚ РѕС‚Р·С‹РІР°...",
+      "authorName": "РђР»РёРЅР°",
       "createdAt": "2026-01-07T20:09:37.000Z",
       "complaintText": {
         "reasonId": 11,
-        "reasonName": "Отзыв не относится к товару",
-        "complaintText": "Текст жалобы..."
+        "reasonName": "РћС‚Р·С‹РІ РЅРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє С‚РѕРІР°СЂСѓ",
+        "complaintText": "РўРµРєСЃС‚ Р¶Р°Р»РѕР±С‹..."
       }
     }
   ],
@@ -418,7 +418,7 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
 
 #### POST /api/extension/stores/{storeId}/reviews/{reviewId}/complaint/sent
 
-Отметить жалобу как отправленную.
+РћС‚РјРµС‚РёС‚СЊ Р¶Р°Р»РѕР±Сѓ РєР°Рє РѕС‚РїСЂР°РІР»РµРЅРЅСѓСЋ.
 
 **Request:**
 
@@ -443,7 +443,7 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
 
 #### GET /api/extension/stores/{storeId}/stats
 
-Получение статистики магазина.
+РџРѕР»СѓС‡РµРЅРёРµ СЃС‚Р°С‚РёСЃС‚РёРєРё РјР°РіР°Р·РёРЅР°.
 
 **Response 200:**
 
@@ -462,11 +462,11 @@ Returns all extension tasks grouped by article. Main endpoint for the status che
 
 ---
 
-## База данных
+## Р‘Р°Р·Р° РґР°РЅРЅС‹С…
 
-### Таблица: review_statuses_from_extension
+### РўР°Р±Р»РёС†Р°: review_statuses_from_extension
 
-Хранит статусы отзывов, спарсенные Chrome Extension.
+РҐСЂР°РЅРёС‚ СЃС‚Р°С‚СѓСЃС‹ РѕС‚Р·С‹РІРѕРІ, СЃРїР°СЂСЃРµРЅРЅС‹Рµ Chrome Extension.
 
 ```sql
 CREATE TABLE review_statuses_from_extension (
@@ -476,7 +476,7 @@ CREATE TABLE review_statuses_from_extension (
     product_id VARCHAR(50) NOT NULL,            -- WB nmId
     rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     review_date TIMESTAMPTZ NOT NULL,
-    statuses JSONB NOT NULL DEFAULT '[]',       -- ["Жалоба отклонена", "Выкуп"]
+    statuses JSONB NOT NULL DEFAULT '[]',       -- ["Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР°", "Р’С‹РєСѓРї"]
     can_submit_complaint BOOLEAN NOT NULL DEFAULT true,
     parsed_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -486,100 +486,100 @@ CREATE TABLE review_statuses_from_extension (
 );
 ```
 
-**Индексы:**
-- `idx_ext_statuses_store_can_submit` - основной запрос фильтрации
-- `idx_ext_statuses_product_rating_date` - матчинг с основной таблицей
-- `idx_ext_statuses_parsed_at` - сортировка по времени парсинга
+**РРЅРґРµРєСЃС‹:**
+- `idx_ext_statuses_store_can_submit` - РѕСЃРЅРѕРІРЅРѕР№ Р·Р°РїСЂРѕСЃ С„РёР»СЊС‚СЂР°С†РёРё
+- `idx_ext_statuses_product_rating_date` - РјР°С‚С‡РёРЅРі СЃ РѕСЃРЅРѕРІРЅРѕР№ С‚Р°Р±Р»РёС†РµР№
+- `idx_ext_statuses_parsed_at` - СЃРѕСЂС‚РёСЂРѕРІРєР° РїРѕ РІСЂРµРјРµРЅРё РїР°СЂСЃРёРЅРіР°
 
 ---
 
-### Таблица: reviews (основная)
+### РўР°Р±Р»РёС†Р°: reviews (РѕСЃРЅРѕРІРЅР°СЏ)
 
-**Ключевые поля для Extension:**
+**РљР»СЋС‡РµРІС‹Рµ РїРѕР»СЏ РґР»СЏ Extension:**
 
-| Поле | Тип | Описание |
+| РџРѕР»Рµ | РўРёРї | РћРїРёСЃР°РЅРёРµ |
 |------|-----|----------|
-| id | TEXT | Уникальный ID отзыва |
-| product_id | TEXT → products.id | Ссылка на товар |
-| rating | INTEGER | Рейтинг 1-5 |
-| text | TEXT | Текст отзыва |
-| complaint_status | ENUM | Статус жалобы |
+| id | TEXT | РЈРЅРёРєР°Р»СЊРЅС‹Р№ ID РѕС‚Р·С‹РІР° |
+| product_id | TEXT в†’ products.id | РЎСЃС‹Р»РєР° РЅР° С‚РѕРІР°СЂ |
+| rating | INTEGER | Р РµР№С‚РёРЅРі 1-5 |
+| text | TEXT | РўРµРєСЃС‚ РѕС‚Р·С‹РІР° |
+| complaint_status | ENUM | РЎС‚Р°С‚СѓСЃ Р¶Р°Р»РѕР±С‹ |
 
 **complaint_status ENUM:**
 
 ```sql
-'not_sent'     -- Жалоба не создана
-'draft'        -- Черновик (AI сгенерировал)
-'sent'         -- Отправлена
-'pending'      -- На рассмотрении WB
-'approved'     -- Одобрена WB
-'rejected'     -- Отклонена WB
-'reconsidered' -- Пересмотрена (NEW)
+'not_sent'     -- Р–Р°Р»РѕР±Р° РЅРµ СЃРѕР·РґР°РЅР°
+'draft'        -- Р§РµСЂРЅРѕРІРёРє (AI СЃРіРµРЅРµСЂРёСЂРѕРІР°Р»)
+'sent'         -- РћС‚РїСЂР°РІР»РµРЅР°
+'pending'      -- РќР° СЂР°СЃСЃРјРѕС‚СЂРµРЅРёРё WB
+'approved'     -- РћРґРѕР±СЂРµРЅР° WB
+'rejected'     -- РћС‚РєР»РѕРЅРµРЅР° WB
+'reconsidered' -- РџРµСЂРµСЃРјРѕС‚СЂРµРЅР° (NEW)
 ```
 
 ---
 
-### Таблица: review_complaints
+### РўР°Р±Р»РёС†Р°: review_complaints
 
-1:1 связь с reviews, хранит детали жалобы.
+1:1 СЃРІСЏР·СЊ СЃ reviews, С…СЂР°РЅРёС‚ РґРµС‚Р°Р»Рё Р¶Р°Р»РѕР±С‹.
 
-**Ключевые поля:**
+**РљР»СЋС‡РµРІС‹Рµ РїРѕР»СЏ:**
 
-| Поле | Тип | Описание |
+| РџРѕР»Рµ | РўРёРї | РћРїРёСЃР°РЅРёРµ |
 |------|-----|----------|
-| review_id | TEXT | FK → reviews.id |
-| complaint_text | TEXT | Текст жалобы |
-| reason_id | INTEGER | ID причины WB (11-20) |
-| reason_name | TEXT | Название причины |
+| review_id | TEXT | FK в†’ reviews.id |
+| complaint_text | TEXT | РўРµРєСЃС‚ Р¶Р°Р»РѕР±С‹ |
+| reason_id | INTEGER | ID РїСЂРёС‡РёРЅС‹ WB (11-20) |
+| reason_name | TEXT | РќР°Р·РІР°РЅРёРµ РїСЂРёС‡РёРЅС‹ |
 | status | TEXT | draft/sent/approved/rejected/pending |
-| sent_at | TIMESTAMPTZ | Дата отправки |
+| sent_at | TIMESTAMPTZ | Р”Р°С‚Р° РѕС‚РїСЂР°РІРєРё |
 
 ---
 
-## Маппинг статусов
+## РњР°РїРїРёРЅРі СЃС‚Р°С‚СѓСЃРѕРІ
 
-### Статусы от Extension → complaint_status
+### РЎС‚Р°С‚СѓСЃС‹ РѕС‚ Extension в†’ complaint_status
 
-| WB Interface | → | complaint_status |
+| WB Interface | в†’ | complaint_status |
 |--------------|---|------------------|
-| Жалоба отклонена | → | rejected |
-| Жалоба одобрена | → | approved |
-| Проверяем жалобу | → | pending |
-| Жалоба пересмотрена | → | reconsidered |
-| (нет статуса) | → | not_sent/draft |
+| Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР° | в†’ | rejected |
+| Р–Р°Р»РѕР±Р° РѕРґРѕР±СЂРµРЅР° | в†’ | approved |
+| РџСЂРѕРІРµСЂСЏРµРј Р¶Р°Р»РѕР±Сѓ | в†’ | pending |
+| Р–Р°Р»РѕР±Р° РїРµСЂРµСЃРјРѕС‚СЂРµРЅР° | в†’ | reconsidered |
+| (РЅРµС‚ СЃС‚Р°С‚СѓСЃР°) | в†’ | not_sent/draft |
 
-### Логика canSubmitComplaint
+### Р›РѕРіРёРєР° canSubmitComplaint
 
 ```javascript
 const COMPLAINT_STATUSES = [
-  'Жалоба отклонена',
-  'Жалоба одобрена',
-  'Проверяем жалобу',
-  'Жалоба пересмотрена'
+  'Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР°',
+  'Р–Р°Р»РѕР±Р° РѕРґРѕР±СЂРµРЅР°',
+  'РџСЂРѕРІРµСЂСЏРµРј Р¶Р°Р»РѕР±Сѓ',
+  'Р–Р°Р»РѕР±Р° РїРµСЂРµСЃРјРѕС‚СЂРµРЅР°'
 ];
 
-// Можно подать = НЕТ ни одного статуса жалобы
+// РњРѕР¶РЅРѕ РїРѕРґР°С‚СЊ = РќР•Рў РЅРё РѕРґРЅРѕРіРѕ СЃС‚Р°С‚СѓСЃР° Р¶Р°Р»РѕР±С‹
 const canSubmitComplaint = !statuses.some(s => COMPLAINT_STATUSES.includes(s));
 ```
 
 ---
 
-## Тестовые данные
+## РўРµСЃС‚РѕРІС‹Рµ РґР°РЅРЅС‹Рµ
 
 ### Production Environment
 
 ```bash
-Base URL: http://158.160.229.16
+Base URL: http://158.160.139.99
 Test Token: wbrm_0ab7137430d4fb62948db3a7d9b4b997
-Test Store: 7kKX9WgLvOPiXYIHk6hi (ИП Артюшина)
+Test Store: 7kKX9WgLvOPiXYIHk6hi (РРџ РђСЂС‚СЋС€РёРЅР°)
 ```
 
-### Примеры запросов
+### РџСЂРёРјРµСЂС‹ Р·Р°РїСЂРѕСЃРѕРІ
 
-#### Тест POST review-statuses:
+#### РўРµСЃС‚ POST review-statuses:
 
 ```bash
-curl -X POST "http://158.160.229.16/api/extension/review-statuses" \
+curl -X POST "http://158.160.139.99/api/extension/review-statuses" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997" \
   -d '{
@@ -591,7 +591,7 @@ curl -X POST "http://158.160.229.16/api/extension/review-statuses" \
         "productId": "649502497",
         "rating": 1,
         "reviewDate": "2026-01-07T20:09:37.000Z",
-        "statuses": ["Жалоба отклонена"],
+        "statuses": ["Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР°"],
         "canSubmitComplaint": false,
         "ratingExcluded": true
       }
@@ -599,65 +599,65 @@ curl -X POST "http://158.160.229.16/api/extension/review-statuses" \
   }'
 ```
 
-#### Тест GET review-statuses:
+#### РўРµСЃС‚ GET review-statuses:
 
 ```bash
-curl "http://158.160.229.16/api/extension/review-statuses?storeId=7kKX9WgLvOPiXYIHk6hi&limit=10" \
+curl "http://158.160.139.99/api/extension/review-statuses?storeId=7kKX9WgLvOPiXYIHk6hi&limit=10" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997"
 ```
 
-#### Тест GET complaints:
+#### РўРµСЃС‚ GET complaints:
 
 ```bash
-curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints?limit=5" \
+curl "http://158.160.139.99/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints?limit=5" \
   -H "Authorization: Bearer wbrm_0ab7137430d4fb62948db3a7d9b4b997"
 ```
 
 ---
 
-## Воркфлоу интеграции
+## Р’РѕСЂРєС„Р»РѕСѓ РёРЅС‚РµРіСЂР°С†РёРё
 
-### Полный цикл подачи жалоб
+### РџРѕР»РЅС‹Р№ С†РёРєР» РїРѕРґР°С‡Рё Р¶Р°Р»РѕР±
 
 ```
-1. Extension парсит страницу WB seller cabinet
-                    │
-                    ▼
+1. Extension РїР°СЂСЃРёС‚ СЃС‚СЂР°РЅРёС†Сѓ WB seller cabinet
+                    в”‚
+                    в–ј
 2. POST /api/extension/review-statuses
-   (отправляем статусы всех отзывов)
-                    │
-                    ▼
-3. Backend сохраняет в review_statuses_from_extension
-   и переносит в основную таблицу reviews
-                    │
-                    ▼
-4. CRON job генерирует жалобы ТОЛЬКО для отзывов
-   где can_submit_complaint = true
-                    │
-                    ▼
+   (РѕС‚РїСЂР°РІР»СЏРµРј СЃС‚Р°С‚СѓСЃС‹ РІСЃРµС… РѕС‚Р·С‹РІРѕРІ)
+                    в”‚
+                    в–ј
+3. Backend СЃРѕС…СЂР°РЅСЏРµС‚ РІ review_statuses_from_extension
+   Рё РїРµСЂРµРЅРѕСЃРёС‚ РІ РѕСЃРЅРѕРІРЅСѓСЋ С‚Р°Р±Р»РёС†Сѓ reviews
+                    в”‚
+                    в–ј
+4. CRON job РіРµРЅРµСЂРёСЂСѓРµС‚ Р¶Р°Р»РѕР±С‹ РўРћР›Р¬РљРћ РґР»СЏ РѕС‚Р·С‹РІРѕРІ
+   РіРґРµ can_submit_complaint = true
+                    в”‚
+                    в–ј
 5. GET /api/extension/stores/:id/complaints
-   (Extension получает готовые жалобы)
-                    │
-                    ▼
-6. Extension подает жалобы в WB
-                    │
-                    ▼
+   (Extension РїРѕР»СѓС‡Р°РµС‚ РіРѕС‚РѕРІС‹Рµ Р¶Р°Р»РѕР±С‹)
+                    в”‚
+                    в–ј
+6. Extension РїРѕРґР°РµС‚ Р¶Р°Р»РѕР±С‹ РІ WB
+                    в”‚
+                    в–ј
 7. POST /api/extension/stores/:id/reviews/:id/complaint/sent
-   (Extension отмечает жалобы как отправленные)
-          │
-          ▼
-8. Extension Complaint Checker проверяет статусы жалоб на WB
-          │
-          ▼
+   (Extension РѕС‚РјРµС‡Р°РµС‚ Р¶Р°Р»РѕР±С‹ РєР°Рє РѕС‚РїСЂР°РІР»РµРЅРЅС‹Рµ)
+          в”‚
+          в–ј
+8. Extension Complaint Checker РїСЂРѕРІРµСЂСЏРµС‚ СЃС‚Р°С‚СѓСЃС‹ Р¶Р°Р»РѕР± РЅР° WB
+          в”‚
+          в–ј
 9. POST /api/extension/complaint-statuses
-   (Extension передаёт статусы всех жалоб + кто подавал)
-          │
-          ▼
-10. При одобрении — Extension делает скриншот
-          │
-          ▼
+   (Extension РїРµСЂРµРґР°С‘С‚ СЃС‚Р°С‚СѓСЃС‹ РІСЃРµС… Р¶Р°Р»РѕР± + РєС‚Рѕ РїРѕРґР°РІР°Р»)
+          в”‚
+          в–ј
+10. РџСЂРё РѕРґРѕР±СЂРµРЅРёРё вЂ” Extension РґРµР»Р°РµС‚ СЃРєСЂРёРЅС€РѕС‚
+          в”‚
+          в–ј
 11. POST /api/extension/complaint-details
-    (Extension передаёт полные данные одобренной жалобы)
+    (Extension РїРµСЂРµРґР°С‘С‚ РїРѕР»РЅС‹Рµ РґР°РЅРЅС‹Рµ РѕРґРѕР±СЂРµРЅРЅРѕР№ Р¶Р°Р»РѕР±С‹)
 ```
 
 ---
@@ -666,7 +666,7 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 
 #### POST /api/extension/complaint-statuses
 
-Массовое обновление статусов жалоб. Расширение парсит страницу жалоб WB и передаёт текущие статусы.
+РњР°СЃСЃРѕРІРѕРµ РѕР±РЅРѕРІР»РµРЅРёРµ СЃС‚Р°С‚СѓСЃРѕРІ Р¶Р°Р»РѕР±. Р Р°СЃС€РёСЂРµРЅРёРµ РїР°СЂСЃРёС‚ СЃС‚СЂР°РЅРёС†Сѓ Р¶Р°Р»РѕР± WB Рё РїРµСЂРµРґР°С‘С‚ С‚РµРєСѓС‰РёРµ СЃС‚Р°С‚СѓСЃС‹.
 
 **Request:**
 
@@ -676,7 +676,7 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
   "results": [
     {
       "reviewKey": "149325538_1_2026-02-18T21:45",
-      "status": "Жалоба одобрена",
+      "status": "Р–Р°Р»РѕР±Р° РѕРґРѕР±СЂРµРЅР°",
       "filedBy": "R5",
       "complaintDate": "15.02.2026"
     }
@@ -684,14 +684,14 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 }
 ```
 
-| Поле | Тип | Описание |
+| РџРѕР»Рµ | РўРёРї | РћРїРёСЃР°РЅРёРµ |
 |------|-----|----------|
 | reviewKey | string | `{nmId}_{rating}_{YYYY-MM-DDTHH:mm}` |
-| status | string | "Жалоба одобрена" / "Жалоба отклонена" / "Проверяем жалобу" / "Жалоба пересмотрена" |
-| filedBy | string | "R5" или "Продавец" |
-| complaintDate | string\|null | Дата подачи DD.MM.YYYY, null если подал продавец |
+| status | string | "Р–Р°Р»РѕР±Р° РѕРґРѕР±СЂРµРЅР°" / "Р–Р°Р»РѕР±Р° РѕС‚РєР»РѕРЅРµРЅР°" / "РџСЂРѕРІРµСЂСЏРµРј Р¶Р°Р»РѕР±Сѓ" / "Р–Р°Р»РѕР±Р° РїРµСЂРµСЃРјРѕС‚СЂРµРЅР°" |
+| filedBy | string | "R5" РёР»Рё "РџСЂРѕРґР°РІРµС†" |
+| complaintDate | string\|null | Р”Р°С‚Р° РїРѕРґР°С‡Рё DD.MM.YYYY, null РµСЃР»Рё РїРѕРґР°Р» РїСЂРѕРґР°РІРµС† |
 
-**Что обновляет:**
+**Р§С‚Рѕ РѕР±РЅРѕРІР»СЏРµС‚:**
 - `reviews.complaint_status` + `complaint_filed_by` + `complaint_filed_date`
 - `review_complaints.status` + `filed_by` + `complaint_filed_date`
 
@@ -716,9 +716,9 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 
 #### POST /api/extension/complaint-details
 
-Полные данные одобренной жалобы. Вызывается после каждого скриншота. Зеркало Google Sheets "Жалобы V 2.0".
+РџРѕР»РЅС‹Рµ РґР°РЅРЅС‹Рµ РѕРґРѕР±СЂРµРЅРЅРѕР№ Р¶Р°Р»РѕР±С‹. Р’С‹Р·С‹РІР°РµС‚СЃСЏ РїРѕСЃР»Рµ РєР°Р¶РґРѕРіРѕ СЃРєСЂРёРЅС€РѕС‚Р°. Р—РµСЂРєР°Р»Рѕ Google Sheets "Р–Р°Р»РѕР±С‹ V 2.0".
 
-**Назначение:** Биллинг, отчётность клиентам, обучение AI на реальных одобренных кейсах.
+**РќР°Р·РЅР°С‡РµРЅРёРµ:** Р‘РёР»Р»РёРЅРі, РѕС‚С‡С‘С‚РЅРѕСЃС‚СЊ РєР»РёРµРЅС‚Р°Рј, РѕР±СѓС‡РµРЅРёРµ AI РЅР° СЂРµР°Р»СЊРЅС‹С… РѕРґРѕР±СЂРµРЅРЅС‹С… РєРµР№СЃР°С….
 
 **Request:**
 
@@ -727,25 +727,25 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
   "storeId": "store_123",
   "complaint": {
     "checkDate": "20.02.2026",
-    "cabinetName": "МойМагазин",
+    "cabinetName": "РњРѕР№РњР°РіР°Р·РёРЅ",
     "articul": "149325538",
     "reviewId": "",
     "feedbackRating": 1,
-    "feedbackDate": "18 февр. 2026 г. в 21:45",
+    "feedbackDate": "18 С„РµРІСЂ. 2026 Рі. РІ 21:45",
     "complaintSubmitDate": "15.02.2026",
-    "status": "Одобрена",
+    "status": "РћРґРѕР±СЂРµРЅР°",
     "hasScreenshot": true,
     "fileName": "149325538_18.02.26_21-45.png",
     "driveLink": "https://drive.google.com/file/d/abc123/view",
-    "complaintCategory": "Отзыв не относится к товару",
-    "complaintText": "Жалоба от: 20.02.2026\n\nОтзыв покупателя не содержит..."
+    "complaintCategory": "РћС‚Р·С‹РІ РЅРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє С‚РѕРІР°СЂСѓ",
+    "complaintText": "Р–Р°Р»РѕР±Р° РѕС‚: 20.02.2026\n\nРћС‚Р·С‹РІ РїРѕРєСѓРїР°С‚РµР»СЏ РЅРµ СЃРѕРґРµСЂР¶РёС‚..."
   }
 }
 ```
 
-**Дедупликация:** `store_id + articul + feedbackDate + fileName`
+**Р”РµРґСѓРїР»РёРєР°С†РёСЏ:** `store_id + articul + feedbackDate + fileName`
 
-**filed_by автодетекция:** complaintText начинается с "Жалоба от:" → `r5`, иначе → `seller`
+**filed_by Р°РІС‚РѕРґРµС‚РµРєС†РёСЏ:** complaintText РЅР°С‡РёРЅР°РµС‚СЃСЏ СЃ "Р–Р°Р»РѕР±Р° РѕС‚:" в†’ `r5`, РёРЅР°С‡Рµ в†’ `seller`
 
 **Response (created):**
 ```json
@@ -761,25 +761,25 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 
 ## Error Handling
 
-### Стандартные коды ошибок
+### РЎС‚Р°РЅРґР°СЂС‚РЅС‹Рµ РєРѕРґС‹ РѕС€РёР±РѕРє
 
-| HTTP Status | Error Code | Описание |
+| HTTP Status | Error Code | РћРїРёСЃР°РЅРёРµ |
 |-------------|------------|----------|
-| 400 | VALIDATION_ERROR | Некорректные данные |
-| 401 | UNAUTHORIZED | Отсутствует/неверный токен |
-| 403 | FORBIDDEN | Нет доступа к магазину |
-| 404 | NOT_FOUND | Магазин/отзыв не найден |
-| 429 | RATE_LIMITED | Превышен лимит запросов |
-| 500 | INTERNAL_ERROR | Внутренняя ошибка сервера |
+| 400 | VALIDATION_ERROR | РќРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РґР°РЅРЅС‹Рµ |
+| 401 | UNAUTHORIZED | РћС‚СЃСѓС‚СЃС‚РІСѓРµС‚/РЅРµРІРµСЂРЅС‹Р№ С‚РѕРєРµРЅ |
+| 403 | FORBIDDEN | РќРµС‚ РґРѕСЃС‚СѓРїР° Рє РјР°РіР°Р·РёРЅСѓ |
+| 404 | NOT_FOUND | РњР°РіР°Р·РёРЅ/РѕС‚Р·С‹РІ РЅРµ РЅР°Р№РґРµРЅ |
+| 429 | RATE_LIMITED | РџСЂРµРІС‹С€РµРЅ Р»РёРјРёС‚ Р·Р°РїСЂРѕСЃРѕРІ |
+| 500 | INTERNAL_ERROR | Р’РЅСѓС‚СЂРµРЅРЅСЏСЏ РѕС€РёР±РєР° СЃРµСЂРІРµСЂР° |
 
-### Формат ошибки
+### Р¤РѕСЂРјР°С‚ РѕС€РёР±РєРё
 
 ```json
 {
   "success": false,
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Описание ошибки",
+    "message": "РћРїРёСЃР°РЅРёРµ РѕС€РёР±РєРё",
     "details": [...]
   }
 }
@@ -793,121 +793,121 @@ curl "http://158.160.229.16/api/extension/stores/7kKX9WgLvOPiXYIHk6hi/complaints
 
 **Sprint 011: Exclude Draft Complaints from statusParses**
 
-- **Draft exclusion:** Отзывы с draft-жалобами (`review_complaints.status = 'draft'`) исключены из `statusParses` и `totalCounts.statusParses`. Расширение и так посетит страницу для подачи жалобы и спарсит статус. Значительно уменьшает пул задач statusParses для новых кабинетов.
-- Затронутые endpoints: `GET /stores` (Q2), `GET /stores/{storeId}/tasks` (Query A, Query E)
+- **Draft exclusion:** РћС‚Р·С‹РІС‹ СЃ draft-Р¶Р°Р»РѕР±Р°РјРё (`review_complaints.status = 'draft'`) РёСЃРєР»СЋС‡РµРЅС‹ РёР· `statusParses` Рё `totalCounts.statusParses`. Р Р°СЃС€РёСЂРµРЅРёРµ Рё С‚Р°Рє РїРѕСЃРµС‚РёС‚ СЃС‚СЂР°РЅРёС†Сѓ РґР»СЏ РїРѕРґР°С‡Рё Р¶Р°Р»РѕР±С‹ Рё СЃРїР°СЂСЃРёС‚ СЃС‚Р°С‚СѓСЃ. Р—РЅР°С‡РёС‚РµР»СЊРЅРѕ СѓРјРµРЅСЊС€Р°РµС‚ РїСѓР» Р·Р°РґР°С‡ statusParses РґР»СЏ РЅРѕРІС‹С… РєР°Р±РёРЅРµС‚РѕРІ.
+- Р—Р°С‚СЂРѕРЅСѓС‚С‹Рµ endpoints: `GET /stores` (Q2), `GET /stores/{storeId}/tasks` (Query A, Query E)
 
 ### v2.2.2 (2026-03-14)
 
 **Sprint 010: work_from_date Filter**
 
-- **Date filter на statusParses:** Отзывы до `product_rules.work_from_date` (default `2023-10-01`) исключены из `statusParses`, `totalCounts.statusParses` и `pendingStatusParsesCount`. Устраняет бесполезный парсинг старых отзывов, по которым нельзя ни подать жалобу, ни открыть чат.
-- Затронутые endpoints: `GET /stores` (Q2), `GET /stores/{storeId}/tasks` (Query A, Query E)
+- **Date filter РЅР° statusParses:** РћС‚Р·С‹РІС‹ РґРѕ `product_rules.work_from_date` (default `2023-10-01`) РёСЃРєР»СЋС‡РµРЅС‹ РёР· `statusParses`, `totalCounts.statusParses` Рё `pendingStatusParsesCount`. РЈСЃС‚СЂР°РЅСЏРµС‚ Р±РµСЃРїРѕР»РµР·РЅС‹Р№ РїР°СЂСЃРёРЅРі СЃС‚Р°СЂС‹С… РѕС‚Р·С‹РІРѕРІ, РїРѕ РєРѕС‚РѕСЂС‹Рј РЅРµР»СЊР·СЏ РЅРё РїРѕРґР°С‚СЊ Р¶Р°Р»РѕР±Сѓ, РЅРё РѕС‚РєСЂС‹С‚СЊ С‡Р°С‚.
+- Р—Р°С‚СЂРѕРЅСѓС‚С‹Рµ endpoints: `GET /stores` (Q2), `GET /stores/{storeId}/tasks` (Query A, Query E)
 
 ### v2.2.1 (2026-03-14)
 
 **Sprint 009: 4-Star Chat Optimization & Stage Guard Completion**
 
-- **Stage guard на statusParses:** Chat-only рейтинги (без `submit_complaints`) исключаются из `statusParses` когда этап ниже `chats_opened`. Устраняет бесполезный парсинг 4★ отзывов до этапа чатов.
-- **Stage guard на `GET /stores`:** `pendingChatsCount` (Q3) + chat-only `statusParses` (Q2) теперь проверяют `s.stage`
-- **Stage guard на totalCounts:** `chat_opens_total` и `chat_links_total` = 0 если этап ниже `chats_opened`
-- Завершает полное покрытие stage guard для всех endpoint'ов расширения
+- **Stage guard РЅР° statusParses:** Chat-only СЂРµР№С‚РёРЅРіРё (Р±РµР· `submit_complaints`) РёСЃРєР»СЋС‡Р°СЋС‚СЃСЏ РёР· `statusParses` РєРѕРіРґР° СЌС‚Р°Рї РЅРёР¶Рµ `chats_opened`. РЈСЃС‚СЂР°РЅСЏРµС‚ Р±РµСЃРїРѕР»РµР·РЅС‹Р№ РїР°СЂСЃРёРЅРі 4в… РѕС‚Р·С‹РІРѕРІ РґРѕ СЌС‚Р°РїР° С‡Р°С‚РѕРІ.
+- **Stage guard РЅР° `GET /stores`:** `pendingChatsCount` (Q3) + chat-only `statusParses` (Q2) С‚РµРїРµСЂСЊ РїСЂРѕРІРµСЂСЏСЋС‚ `s.stage`
+- **Stage guard РЅР° totalCounts:** `chat_opens_total` Рё `chat_links_total` = 0 РµСЃР»Рё СЌС‚Р°Рї РЅРёР¶Рµ `chats_opened`
+- Р—Р°РІРµСЂС€Р°РµС‚ РїРѕР»РЅРѕРµ РїРѕРєСЂС‹С‚РёРµ stage guard РґР»СЏ РІСЃРµС… endpoint'РѕРІ СЂР°СЃС€РёСЂРµРЅРёСЏ
 
 ### v2.2.0 (2026-03-14)
 
 **Sprint 008: Stage Enforcement**
 
-- **Stage guard для чат-задач:** `chatOpens`, `chatLinks` и `pendingChatsCount` возвращаются только для магазинов на этапе `chats_opened` или `monitoring`. Для более ранних этапов (`contract` → `complaints_submitted`) — пустые массивы / 0.
-- Затронутые endpoints:
-  - `GET /api/extension/stores/{storeId}/tasks` — `chatOpens` и `chatLinks` пусты если этап ниже `chats_opened`
-  - `GET /api/extension/chat/stores` — `pendingChatsCount` = 0 если этап ниже `chats_opened`
-- Утилита `isStageAtLeast()` в `src/types/stores.ts`
+- **Stage guard РґР»СЏ С‡Р°С‚-Р·Р°РґР°С‡:** `chatOpens`, `chatLinks` Рё `pendingChatsCount` РІРѕР·РІСЂР°С‰Р°СЋС‚СЃСЏ С‚РѕР»СЊРєРѕ РґР»СЏ РјР°РіР°Р·РёРЅРѕРІ РЅР° СЌС‚Р°РїРµ `chats_opened` РёР»Рё `monitoring`. Р”Р»СЏ Р±РѕР»РµРµ СЂР°РЅРЅРёС… СЌС‚Р°РїРѕРІ (`contract` в†’ `complaints_submitted`) вЂ” РїСѓСЃС‚С‹Рµ РјР°СЃСЃРёРІС‹ / 0.
+- Р—Р°С‚СЂРѕРЅСѓС‚С‹Рµ endpoints:
+  - `GET /api/extension/stores/{storeId}/tasks` вЂ” `chatOpens` Рё `chatLinks` РїСѓСЃС‚С‹ РµСЃР»Рё СЌС‚Р°Рї РЅРёР¶Рµ `chats_opened`
+  - `GET /api/extension/chat/stores` вЂ” `pendingChatsCount` = 0 РµСЃР»Рё СЌС‚Р°Рї РЅРёР¶Рµ `chats_opened`
+- РЈС‚РёР»РёС‚Р° `isStageAtLeast()` РІ `src/types/stores.ts`
 
 ### v2.1.0 (2026-02-20)
 
 **Data Collection Pipeline**
 
-- POST /api/extension/complaint-statuses — массовый sync статусов жалоб + filed_by + complaintDate
-- POST /api/extension/complaint-details — полные данные одобренных жалоб (source of truth для биллинга)
-- Новая таблица `complaint_details` (migration 021) — зеркало Google Sheets "Жалобы V 2.0"
-- Поля `filed_by` + `complaint_filed_date` на reviews + review_complaints (migration 020)
-- Автодетекция filed_by из текста жалобы ("Жалоба от:" → r5)
+- POST /api/extension/complaint-statuses вЂ” РјР°СЃСЃРѕРІС‹Р№ sync СЃС‚Р°С‚СѓСЃРѕРІ Р¶Р°Р»РѕР± + filed_by + complaintDate
+- POST /api/extension/complaint-details вЂ” РїРѕР»РЅС‹Рµ РґР°РЅРЅС‹Рµ РѕРґРѕР±СЂРµРЅРЅС‹С… Р¶Р°Р»РѕР± (source of truth РґР»СЏ Р±РёР»Р»РёРЅРіР°)
+- РќРѕРІР°СЏ С‚Р°Р±Р»РёС†Р° `complaint_details` (migration 021) вЂ” Р·РµСЂРєР°Р»Рѕ Google Sheets "Р–Р°Р»РѕР±С‹ V 2.0"
+- РџРѕР»СЏ `filed_by` + `complaint_filed_date` РЅР° reviews + review_complaints (migration 020)
+- РђРІС‚РѕРґРµС‚РµРєС†РёСЏ filed_by РёР· С‚РµРєСЃС‚Р° Р¶Р°Р»РѕР±С‹ ("Р–Р°Р»РѕР±Р° РѕС‚:" в†’ r5)
 
-### v2.1.0 (2026-03-04) — PLANNED
+### v2.1.0 (2026-03-04) вЂ” PLANNED
 
-**Задача: Ретроактивная привязка чатов + защита статусов**
+**Р—Р°РґР°С‡Р°: Р РµС‚СЂРѕР°РєС‚РёРІРЅР°СЏ РїСЂРёРІСЏР·РєР° С‡Р°С‚РѕРІ + Р·Р°С‰РёС‚Р° СЃС‚Р°С‚СѓСЃРѕРІ**
 
-Подробная спецификация: `docs/tasks/TASK-20260304-extension-chat-linking-and-status-protection.md`
+РџРѕРґСЂРѕР±РЅР°СЏ СЃРїРµС†РёС„РёРєР°С†РёСЏ: `docs/tasks/TASK-20260304-extension-chat-linking-and-status-protection.md`
 
-**Задача 1: Ретроактивная привязка открытых чатов**
-- При парсинге `chat_status = 'chat_opened'` → проверить наличие `review_chat_links`
-- Если привязки нет → вызвать `POST /api/extension/chat/opened` с контекстом отзыва (nmId, rating, reviewDate, chatUrl)
-- Endpoint идемпотентен (UNIQUE на store_id + review_key) — повторные вызовы безопасны
-- **Цель:** Все 291+ чатов, открытых вручную на WB, получат привязку к отзывам
+**Р—Р°РґР°С‡Р° 1: Р РµС‚СЂРѕР°РєС‚РёРІРЅР°СЏ РїСЂРёРІСЏР·РєР° РѕС‚РєСЂС‹С‚С‹С… С‡Р°С‚РѕРІ**
+- РџСЂРё РїР°СЂСЃРёРЅРіРµ `chat_status = 'chat_opened'` в†’ РїСЂРѕРІРµСЂРёС‚СЊ РЅР°Р»РёС‡РёРµ `review_chat_links`
+- Р•СЃР»Рё РїСЂРёРІСЏР·РєРё РЅРµС‚ в†’ РІС‹Р·РІР°С‚СЊ `POST /api/extension/chat/opened` СЃ РєРѕРЅС‚РµРєСЃС‚РѕРј РѕС‚Р·С‹РІР° (nmId, rating, reviewDate, chatUrl)
+- Endpoint РёРґРµРјРїРѕС‚РµРЅС‚РµРЅ (UNIQUE РЅР° store_id + review_key) вЂ” РїРѕРІС‚РѕСЂРЅС‹Рµ РІС‹Р·РѕРІС‹ Р±РµР·РѕРїР°СЃРЅС‹
+- **Р¦РµР»СЊ:** Р’СЃРµ 291+ С‡Р°С‚РѕРІ, РѕС‚РєСЂС‹С‚С‹С… РІСЂСѓС‡РЅСѓСЋ РЅР° WB, РїРѕР»СѓС‡Р°С‚ РїСЂРёРІСЏР·РєСѓ Рє РѕС‚Р·С‹РІР°Рј
 
-**Задача 2: Защита от ложных статусов**
-- Если кнопка чата НЕ найдена в DOM (WB не прогрузил) → отправлять `chatStatus: null` (НЕ `'chat_not_activated'`)
-- `'chat_not_activated'` → ТОЛЬКО если расширение **точно** видит disabled кнопку
-- Backend-защита: `opened` → `unavailable`/`available` заблокировано в SQL
+**Р—Р°РґР°С‡Р° 2: Р—Р°С‰РёС‚Р° РѕС‚ Р»РѕР¶РЅС‹С… СЃС‚Р°С‚СѓСЃРѕРІ**
+- Р•СЃР»Рё РєРЅРѕРїРєР° С‡Р°С‚Р° РќР• РЅР°Р№РґРµРЅР° РІ DOM (WB РЅРµ РїСЂРѕРіСЂСѓР·РёР») в†’ РѕС‚РїСЂР°РІР»СЏС‚СЊ `chatStatus: null` (РќР• `'chat_not_activated'`)
+- `'chat_not_activated'` в†’ РўРћР›Р¬РљРћ РµСЃР»Рё СЂР°СЃС€РёСЂРµРЅРёРµ **С‚РѕС‡РЅРѕ** РІРёРґРёС‚ disabled РєРЅРѕРїРєСѓ
+- Backend-Р·Р°С‰РёС‚Р°: `opened` в†’ `unavailable`/`available` Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅРѕ РІ SQL
 
-**Защита статуса `opened` (уже реализована на бэкенде):**
+**Р—Р°С‰РёС‚Р° СЃС‚Р°С‚СѓСЃР° `opened` (СѓР¶Рµ СЂРµР°Р»РёР·РѕРІР°РЅР° РЅР° Р±СЌРєРµРЅРґРµ):**
 
-| Текущий → Новый | unavailable | available | opened |
+| РўРµРєСѓС‰РёР№ в†’ РќРѕРІС‹Р№ | unavailable | available | opened |
 |----------------|:-----------:|:---------:|:------:|
-| NULL/unknown   | ✅ | ✅ | ✅ |
-| unavailable    | — | ✅ | ✅ |
-| available      | ✅ | — | ✅ |
-| **opened**     | **❌** | **❌** | — |
+| NULL/unknown   | вњ… | вњ… | вњ… |
+| unavailable    | вЂ” | вњ… | вњ… |
+| available      | вњ… | вЂ” | вњ… |
+| **opened**     | **вќЊ** | **вќЊ** | вЂ” |
 
 ### v2.0.0 (2026-02-16)
 
 **Sprint 002: Review-Chat Linking**
 
-- POST /api/extension/chat/opened — фиксация открытия чата из страницы отзывов
-- POST /api/extension/chat/:id/anchor — фиксация системного сообщения
-- POST /api/extension/chat/:id/message-sent — отправка стартового сообщения
-- POST /api/extension/chat/:id/error — логирование ошибок
-- GET /api/extension/chat/stores — список магазинов с chat-workflow
-- GET /api/extension/chat/stores/:id/rules — правила чат-обработки
+- POST /api/extension/chat/opened вЂ” С„РёРєСЃР°С†РёСЏ РѕС‚РєСЂС‹С‚РёСЏ С‡Р°С‚Р° РёР· СЃС‚СЂР°РЅРёС†С‹ РѕС‚Р·С‹РІРѕРІ
+- POST /api/extension/chat/:id/anchor вЂ” С„РёРєСЃР°С†РёСЏ СЃРёСЃС‚РµРјРЅРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ
+- POST /api/extension/chat/:id/message-sent вЂ” РѕС‚РїСЂР°РІРєР° СЃС‚Р°СЂС‚РѕРІРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёСЏ
+- POST /api/extension/chat/:id/error вЂ” Р»РѕРіРёСЂРѕРІР°РЅРёРµ РѕС€РёР±РѕРє
+- GET /api/extension/chat/stores вЂ” СЃРїРёСЃРѕРє РјР°РіР°Р·РёРЅРѕРІ СЃ chat-workflow
+- GET /api/extension/chat/stores/:id/rules вЂ” РїСЂР°РІРёР»Р° С‡Р°С‚-РѕР±СЂР°Р±РѕС‚РєРё
 
 ### v1.1.0 (2026-02-01)
 
 **Sprint: Status Sync**
 
-- ✅ Добавлена таблица `review_statuses_from_extension`
-- ✅ Добавлен ENUM значение `reconsidered` в `complaint_status`
-- ✅ Новый endpoint: `POST /api/extension/review-statuses`
-- ✅ Новый endpoint: `GET /api/extension/review-statuses`
-- ✅ Документация обновлена
+- вњ… Р”РѕР±Р°РІР»РµРЅР° С‚Р°Р±Р»РёС†Р° `review_statuses_from_extension`
+- вњ… Р”РѕР±Р°РІР»РµРЅ ENUM Р·РЅР°С‡РµРЅРёРµ `reconsidered` РІ `complaint_status`
+- вњ… РќРѕРІС‹Р№ endpoint: `POST /api/extension/review-statuses`
+- вњ… РќРѕРІС‹Р№ endpoint: `GET /api/extension/review-statuses`
+- вњ… Р”РѕРєСѓРјРµРЅС‚Р°С†РёСЏ РѕР±РЅРѕРІР»РµРЅР°
 
-**Ожидаемый результат:**
-- Экономия ~80% GPT токенов
-- Генерация жалоб только для подходящих отзывов
+**РћР¶РёРґР°РµРјС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚:**
+- Р­РєРѕРЅРѕРјРёСЏ ~80% GPT С‚РѕРєРµРЅРѕРІ
+- Р“РµРЅРµСЂР°С†РёСЏ Р¶Р°Р»РѕР± С‚РѕР»СЊРєРѕ РґР»СЏ РїРѕРґС…РѕРґСЏС‰РёС… РѕС‚Р·С‹РІРѕРІ
 
 ### v1.0.0 (2026-01-29)
 
-- Исправлен токен аутентификации
-- Исправлена фильтрация по статусу жалобы
-- Исправлен формат productId (wb_product_id вместо vendor_code)
-- Удалено поле productName из ответа
+- РСЃРїСЂР°РІР»РµРЅ С‚РѕРєРµРЅ Р°СѓС‚РµРЅС‚РёС„РёРєР°С†РёРё
+- РСЃРїСЂР°РІР»РµРЅР° С„РёР»СЊС‚СЂР°С†РёСЏ РїРѕ СЃС‚Р°С‚СѓСЃСѓ Р¶Р°Р»РѕР±С‹
+- РСЃРїСЂР°РІР»РµРЅ С„РѕСЂРјР°С‚ productId (wb_product_id РІРјРµСЃС‚Рѕ vendor_code)
+- РЈРґР°Р»РµРЅРѕ РїРѕР»Рµ productName РёР· РѕС‚РІРµС‚Р°
 
 ---
 
-## Связанные документы
+## РЎРІСЏР·Р°РЅРЅС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
 
-- [Sprint-StatusSync/README.md](../docs/Sprint-StatusSync/README.md) - Спецификация спринта
-- [Sprint-StatusSync/API-SPEC.md](../docs/Sprint-StatusSync/API-SPEC.md) - Детальная спецификация API
-- [database-schema.md](./database-schema.md) - Полная схема БД
-- [EXTENSION_API_ISSUES_SUMMARY.md](./EXTENSION_API_ISSUES_SUMMARY.md) - История решённых проблем
+- [Sprint-StatusSync/README.md](../docs/Sprint-StatusSync/README.md) - РЎРїРµС†РёС„РёРєР°С†РёСЏ СЃРїСЂРёРЅС‚Р°
+- [Sprint-StatusSync/API-SPEC.md](../docs/Sprint-StatusSync/API-SPEC.md) - Р”РµС‚Р°Р»СЊРЅР°СЏ СЃРїРµС†РёС„РёРєР°С†РёСЏ API
+- [database-schema.md](./database-schema.md) - РџРѕР»РЅР°СЏ СЃС…РµРјР° Р‘Р”
+- [EXTENSION_API_ISSUES_SUMMARY.md](./EXTENSION_API_ISSUES_SUMMARY.md) - РСЃС‚РѕСЂРёСЏ СЂРµС€С‘РЅРЅС‹С… РїСЂРѕР±Р»РµРј
 
 ---
 
-## Контакты
+## РљРѕРЅС‚Р°РєС‚С‹
 
 **Backend Team:** WB Reputation Manager v2.0.0
 **Repository:** https://github.com/Klimov-IS/R5-Saas-v-2.0
-**Production:** http://158.160.229.16
+**Production:** http://158.160.139.99
 
 ---
 
-**Последнее обновление:** 2026-03-14
-**Автор:** R5 Backend Team
+**РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ:** 2026-03-14
+**РђРІС‚РѕСЂ:** R5 Backend Team

@@ -36,7 +36,7 @@ PGPASSWORD="MyNewPass123" psql \
 **2. Invalid Credentials**
 ```bash
 # Verify environment variables (production server)
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 \
   "cat /var/www/wb-reputation/.env.production | grep POSTGRES"
 ```
 
@@ -81,7 +81,7 @@ const pool = new Pool({
 
 #### Why This Happens
 
-Wildberries API has a hard limit of 20,000 reviews per request. Some stores (like Тайди Центр) have 1.3M+ reviews.
+Wildberries API has a hard limit of 20,000 reviews per request. Some stores (like РўР°Р№РґРё Р¦РµРЅС‚СЂ) have 1.3M+ reviews.
 
 #### Solution
 
@@ -92,7 +92,7 @@ The app uses **adaptive date chunking** to bypass this limit. Verify it's workin
 pm2 logs wb-reputation | grep "Adaptive chunking"
 
 # Should see:
-# [SYNC] Using adaptive chunking: 2020-01-01 → 2020-03-31 (90 days)
+# [SYNC] Using adaptive chunking: 2020-01-01 в†’ 2020-03-31 (90 days)
 # [SYNC] Chunk had 18,500 reviews (near limit), reducing chunk size
 ```
 
@@ -208,7 +208,7 @@ cat /var/www/wb-reputation/.env.local | grep TELEGRAM
 **3. Webhook conflict**
 
 The bot uses long-polling (not webhooks). If another instance is running, it will conflict.
-PM2 processes are independent — restarting web app doesn't affect TG bot.
+PM2 processes are independent вЂ” restarting web app doesn't affect TG bot.
 
 ---
 
@@ -252,7 +252,7 @@ pm2 save
 #### Symptom
 
 ```bash
-curl http://158.160.229.16/api/stores
+curl http://158.160.139.99/api/stores
 # {"error":"Unauthorized"}
 ```
 
@@ -260,7 +260,7 @@ curl http://158.160.229.16/api/stores
 
 ```bash
 # Test with API key
-curl -X GET "http://158.160.229.16/api/stores" \
+curl -X GET "http://158.160.139.99/api/stores" \
   -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
 
 # Should return store list
@@ -283,7 +283,7 @@ Valid format: `wbrm_*` (prefix required)
 
 ```bash
 # Check .env.production
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 \
   "cat /var/www/wb-reputation/.env.production | grep API_KEY"
 
 # Should show:
@@ -378,7 +378,7 @@ Long-running processes without proper cleanup.
 
 **3. Too Many PM2 Instances**
 
-Currently 2 instances × ~500MB each = 1GB baseline.
+Currently 2 instances Г— ~500MB each = 1GB baseline.
 
 #### Fix
 
@@ -406,7 +406,7 @@ module.exports = {
 
 #### Symptom
 
-Browser shows "502 Bad Gateway" when accessing http://158.160.229.16
+Browser shows "502 Bad Gateway" when accessing http://158.160.139.99
 
 #### Diagnosis
 
@@ -467,7 +467,7 @@ sudo systemctl reload nginx
 
 ```bash
 # Check Deepseek API key
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 \
   "cat /var/www/wb-reputation/.env.production | grep DEEPSEEK"
 
 # Test API manually
@@ -510,7 +510,7 @@ Full sync for 1M+ review store takes 10+ hours.
 
 - Adaptive chunking creates many small date ranges
 - Each chunk = 1 API call + processing time
-- 1.3M reviews / 20k per chunk = 65+ chunks × 2-3 minutes each
+- 1.3M reviews / 20k per chunk = 65+ chunks Г— 2-3 minutes each
 
 #### Solutions
 
@@ -518,7 +518,7 @@ Full sync for 1M+ review store takes 10+ hours.
 
 ```bash
 # Only fetch new reviews (much faster)
-curl -X POST "http://158.160.229.16/api/stores/{storeId}/reviews/update?mode=incremental" \
+curl -X POST "http://158.160.139.99/api/stores/{storeId}/reviews/update?mode=incremental" \
   -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
 ```
 
@@ -629,7 +629,7 @@ cd /var/www/wb-reputation && git log --oneline -5
 
 ### Useful Links
 
-- **Production URL:** http://158.160.229.16
+- **Production URL:** http://158.160.139.99
 - **GitHub Repo:** https://github.com/Klimov-IS/R5-Saas-v-2.0
 - **Deployment Guide:** [DEPLOYMENT.md](./DEPLOYMENT.md)
 - **CRON Jobs:** [CRON_JOBS.md](./CRON_JOBS.md)

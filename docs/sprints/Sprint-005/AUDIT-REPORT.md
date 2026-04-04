@@ -1,8 +1,8 @@
 # R5 Documentation Audit Report
 
 **Date:** 2026-03-06
-**Sprint:** 005 — Documentation Refactor
-**Status:** Phase 1 — Audit Complete (read-only, no changes made)
+**Sprint:** 005 вЂ” Documentation Refactor
+**Status:** Phase 1 вЂ” Audit Complete (read-only, no changes made)
 
 ---
 
@@ -19,7 +19,7 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 
 ---
 
-## PHASE 1 — Documentation Inventory
+## PHASE 1 вЂ” Documentation Inventory
 
 ### Total: 120+ files across 8 locations
 
@@ -68,7 +68,7 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 
 | File | Type | Topic | Status | Issues |
 |------|------|-------|--------|--------|
-| `complaints.md` | Domain doc | Complaints | **CURRENT (v2.0)** | **SOURCE OF TRUTH** — comprehensive |
+| `complaints.md` | Domain doc | Complaints | **CURRENT (v2.0)** | **SOURCE OF TRUTH** вЂ” comprehensive |
 | `complaints-table-schema.md` | Schema ref | Complaints DB | CURRENT | Technical reference, accurate |
 | `complaint-auto-generation-rules.md` | Rules | Auto-complaints | CURRENT | 6 criteria, cron schedule, budget limits |
 | `AUTO_COMPLAINT_STRATEGY.md` | Strategy | Auto-complaints | HISTORICAL | Gap analysis from 2026-01-20 |
@@ -77,7 +77,7 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 | `AB_TESTING_COMPLAINT_TEMPLATES.md` | Design | A/B templates | COMPLETED | 4 variants, hash distribution |
 | `COMPLAINTS_SYSTEM_INTEGRATION.md` | Architecture | System integration | CURRENT | End-to-end flow |
 | `DELETION_TRIGGER_PHRASES.md` | Reference | Regex patterns | **CURRENT** | 58+ patterns powering `tag-classifier.ts` |
-| `STAGE_3_DELETION_AGENT_GUIDE.md` | Guide | AI deletion offers | COMPLETE | Outdated 4★ compensation logic (40% → 0%) |
+| `STAGE_3_DELETION_AGENT_GUIDE.md` | Guide | AI deletion offers | COMPLETE | Outdated 4в… compensation logic (40% в†’ 0%) |
 | `STAGE_2_AI_CLASSIFICATION_GUIDE.md` | Guide | AI classification | **DEPRECATED** | Replaced by regex (migration 024) |
 | `TESTING_GUIDE_DELETION_WORKFLOW.md` | Guide | Testing | OUTDATED | Hardcoded old migration paths |
 | `TAG_CLASSIFICATION.md` | Domain doc | Tag system | **AUTHORITATIVE** | Current 4-tag system, 2026-03-06 |
@@ -132,7 +132,7 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 | Sprint 001 (OZON) | 1 (README) | Code-complete |
 | Sprint 002 (Review-Chat Linking) | 4 (README, PRODUCT_SPEC, TASK, EXTENSION_GUIDE) | Active |
 | Sprint 003 (Cabinet Dashboard) | 11 (README, SPEC, TASK-001..010) | Phase 1 active |
-| Sprint 004 (Communication Policy) | 3 (README, ТЗ, CHAT_POLICY) | Draft v1.0 |
+| Sprint 004 (Communication Policy) | 3 (README, РўР—, CHAT_POLICY) | Draft v1.0 |
 | Sprint 005 (Docs Audit) | 2 (TASK-docs, this report) | In progress |
 
 ### Full Inventory: Root-level (6 `.md` files)
@@ -156,7 +156,7 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 | `epics/EPIC-001..018.md` | Epic specs | **OUTDATED** | Firebase-era planning |
 | `user-stories/US-001.md` | User story | **OUTDATED** | Firebase-era |
 | `sprints/sprint-01/planning.md` | Sprint plan | **OUTDATED** | Firebase-era |
-| `migrations/MIGRATION-001-*` | Migration plan | **OUTDATED** | Supabase→Yandex (completed) |
+| `migrations/MIGRATION-001-*` | Migration plan | **OUTDATED** | Supabaseв†’Yandex (completed) |
 
 **Verdict:** Entire `product-management/` directory references Firebase architecture (replaced 2026-02-11). Archive entirely.
 
@@ -164,9 +164,9 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 
 | File | Type | Status |
 |------|------|--------|
-| `docs/_rules/DOCS_UPDATE_POLICY.md` | Governance | **CURRENT** — core policy |
-| `docs/_rules/DB_POLICY.md` | Governance | **CURRENT** — core policy |
-| `docs/_rules/CRON_POLICY.md` | Governance | **CURRENT** — core policy |
+| `docs/_rules/DOCS_UPDATE_POLICY.md` | Governance | **CURRENT** вЂ” core policy |
+| `docs/_rules/DB_POLICY.md` | Governance | **CURRENT** вЂ” core policy |
+| `docs/_rules/CRON_POLICY.md` | Governance | **CURRENT** вЂ” core policy |
 | `docs/reports/TASK-004-complaints-audit-report.md` | Audit | CURRENT |
 | `docs/reports/TASK-005-documentation-report.md` | Audit | CURRENT |
 | `docs/product/cabinets.md` | UI/UX spec | CURRENT (2026-02-08) |
@@ -174,9 +174,9 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 
 ---
 
-## PHASE 2 — Knowledge Map
+## PHASE 2 вЂ” Knowledge Map
 
-### Topic → Documents Mapping
+### Topic в†’ Documents Mapping
 
 #### 1. ARCHITECTURE & SYSTEM
 | Document | Role | Status |
@@ -284,108 +284,108 @@ Discovered **120+ documentation files** across 8 locations in the repository. An
 | 3 | Server access info | `QUICK_REFERENCE.md` + `TROUBLESHOOTING.md` | Consolidate PM2/SSH into one |
 | 4 | Status/tag reference | `MESSENGER_VIEW_GUIDE.md` + `FILTERS_SYSTEM.md` + `KANBAN_QUICK_START.md` | All reference `statuses-reference.md` instead |
 | 5 | Auto-complaint docs | 3 files (STRATEGY + TRIGGERS + IMPLEMENTATION_SUMMARY) | Merge into single "Auto-Complaint Architecture" |
-| 6 | Golden test chats | `golden-test-chats.md` + `BACKLOG_AI_AGENT_REFACTOR.md` | Overlap by design (different scopes) — acceptable |
+| 6 | Golden test chats | `golden-test-chats.md` + `BACKLOG_AI_AGENT_REFACTOR.md` | Overlap by design (different scopes) вЂ” acceptable |
 | 7 | IP address | 5+ files hardcode old IP | Single source in `DEPLOYMENT.md`, others reference it |
 
 ### Contradictions Found
 
 | # | Contradiction | Files | Resolution |
 |---|-------------|-------|------------|
-| 1 | **Tag system:** old 4 tags vs new 4 tags | `MESSENGER_VIEW_GUIDE.md` says "Активные, Нет ответа..." vs `TAG_CLASSIFICATION.md` says "deletion_candidate, deletion_offered..." | `TAG_CLASSIFICATION.md` is authoritative (2026-03-06) |
+| 1 | **Tag system:** old 4 tags vs new 4 tags | `MESSENGER_VIEW_GUIDE.md` says "РђРєС‚РёРІРЅС‹Рµ, РќРµС‚ РѕС‚РІРµС‚Р°..." vs `TAG_CLASSIFICATION.md` says "deletion_candidate, deletion_offered..." | `TAG_CLASSIFICATION.md` is authoritative (2026-03-06) |
 | 2 | **Status "resolved"** | `FILTERS_SYSTEM.md`, `KANBAN_BOARD_IMPLEMENTATION.md` include "resolved" | Removed in migration 008. `statuses-reference.md` is authoritative |
-| 3 | **4★ compensation:** 40% vs 0% | `STAGE_3_DELETION_AGENT_GUIDE.md` says 40% multiplier | Current rule: NO compensation for 4-5★. `wb-work-policy.md` is authoritative |
-| 4 | **Server IP** | 5+ files say `158.160.217.236` | Changed 2026-02-25 to `158.160.229.16` |
+| 3 | **4в… compensation:** 40% vs 0% | `STAGE_3_DELETION_AGENT_GUIDE.md` says 40% multiplier | Current rule: NO compensation for 4-5в…. `wb-work-policy.md` is authoritative |
+| 4 | **Server IP** | 5+ files say `158.160.217.236` | Changed 2026-02-25 to `158.160.139.99` |
 | 5 | **PM2 processes:** 1 vs 4 | `QUICK_REFERENCE.md` lists single process | Now 4: 2x cluster, 1x cron fork, 1x TG bot fork |
 | 6 | **CRON schedule:** 8AM vs 6AM MSK | `ADR-003` says "8:00 AM MSK" | Actual `0 3 * * *` = 6AM MSK. Needs verification |
 | 7 | **Tech stack:** Firebase vs PostgreSQL | `product-management/*` references Firebase | Migrated to PostgreSQL 2026-01-05. All Firebase refs obsolete |
 
 ---
 
-## PHASE 3 — Target Documentation Architecture
+## PHASE 3 вЂ” Target Documentation Architecture
 
 ### Proposed Canonical Structure
 
 ```
 docs/
-├── README.md                          # Index: links to all sections
-│
-├── system/                            # System-level architecture
-│   ├── ARCHITECTURE.md                # System overview (from reference/)
-│   ├── DATABASE_SCHEMA.md             # DB Source of Truth
-│   ├── AUTH_AND_ROLES.md              # NEW: JWT, orgs, roles, invites
-│   └── DEPLOYMENT.md                  # Deploy & ops (from root)
-│
-├── business/                          # Business domain rules
-│   ├── wb-work-policy.md              # WB rules (BINDING)
-│   ├── ozon-work-policy.md            # OZON rules (BINDING)
-│   ├── complaints.md                  # Complaint domain
-│   ├── complaints-schema.md           # Complaint DB details
-│   ├── auto-complaints.md             # NEW: merged STRATEGY+TRIGGERS+IMPL
-│   ├── chats-ai.md                    # AI in chats (comprehensive)
-│   ├── tag-classification.md          # Tag system (regex classifier)
-│   ├── deletion-workflow.md           # NEW: merged STAGE_3 + TRIGGER_PHRASES
-│   ├── auto-sequences.md             # NEW: sequence system documentation
-│   └── audit-trail.md                 # NEW: migration 027 tracking
-│
-├── product/                           # Product specs & UI
-│   ├── cabinets.md                    # Cabinet dashboard spec
-│   ├── client-tabs.md                 # Tab navigation
-│   ├── messenger-view.md              # Chat UI (REWRITTEN)
-│   ├── kanban-board.md                # Kanban UI (UPDATED)
-│   └── design-system.md              # UI tokens + TG design
-│
-├── integrations/                      # External systems
-│   ├── extension-api.md               # NEW: merged 2 duplicate docs
-│   ├── ozon-seller-api.md             # OZON API reference
-│   ├── telegram-mini-app.md           # NEW: TG bot + Mini App
-│   └── google-sheets-sync.md          # NEW: Sheets integration
-│
-├── operations/                        # Daily ops guides
-│   ├── QUICK_REFERENCE.md             # Quick access (UPDATED)
-│   ├── TROUBLESHOOTING.md             # Diagnostics (UPDATED)
-│   ├── CRON_JOBS.md                   # Cron schedules
-│   └── DEVELOPMENT.md                 # Local dev setup
-│
-├── decisions/                         # ADRs (keep as-is, well-organized)
-│   ├── ADR-001-*.md
-│   ├── ADR-002-*.md
-│   ├── ADR-003-*.md
-│   ├── ARCH_REVIEW_TMA.md
-│   ├── REFACTOR_PLAN_TMA_BFF.md
-│   ├── BACKLOG_REFACTOR_TMA.md
-│   ├── AI_AGENT_ARCH_REVIEW.md
-│   ├── AI_AGENT_REFACTOR_PLAN.md
-│   ├── BACKLOG_AI_AGENT_REFACTOR.md
-│   └── golden-test-chats.md
-│
-├── sprints/                           # Sprint docs (keep as-is)
-│   ├── Sprint-001-OZON/
-│   ├── sprint-002-review-chat-linking/
-│   ├── sprint-003-cabinet-dashboard/
-│   ├── sprint-004-communication-policy/
-│   └── Sprint-005/
-│
-├── tasks/                             # Task tracking (keep as-is)
-│   ├── Completed/
-│   └── TASK-*.md
-│
-├── _rules/                            # Governance (keep as-is)
-│   ├── DOCS_UPDATE_POLICY.md
-│   ├── DB_POLICY.md
-│   └── CRON_POLICY.md
-│
-├── reports/                           # Audit reports (keep as-is)
-│
-└── archive/                           # Historical (no daily use)
-    ├── migration-jan-2026/            # Firebase→PostgreSQL migration
-    ├── sprints/                       # Old sprint reports
-    ├── reports/                       # Old reports
-    ├── extension-issues/              # Resolved extension issues
-    ├── product-management/            # MOVED: entire old directory
-    ├── STAGE_2_AI_CLASSIFICATION.md   # Deprecated AI classification
-    ├── TESTING_GUIDE_DELETION.md      # Old testing guide
-    ├── CHROME_EXTENSION_INTEGRATION.md # Superseded
-    └── root-cleanup/                  # Old root-level files
+в”њв”Ђв”Ђ README.md                          # Index: links to all sections
+в”‚
+в”њв”Ђв”Ђ system/                            # System-level architecture
+в”‚   в”њв”Ђв”Ђ ARCHITECTURE.md                # System overview (from reference/)
+в”‚   в”њв”Ђв”Ђ DATABASE_SCHEMA.md             # DB Source of Truth
+в”‚   в”њв”Ђв”Ђ AUTH_AND_ROLES.md              # NEW: JWT, orgs, roles, invites
+в”‚   в””в”Ђв”Ђ DEPLOYMENT.md                  # Deploy & ops (from root)
+в”‚
+в”њв”Ђв”Ђ business/                          # Business domain rules
+в”‚   в”њв”Ђв”Ђ wb-work-policy.md              # WB rules (BINDING)
+в”‚   в”њв”Ђв”Ђ ozon-work-policy.md            # OZON rules (BINDING)
+в”‚   в”њв”Ђв”Ђ complaints.md                  # Complaint domain
+в”‚   в”њв”Ђв”Ђ complaints-schema.md           # Complaint DB details
+в”‚   в”њв”Ђв”Ђ auto-complaints.md             # NEW: merged STRATEGY+TRIGGERS+IMPL
+в”‚   в”њв”Ђв”Ђ chats-ai.md                    # AI in chats (comprehensive)
+в”‚   в”њв”Ђв”Ђ tag-classification.md          # Tag system (regex classifier)
+в”‚   в”њв”Ђв”Ђ deletion-workflow.md           # NEW: merged STAGE_3 + TRIGGER_PHRASES
+в”‚   в”њв”Ђв”Ђ auto-sequences.md             # NEW: sequence system documentation
+в”‚   в””в”Ђв”Ђ audit-trail.md                 # NEW: migration 027 tracking
+в”‚
+в”њв”Ђв”Ђ product/                           # Product specs & UI
+в”‚   в”њв”Ђв”Ђ cabinets.md                    # Cabinet dashboard spec
+в”‚   в”њв”Ђв”Ђ client-tabs.md                 # Tab navigation
+в”‚   в”њв”Ђв”Ђ messenger-view.md              # Chat UI (REWRITTEN)
+в”‚   в”њв”Ђв”Ђ kanban-board.md                # Kanban UI (UPDATED)
+в”‚   в””в”Ђв”Ђ design-system.md              # UI tokens + TG design
+в”‚
+в”њв”Ђв”Ђ integrations/                      # External systems
+в”‚   в”њв”Ђв”Ђ extension-api.md               # NEW: merged 2 duplicate docs
+в”‚   в”њв”Ђв”Ђ ozon-seller-api.md             # OZON API reference
+в”‚   в”њв”Ђв”Ђ telegram-mini-app.md           # NEW: TG bot + Mini App
+в”‚   в””в”Ђв”Ђ google-sheets-sync.md          # NEW: Sheets integration
+в”‚
+в”њв”Ђв”Ђ operations/                        # Daily ops guides
+в”‚   в”њв”Ђв”Ђ QUICK_REFERENCE.md             # Quick access (UPDATED)
+в”‚   в”њв”Ђв”Ђ TROUBLESHOOTING.md             # Diagnostics (UPDATED)
+в”‚   в”њв”Ђв”Ђ CRON_JOBS.md                   # Cron schedules
+в”‚   в””в”Ђв”Ђ DEVELOPMENT.md                 # Local dev setup
+в”‚
+в”њв”Ђв”Ђ decisions/                         # ADRs (keep as-is, well-organized)
+в”‚   в”њв”Ђв”Ђ ADR-001-*.md
+в”‚   в”њв”Ђв”Ђ ADR-002-*.md
+в”‚   в”њв”Ђв”Ђ ADR-003-*.md
+в”‚   в”њв”Ђв”Ђ ARCH_REVIEW_TMA.md
+в”‚   в”њв”Ђв”Ђ REFACTOR_PLAN_TMA_BFF.md
+в”‚   в”њв”Ђв”Ђ BACKLOG_REFACTOR_TMA.md
+в”‚   в”њв”Ђв”Ђ AI_AGENT_ARCH_REVIEW.md
+в”‚   в”њв”Ђв”Ђ AI_AGENT_REFACTOR_PLAN.md
+в”‚   в”њв”Ђв”Ђ BACKLOG_AI_AGENT_REFACTOR.md
+в”‚   в””в”Ђв”Ђ golden-test-chats.md
+в”‚
+в”њв”Ђв”Ђ sprints/                           # Sprint docs (keep as-is)
+в”‚   в”њв”Ђв”Ђ Sprint-001-OZON/
+в”‚   в”њв”Ђв”Ђ sprint-002-review-chat-linking/
+в”‚   в”њв”Ђв”Ђ sprint-003-cabinet-dashboard/
+в”‚   в”њв”Ђв”Ђ sprint-004-communication-policy/
+в”‚   в””в”Ђв”Ђ Sprint-005/
+в”‚
+в”њв”Ђв”Ђ tasks/                             # Task tracking (keep as-is)
+в”‚   в”њв”Ђв”Ђ Completed/
+в”‚   в””в”Ђв”Ђ TASK-*.md
+в”‚
+в”њв”Ђв”Ђ _rules/                            # Governance (keep as-is)
+в”‚   в”њв”Ђв”Ђ DOCS_UPDATE_POLICY.md
+в”‚   в”њв”Ђв”Ђ DB_POLICY.md
+в”‚   в””в”Ђв”Ђ CRON_POLICY.md
+в”‚
+в”њв”Ђв”Ђ reports/                           # Audit reports (keep as-is)
+в”‚
+в””в”Ђв”Ђ archive/                           # Historical (no daily use)
+    в”њв”Ђв”Ђ migration-jan-2026/            # Firebaseв†’PostgreSQL migration
+    в”њв”Ђв”Ђ sprints/                       # Old sprint reports
+    в”њв”Ђв”Ђ reports/                       # Old reports
+    в”њв”Ђв”Ђ extension-issues/              # Resolved extension issues
+    в”њв”Ђв”Ђ product-management/            # MOVED: entire old directory
+    в”њв”Ђв”Ђ STAGE_2_AI_CLASSIFICATION.md   # Deprecated AI classification
+    в”њв”Ђв”Ђ TESTING_GUIDE_DELETION.md      # Old testing guide
+    в”њв”Ђв”Ђ CHROME_EXTENSION_INTEGRATION.md # Superseded
+    в””в”Ђв”Ђ root-cleanup/                  # Old root-level files
 ```
 
 ### Documentation Standards
@@ -399,9 +399,9 @@ docs/
 
 ---
 
-## PHASE 4 — Document Migration Plan
+## PHASE 4 вЂ” Document Migration Plan
 
-### IMMEDIATE (P0) — Fix production issues
+### IMMEDIATE (P0) вЂ” Fix production issues
 
 | Original File | Action | Target | Reason |
 |---------------|--------|--------|--------|
@@ -409,32 +409,32 @@ docs/
 | `docs/TROUBLESHOOTING.md` | **UPDATE** | `docs/operations/TROUBLESHOOTING.md` | Fix IP, add TG/CRON diagnostics |
 | `README.md` (root) | **UPDATE** | Keep in root | Fix IP, update tech stack section |
 | `docs/reference/api.md` | **UPDATE** | `docs/integrations/` or keep | Fix IP, verify Swagger ref |
-| `QUICK_REFERENCE.md` (root) | **DELETE** | — | Duplicate of `docs/QUICK_REFERENCE.md` |
+| `QUICK_REFERENCE.md` (root) | **DELETE** | вЂ” | Duplicate of `docs/QUICK_REFERENCE.md` |
 
-### HIGH PRIORITY (P1) — Fix contradictions
+### HIGH PRIORITY (P1) вЂ” Fix contradictions
 
 | Original File | Action | Target | Reason |
 |---------------|--------|--------|--------|
 | `docs/MESSENGER_VIEW_GUIDE.md` | **REWRITE** | `docs/product/messenger-view.md` | Wrong tags, wrong statuses |
 | `docs/FILTERS_SYSTEM.md` | **REWRITE** | `docs/product/` or merge into messenger | "resolved" status, missing marketplace filters |
 | `docs/KANBAN_QUICK_START.md` | **UPDATE** | `docs/product/kanban-board.md` | Remove "resolved", add audit trail |
-| `docs/domains/STAGE_3_DELETION_AGENT_GUIDE.md` | **UPDATE** | `docs/business/deletion-workflow.md` | Fix 4★ compensation: 40% → 0% |
+| `docs/domains/STAGE_3_DELETION_AGENT_GUIDE.md` | **UPDATE** | `docs/business/deletion-workflow.md` | Fix 4в… compensation: 40% в†’ 0% |
 | `docs/domains/STAGE_2_AI_CLASSIFICATION_GUIDE.md` | **ARCHIVE** | `docs/archive/` | Explicitly deprecated (migration 024) |
 | `docs/domains/TESTING_GUIDE_DELETION_WORKFLOW.md` | **ARCHIVE** | `docs/archive/` | Hardcoded old migration paths |
 
-### MEDIUM PRIORITY (P2) — Consolidate duplicates
+### MEDIUM PRIORITY (P2) вЂ” Consolidate duplicates
 
 | Original Files | Action | Target | Reason |
 |----------------|--------|--------|--------|
 | `EXTENSION_API_DOCUMENTATION.md` + `EXTENSION_API_COMPLETE.md` | **MERGE** | `docs/integrations/extension-api.md` | Identical content v2.1.0 |
 | `CHROME_EXTENSION_INTEGRATION.md` | **ARCHIVE** | `docs/archive/` | Superseded, says "In Development" |
-| `AUTO_COMPLAINT_STRATEGY.md` + `AUTO_COMPLAINT_TRIGGERS.md` + `AUTO_COMPLAINT_IMPLEMENTATION_SUMMARY.md` | **MERGE** | `docs/business/auto-complaints.md` | 3 files → 1 coherent doc |
+| `AUTO_COMPLAINT_STRATEGY.md` + `AUTO_COMPLAINT_TRIGGERS.md` + `AUTO_COMPLAINT_IMPLEMENTATION_SUMMARY.md` | **MERGE** | `docs/business/auto-complaints.md` | 3 files в†’ 1 coherent doc |
 | `IMPLEMENTATION_SUMMARY.md` (root) | **ARCHIVE** | `docs/archive/root-cleanup/` | Outdated, pre-OZON |
 | `EXTENSION_API_DEPLOYMENT.md` (root) | **ARCHIVE** | `docs/archive/root-cleanup/` | Superseded |
 | `DEPLOYMENT_SUCCESS_2026-01-28.md` (root) | **ARCHIVE** | `docs/archive/root-cleanup/` | Historical status report |
 | `product-management/` (entire directory) | **ARCHIVE** | `docs/archive/product-management/` | All Firebase refs, fully superseded |
 
-### LOW PRIORITY (P3) — Enhance
+### LOW PRIORITY (P3) вЂ” Enhance
 
 | File | Action | Target | Reason |
 |------|--------|--------|--------|
@@ -474,32 +474,32 @@ docs/
 
 ---
 
-## PHASE 5 — Knowledge Gaps
+## PHASE 5 вЂ” Knowledge Gaps
 
 ### Critical Missing Documents
 
 | # | Topic | Why Critical | Suggested Path | Priority |
 |---|-------|-------------|----------------|----------|
-| 1 | **Audit Trail** | Migration 027 (2026-03-06): `chat_status_history`, `change_source`, `updateChatWithAudit()` — undocumented | `docs/business/audit-trail.md` | **CRITICAL** |
-| 2 | **Auto-Sequence System** | Complex system: 4 sequence types, cron processor, manual activation, stop conditions — scattered across `chats-ai.md` only | `docs/business/auto-sequences.md` | **HIGH** |
+| 1 | **Audit Trail** | Migration 027 (2026-03-06): `chat_status_history`, `change_source`, `updateChatWithAudit()` вЂ” undocumented | `docs/business/audit-trail.md` | **CRITICAL** |
+| 2 | **Auto-Sequence System** | Complex system: 4 sequence types, cron processor, manual activation, stop conditions вЂ” scattered across `chats-ai.md` only | `docs/business/auto-sequences.md` | **HIGH** |
 | 3 | **Telegram Mini App** | No product spec, no ops guide, no design system section. Only decision docs exist | `docs/integrations/telegram-mini-app.md` | **HIGH** |
-| 4 | **Auth & Roles** | JWT, organizations, org_members, invites, member_store_access — no dedicated doc | `docs/system/AUTH_AND_ROLES.md` | **HIGH** |
-| 5 | **Google Sheets Sync** | 2 sync services, debounce, retry, secondary sheets — completely undocumented | `docs/integrations/google-sheets-sync.md` | **MEDIUM** |
-| 6 | **Database Schema** | `docs/database-schema.md` exists (2026-03-06), current with migration 027. Includes `chat_status_history`. **No gap.** | — | OK |
-| 7 | **CRON_JOBS.md** | `docs/CRON_JOBS.md` exists (2026-03-06), covers all cron jobs including OZON sync. **No gap.** | — | OK |
-| 8 | **Review-Chat Links** | Business invariant "1 review = 1 chat", `review_chat_links` table, TG queue filtering — no standalone doc | `docs/business/review-chat-links.md` | **MEDIUM** |
-| 9 | **Multi-Marketplace Architecture** | WB vs OZON: product IDs, sync strategies, rate limits — no comparison doc | `docs/system/marketplace-architecture.md` | **LOW** |
+| 4 | **Auth & Roles** | JWT, organizations, org_members, invites, member_store_access вЂ” no dedicated doc | `docs/system/AUTH_AND_ROLES.md` | **HIGH** |
+| 5 | **Google Sheets Sync** | 2 sync services, debounce, retry, secondary sheets вЂ” completely undocumented | `docs/integrations/google-sheets-sync.md` | **MEDIUM** |
+| 6 | **Database Schema** | `docs/database-schema.md` exists (2026-03-06), current with migration 027. Includes `chat_status_history`. **No gap.** | вЂ” | OK |
+| 7 | **CRON_JOBS.md** | `docs/CRON_JOBS.md` exists (2026-03-06), covers all cron jobs including OZON sync. **No gap.** | вЂ” | OK |
+| 8 | **Review-Chat Links** | Business invariant "1 review = 1 chat", `review_chat_links` table, TG queue filtering вЂ” no standalone doc | `docs/business/review-chat-links.md` | **MEDIUM** |
+| 9 | **Multi-Marketplace Architecture** | WB vs OZON: product IDs, sync strategies, rate limits вЂ” no comparison doc | `docs/system/marketplace-architecture.md` | **LOW** |
 
-### Source of Truth Files Referenced in CLAUDE.md — Verification
+### Source of Truth Files Referenced in CLAUDE.md вЂ” Verification
 
 | Referenced As | Expected Path | Actual Status |
 |---------------|---------------|---------------|
-| "Source of Truth по БД" | `docs/database-schema.md` | FOUND, current (2026-03-06), includes migration 027 |
-| "автоматизации" | `docs/CRON_JOBS.md` | FOUND, current (2026-03-06), includes OZON sync |
-| "шпаргалка" | `docs/QUICK_REFERENCE.md` | Found but **OUTDATED** (stale IP, old PM2) |
-| "правила разработки" | `docs/DEVELOPMENT.md` | Found but **GENERIC** (missing env vars, migrations) |
-| "деплой и rollback" | `docs/DEPLOYMENT.md` | Found at root level (fix IP line 7) |
-| "как ставятся и ведутся задачи" | `docs/TASK_MANAGEMENT_CENTER.md` | FOUND (v1.0, 2026-01-20) |
+| "Source of Truth РїРѕ Р‘Р”" | `docs/database-schema.md` | FOUND, current (2026-03-06), includes migration 027 |
+| "Р°РІС‚РѕРјР°С‚РёР·Р°С†РёРё" | `docs/CRON_JOBS.md` | FOUND, current (2026-03-06), includes OZON sync |
+| "С€РїР°СЂРіР°Р»РєР°" | `docs/QUICK_REFERENCE.md` | Found but **OUTDATED** (stale IP, old PM2) |
+| "РїСЂР°РІРёР»Р° СЂР°Р·СЂР°Р±РѕС‚РєРё" | `docs/DEVELOPMENT.md` | Found but **GENERIC** (missing env vars, migrations) |
+| "РґРµРїР»РѕР№ Рё rollback" | `docs/DEPLOYMENT.md` | Found at root level (fix IP line 7) |
+| "РєР°Рє СЃС‚Р°РІСЏС‚СЃСЏ Рё РІРµРґСѓС‚СЃСЏ Р·Р°РґР°С‡Рё" | `docs/TASK_MANAGEMENT_CENTER.md` | FOUND (v1.0, 2026-01-20) |
 
 ---
 
@@ -510,7 +510,7 @@ docs/
 | Priority | Actions | Count |
 |----------|---------|-------|
 | **P0 CRITICAL** | Fix IP in 5+ files; Update outdated QUICK_REFERENCE | 6 |
-| **P1 HIGH** | Rewrite 3 outdated guides; Archive 2 deprecated; Fix 4★ logic | 6 |
+| **P1 HIGH** | Rewrite 3 outdated guides; Archive 2 deprecated; Fix 4в… logic | 6 |
 | **P2 MEDIUM** | Merge 5 duplicate groups; Archive `product-management/`; Archive 3 root files | 9 |
 | **P3 LOW** | Expand design system, dev guide; Move `DEPLOYMENT.md` | 4 |
 | **NEW DOCS** | Audit trail, auto-sequences, TG Mini App, Auth, Sheets, review-chat-links | 6 |
@@ -522,7 +522,7 @@ docs/
 |--------|-------|-------|
 | **UPDATE** (fix IP, wrong data) | 7 | QUICK_REFERENCE, TROUBLESHOOTING, README, api.md, KANBAN, STAGE_3, ADR-003 |
 | **REWRITE** | 2 | MESSENGER_VIEW_GUIDE, FILTERS_SYSTEM |
-| **MERGE** | 5 groups | Extension API (2→1), Auto-Complaint (3→1), Design (2→1) |
+| **MERGE** | 5 groups | Extension API (2в†’1), Auto-Complaint (3в†’1), Design (2в†’1) |
 | **ARCHIVE** | 25+ | product-management/*, 3 root files, 2 deprecated, 1 obsolete |
 | **CREATE** | 6 | audit-trail, auto-sequences, TG Mini App, Auth & Roles, Google Sheets sync, review-chat-links |
 | **DELETE** | 1 | Root `QUICK_REFERENCE.md` (exact duplicate) |

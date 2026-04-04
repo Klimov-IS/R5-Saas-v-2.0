@@ -9,7 +9,7 @@
 | Item | Value |
 |------|-------|
 | **Domain** | `https://rating5.ru` (via Cloudflare, SSL Full Strict) |
-| **IP** | `158.160.229.16` (dynamic — changes on VM stop!) |
+| **IP** | `158.160.139.99` (dynamic вЂ” changes on VM stop!) |
 | **SSH Key** | `~/.ssh/yandex-cloud-wb-reputation` |
 | **User** | `ubuntu` |
 | **App Path** | `/var/www/wb-reputation` |
@@ -26,9 +26,9 @@
 | `wb-reputation-cron` | fork | Cron scheduler (triggers `/api/cron/trigger` on start) |
 | `wb-reputation-tg-bot` | fork | Telegram bot (long-polling) |
 
-**CRITICAL:** After `pm2 reload wb-reputation`, always also `pm2 restart wb-reputation-cron` — cron schedulers are in-memory and lost on reload.
+**CRITICAL:** After `pm2 reload wb-reputation`, always also `pm2 restart wb-reputation-cron` вЂ” cron schedulers are in-memory and lost on reload.
 
-**WARNING:** PM2 runs as `ubuntu` user — NEVER use `sudo pm2` (creates separate root daemon).
+**WARNING:** PM2 runs as `ubuntu` user вЂ” NEVER use `sudo pm2` (creates separate root daemon).
 
 ---
 
@@ -36,13 +36,13 @@
 
 ```bash
 # Connect to production
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 # One-line status check
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 status"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 status"
 
 # One-line logs (all processes)
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs --lines 50 --nostream"
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 "pm2 logs --lines 50 --nostream"
 ```
 
 ---
@@ -52,14 +52,14 @@ ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 "pm2 logs --lines
 ### One-Command Deploy (Recommended)
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
 ### Manual Deploy
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 cd /var/www/wb-reputation
 git pull origin main
@@ -114,7 +114,7 @@ pm2 save
 ## Database Access
 
 ```bash
-# Connect to production database (via Node.js scripts — psql not installed on server)
+# Connect to production database (via Node.js scripts вЂ” psql not installed on server)
 # Use scripts like: node scripts/run-migration-014.mjs
 
 # Environment variables for DB connection:
@@ -160,9 +160,9 @@ SELECT status, COUNT(*) FROM chat_auto_sequences GROUP BY status;
 ### Authentication
 
 Three auth methods:
-1. **JWT** — httpOnly cookie `r5_token` (web dashboard)
-2. **Bearer** — `Authorization: Bearer wbrm_*` (Extension API)
-3. **Telegram** — `X-Telegram-Init-Data` header (TG Mini App)
+1. **JWT** вЂ” httpOnly cookie `r5_token` (web dashboard)
+2. **Bearer** вЂ” `Authorization: Bearer wbrm_*` (Extension API)
+3. **Telegram** вЂ” `X-Telegram-Init-Data` header (TG Mini App)
 
 ### Common Endpoints
 
@@ -195,8 +195,8 @@ curl -X POST "https://rating5.ru/api/stores/{storeId}/reviews/update?mode=increm
 | OZON chat sync | 5 min + hourly full | Hybrid: unread + safety net |
 | Auto-sequence processor | Every 30 min | 8:00-22:00 MSK |
 | Resolved-review closer | Every 30 min (:15/:45) | Auto-close on resolved reviews |
-| Product Rules → Sheets | `0 3 * * *` (6:00 MSK) | Google Sheets sync |
-| Client Directory → Sheets | `30 4 * * *` (7:30 MSK) | Google Sheets sync |
+| Product Rules в†’ Sheets | `0 3 * * *` (6:00 MSK) | Google Sheets sync |
+| Client Directory в†’ Sheets | `30 4 * * *` (7:30 MSK) | Google Sheets sync |
 
 See [CRON_JOBS.md](./CRON_JOBS.md) for full details.
 

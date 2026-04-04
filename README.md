@@ -2,13 +2,13 @@
 
 **Production-ready B2B SaaS platform** for Wildberries sellers to manage reviews, chats, complaints, and customer communication with AI-powered automation.
 
-**🚀 Status:** Production (deployed on Yandex Cloud)
-**📊 Scale:** 44 active stores, 2M+ reviews
-**🌐 Production URL:** http://158.160.229.16
+**рџљЂ Status:** Production (deployed on Yandex Cloud)
+**рџ“Љ Scale:** 44 active stores, 2M+ reviews
+**рџЊђ Production URL:** http://158.160.139.99
 
 ---
 
-## 🎯 Overview
+## рџЋЇ Overview
 
 WB Reputation Manager helps Wildberries sellers:
 - Sync and manage **reviews, chats, questions** from multiple stores
@@ -19,7 +19,7 @@ WB Reputation Manager helps Wildberries sellers:
 
 ---
 
-## 🛠️ Tech Stack
+## рџ› пёЏ Tech Stack
 
 ### Backend
 - **Framework:** Next.js 14.2.35 (App Router)
@@ -49,7 +49,7 @@ WB Reputation Manager helps Wildberries sellers:
 
 ---
 
-## ✨ Key Features
+## вњЁ Key Features
 
 ### 1. **Multi-Store Management**
 - Manage multiple WB stores from single dashboard
@@ -67,13 +67,13 @@ WB Reputation Manager helps Wildberries sellers:
 ### 3. **AI-Powered Review Replies**
 - Automatic reply generation using Deepseek AI
 - Context-aware responses based on review sentiment
-- 75% token optimization (838 → 208 tokens)
+- 75% token optimization (838 в†’ 208 tokens)
 - Review classification (positive, neutral, negative)
 
 ### 4. **Complaint System**
 - Dedicated `review_complaints` table with 30+ fields
 - AI-powered complaint text generation
-- Track complaint lifecycle (draft → sent → resolved)
+- Track complaint lifecycle (draft в†’ sent в†’ resolved)
 - WB marketplace policy compliance
 
 ### 5. **Product Rules & Settings**
@@ -95,51 +95,51 @@ WB Reputation Manager helps Wildberries sellers:
 
 ---
 
-## 📁 Project Structure
+## рџ“Ѓ Project Structure
 
 ```
 wb-reputation/
-├── src/
-│   ├── app/                        # Next.js App Router
-│   │   ├── api/                    # REST API endpoints
-│   │   │   ├── stores/             # Store management
-│   │   │   ├── cron/               # Background jobs
-│   │   │   └── wb-proxy/           # WB API proxy
-│   │   ├── stores/[storeId]/       # Store pages
-│   │   │   ├── products/
-│   │   │   ├── reviews/
-│   │   │   └── chats/
-│   │   └── layout.tsx
-│   ├── components/                 # React components
-│   │   ├── reviews-v2/             # Review UI components
-│   │   └── providers/              # Context providers
-│   ├── db/                         # Database layer
-│   │   ├── helpers.ts              # PostgreSQL queries
-│   │   ├── complaint-helpers.ts    # Complaint CRUD
-│   │   └── review-filters.ts       # Filter logic
-│   ├── ai/                         # AI integration
-│   │   ├── flows/                  # AI workflows
-│   │   ├── prompts/                # Prompt templates
-│   │   └── utils/                  # AI utilities
-│   ├── lib/                        # Utilities
-│   │   ├── server-utils.ts         # API auth, rate limiting
-│   │   ├── wb-api.ts               # WB API client
-│   │   └── cron-jobs.ts            # Cron configuration
-│   └── types/                      # TypeScript definitions
-├── scripts/                        # Utility scripts
-│   ├── full-sync-all-stores-v2.sh  # Batch sync (43 stores)
-│   ├── check-sync-status.sh        # Monitoring
-│   └── sync-config.sh              # Configuration
-├── supabase/migrations/            # PostgreSQL migrations
-├── docs/                           # Documentation
-├── .env.production                 # Production credentials
-├── ecosystem.config.js             # PM2 configuration
-└── next.config.mjs                 # Next.js config
+в”њв”Ђв”Ђ src/
+в”‚   в”њв”Ђв”Ђ app/                        # Next.js App Router
+в”‚   в”‚   в”њв”Ђв”Ђ api/                    # REST API endpoints
+в”‚   в”‚   в”‚   в”њв”Ђв”Ђ stores/             # Store management
+в”‚   в”‚   в”‚   в”њв”Ђв”Ђ cron/               # Background jobs
+в”‚   в”‚   в”‚   в””в”Ђв”Ђ wb-proxy/           # WB API proxy
+в”‚   в”‚   в”њв”Ђв”Ђ stores/[storeId]/       # Store pages
+в”‚   в”‚   в”‚   в”њв”Ђв”Ђ products/
+в”‚   в”‚   в”‚   в”њв”Ђв”Ђ reviews/
+в”‚   в”‚   в”‚   в””в”Ђв”Ђ chats/
+в”‚   в”‚   в””в”Ђв”Ђ layout.tsx
+в”‚   в”њв”Ђв”Ђ components/                 # React components
+в”‚   в”‚   в”њв”Ђв”Ђ reviews-v2/             # Review UI components
+в”‚   в”‚   в””в”Ђв”Ђ providers/              # Context providers
+в”‚   в”њв”Ђв”Ђ db/                         # Database layer
+в”‚   в”‚   в”њв”Ђв”Ђ helpers.ts              # PostgreSQL queries
+в”‚   в”‚   в”њв”Ђв”Ђ complaint-helpers.ts    # Complaint CRUD
+в”‚   в”‚   в””в”Ђв”Ђ review-filters.ts       # Filter logic
+в”‚   в”њв”Ђв”Ђ ai/                         # AI integration
+в”‚   в”‚   в”њв”Ђв”Ђ flows/                  # AI workflows
+в”‚   в”‚   в”њв”Ђв”Ђ prompts/                # Prompt templates
+в”‚   в”‚   в””в”Ђв”Ђ utils/                  # AI utilities
+в”‚   в”њв”Ђв”Ђ lib/                        # Utilities
+в”‚   в”‚   в”њв”Ђв”Ђ server-utils.ts         # API auth, rate limiting
+в”‚   в”‚   в”њв”Ђв”Ђ wb-api.ts               # WB API client
+в”‚   в”‚   в””в”Ђв”Ђ cron-jobs.ts            # Cron configuration
+в”‚   в””в”Ђв”Ђ types/                      # TypeScript definitions
+в”њв”Ђв”Ђ scripts/                        # Utility scripts
+в”‚   в”њв”Ђв”Ђ full-sync-all-stores-v2.sh  # Batch sync (43 stores)
+в”‚   в”њв”Ђв”Ђ check-sync-status.sh        # Monitoring
+в”‚   в””в”Ђв”Ђ sync-config.sh              # Configuration
+в”њв”Ђв”Ђ supabase/migrations/            # PostgreSQL migrations
+в”њв”Ђв”Ђ docs/                           # Documentation
+в”њв”Ђв”Ђ .env.production                 # Production credentials
+в”њв”Ђв”Ђ ecosystem.config.js             # PM2 configuration
+в””в”Ђв”Ђ next.config.mjs                 # Next.js config
 ```
 
 ---
 
-## 🚀 Quick Start (Development)
+## рџљЂ Quick Start (Development)
 
 ### Prerequisites
 - Node.js 18+
@@ -171,7 +171,7 @@ npm run dev
 
 ---
 
-## 📊 Database Schema
+## рџ“Љ Database Schema
 
 ### Core Tables
 - **stores** - WB seller accounts
@@ -184,20 +184,20 @@ npm run dev
 
 ### Key Relationships
 ```sql
-stores (1) → (N) products
-products (1) → (N) reviews
-reviews (1) → (1) review_complaints
-stores (1) → (N) chats
+stores (1) в†’ (N) products
+products (1) в†’ (N) reviews
+reviews (1) в†’ (1) review_complaints
+stores (1) в†’ (N) chats
 ```
 
 ---
 
-## 🔑 API Authentication
+## рџ”‘ API Authentication
 
 All API endpoints require Bearer token authentication:
 
 ```bash
-curl -X GET "http://158.160.229.16/api/stores" \
+curl -X GET "http://158.160.139.99/api/stores" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -205,9 +205,9 @@ curl -X GET "http://158.160.229.16/api/stores" \
 
 ---
 
-## 📖 API Documentation
+## рџ“– API Documentation
 
-**Swagger UI:** http://158.160.229.16/api/docs
+**Swagger UI:** http://158.160.139.99/api/docs
 
 ### Key Endpoints
 
@@ -244,7 +244,7 @@ POST   /api/stores/:id/chats/classify-all                    # Classify all chat
 
 ---
 
-## 🔧 Configuration
+## рџ”§ Configuration
 
 ### Environment Variables
 
@@ -279,18 +279,18 @@ RETRY_DELAY_1=600   # 10 min
 RETRY_DELAY_2=1200  # 20 min
 
 # Exclude stores (already synced)
-EXCLUDE_STORE_ID="UiLCn5HyzRPphSRvR11G"  # Тайди Центр
+EXCLUDE_STORE_ID="UiLCn5HyzRPphSRvR11G"  # РўР°Р№РґРё Р¦РµРЅС‚СЂ
 ```
 
 ---
 
-## 🚀 Deployment
+## рџљЂ Deployment
 
 ### Production Deployment
 
 ```bash
 # SSH to production server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 # Navigate to project
 cd /var/www/wb-reputation
@@ -314,19 +314,19 @@ pm2 logs wb-reputation --lines 50
 
 **One-command update:**
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16 \
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99 \
   "cd /var/www/wb-reputation && bash deploy/update-app.sh"
 ```
 
 ---
 
-## 📊 Monitoring
+## рџ“Љ Monitoring
 
 ### Check Application Status
 
 ```bash
 # Quick health check
-curl http://158.160.229.16/health
+curl http://158.160.139.99/health
 
 # PM2 status
 pm2 status
@@ -351,14 +351,14 @@ curl -s http://localhost:3000/api/stores \
 
 ---
 
-## 🎯 Performance
+## рџЋЇ Performance
 
 ### Current Scale
 - **44 active stores**
 - **2,072,693 total reviews**
-- **Largest store:** 1,344,055 reviews (Тайди Центр)
+- **Largest store:** 1,344,055 reviews (РўР°Р№РґРё Р¦РµРЅС‚СЂ)
 - **Sync speed:** ~2-3 minutes per chunk (90 days)
-- **AI optimization:** 75% token reduction (838 → 208 tokens)
+- **AI optimization:** 75% token reduction (838 в†’ 208 tokens)
 
 ### Optimization Highlights
 - Adaptive date chunking (bypass WB API 20k limit)
@@ -369,50 +369,50 @@ curl -s http://localhost:3000/api/stores \
 
 ---
 
-## 📚 Documentation
+## рџ“љ Documentation
 
-### 🚀 Quick Start Guides
+### рџљЂ Quick Start Guides
 
 - **[QUICK_REFERENCE.md](./docs/QUICK_REFERENCE.md)** - Copy-paste ready commands for common tasks
 - **[DEPLOYMENT.md](./docs/DEPLOYMENT.md)** - Production deployment guide (SSH, PM2, one-command deploy)
 - **[DEVELOPMENT.md](./docs/DEVELOPMENT.md)** - Local development setup and workflows
 
-### ⚙️ Operational Guides
+### вљ™пёЏ Operational Guides
 
 - **[CRON_JOBS.md](./docs/CRON_JOBS.md)** - Background jobs, auto-start, monitoring
 - **[TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
-### 📖 Technical Reference
+### рџ“– Technical Reference
 
 - **[database-schema.md](./docs/database-schema.md)** - Complete PostgreSQL schema documentation
 - **[complaint-auto-generation-rules.md](./docs/complaint-auto-generation-rules.md)** - Complaint system rules
 - **[complaints-table-schema.md](./docs/complaints-table-schema.md)** - Review complaints table details
-- **[CHROME_EXTENSION_INTEGRATION.md](./docs/CHROME_EXTENSION_INTEGRATION.md)** - Chrome Extension for WB reviews parsing (⚠️ BLOCKED)
+- **[CHROME_EXTENSION_INTEGRATION.md](./docs/CHROME_EXTENSION_INTEGRATION.md)** - Chrome Extension for WB reviews parsing (вљ пёЏ BLOCKED)
 
-### 🏗️ Architecture Decision Records (ADR)
+### рџЏ—пёЏ Architecture Decision Records (ADR)
 
 - **[ADR-001: Why Instrumentation Hook](./docs/decisions/ADR-001-why-instrumentation-hook.md)** - CRON auto-start decision
 - **[ADR-002: Active Stores Filter](./docs/decisions/ADR-002-active-stores-filter.md)** - Filtering by store status
 - **[ADR-003: CRON Intervals](./docs/decisions/ADR-003-cron-intervals.md)** - 5 min dev, daily prod schedule
 
-### 📦 Historical Documentation
+### рџ“¦ Historical Documentation
 
 - **[docs/archive/](./docs/archive/)** - Sprint reports, migration changelogs, historical analysis
 
 ---
 
-## 🔐 Security
+## рџ”ђ Security
 
-- ✅ SSH key authentication (no passwords)
-- ✅ API Bearer token authentication
-- ✅ PM2 auto-restart on crashes
-- ✅ Nginx reverse proxy
-- ⚠️ HTTP only (SSL recommended for production domain)
-- ⏳ Firewall configuration (recommended)
+- вњ… SSH key authentication (no passwords)
+- вњ… API Bearer token authentication
+- вњ… PM2 auto-restart on crashes
+- вњ… Nginx reverse proxy
+- вљ пёЏ HTTP only (SSL recommended for production domain)
+- вЏі Firewall configuration (recommended)
 
 ---
 
-## 🤝 Contributing
+## рџ¤ќ Contributing
 
 1. Create feature branch: `git checkout -b feature/your-feature`
 2. Make changes and test locally
@@ -422,15 +422,15 @@ curl -s http://localhost:3000/api/stores \
 
 ---
 
-## 📞 Support & Links
+## рџ“ћ Support & Links
 
-- **Production URL:** http://158.160.229.16
+- **Production URL:** http://158.160.139.99
 - **GitHub Repository:** https://github.com/Klimov-IS/R5-Saas-v-2.0
-- **API Documentation:** http://158.160.229.16/api/docs
+- **API Documentation:** http://158.160.139.99/api/docs
 
 ---
 
-## 📝 License
+## рџ“ќ License
 
 Proprietary - All rights reserved
 
@@ -439,5 +439,5 @@ Proprietary - All rights reserved
 **Last Updated:** January 15, 2026
 **Version:** 2.0.0
 **Database:** PostgreSQL 15 on Yandex Cloud
-**Status:** 🟢 Production
-**Documentation:** ✅ Comprehensive (see [docs/](./docs/))
+**Status:** рџџў Production
+**Documentation:** вњ… Comprehensive (see [docs/](./docs/))

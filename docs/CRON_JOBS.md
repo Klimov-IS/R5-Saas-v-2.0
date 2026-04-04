@@ -11,22 +11,22 @@
 
 **Production Architecture:**
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ PM2 Processes                                               │
-├─────────────────────────────────────────────────────────────┤
-│ ✅ wb-reputation (fork, 1 instance)                         │
-│    → CRON: DISABLED at startup (via ENABLE_CRON_IN_MAIN_APP)│
-│    → CRON: ENABLED via POST /api/cron/trigger (forceCron)  │
-│    → Handles: HTTP requests + CRON jobs (after trigger)     │
-│                                                              │
-│ ✅ wb-reputation-cron (fork, 1 instance)                    │
-│    → Triggers CRON in main app via HTTP POST                │
-│    → Monitors CRON health every 5 min (auto-retrigger)     │
-│    → Does NOT run CRON jobs itself                          │
-│                                                              │
-│ ✅ wb-reputation-tg-bot (fork, 1 instance)                  │
-│    → Telegram bot long-polling                              │
-└─────────────────────────────────────────────────────────────┘
+в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+в”‚ PM2 Processes                                               в”‚
+в”њв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¤
+в”‚ вњ… wb-reputation (fork, 1 instance)                         в”‚
+в”‚    в†’ CRON: DISABLED at startup (via ENABLE_CRON_IN_MAIN_APP)в”‚
+в”‚    в†’ CRON: ENABLED via POST /api/cron/trigger (forceCron)  в”‚
+в”‚    в†’ Handles: HTTP requests + CRON jobs (after trigger)     в”‚
+в”‚                                                              в”‚
+в”‚ вњ… wb-reputation-cron (fork, 1 instance)                    в”‚
+в”‚    в†’ Triggers CRON in main app via HTTP POST                в”‚
+в”‚    в†’ Monitors CRON health every 5 min (auto-retrigger)     в”‚
+в”‚    в†’ Does NOT run CRON jobs itself                          в”‚
+в”‚                                                              в”‚
+в”‚ вњ… wb-reputation-tg-bot (fork, 1 instance)                  в”‚
+в”‚    в†’ Telegram bot long-polling                              в”‚
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
 ```
 
 ### CRON Trigger Flow
@@ -38,7 +38,7 @@ sequenceDiagram
     participant CronMgr as wb-reputation-cron
 
     PM2->>MainApp: start
-    MainApp->>MainApp: instrumentation.ts → initializeServer()
+    MainApp->>MainApp: instrumentation.ts в†’ initializeServer()
     Note over MainApp: initialized=true, cronJobsStarted=false
 
     PM2->>CronMgr: start
@@ -61,8 +61,8 @@ sequenceDiagram
 
 ### Key Invariants (NEVER violate)
 
-1. **CRON jobs must run in EXACTLY 1 process** — the main app instance
-2. `cronJobsStarted` is in-memory — lost on process restart
+1. **CRON jobs must run in EXACTLY 1 process** вЂ” the main app instance
+2. `cronJobsStarted` is in-memory вЂ” lost on process restart
 3. `initialized` and `cronJobsStarted` are **separate flags** (never conflate them)
 4. `init-server.ts` must allow `forceCron` even if `initialized=true`
 5. `start-cron.js` must have health check, not just one-shot trigger
@@ -86,25 +86,25 @@ export function isCronRunning(): boolean { return cronJobsStarted; }
 ### On Restart / Redeploy
 
 **`pm2 restart all`:**
-1. Main app restarts → `cronJobsStarted=false` (CRON dies)
-2. `start-cron.js` restarts → waits 3s → POST trigger → CRON restarts
+1. Main app restarts в†’ `cronJobsStarted=false` (CRON dies)
+2. `start-cron.js` restarts в†’ waits 3s в†’ POST trigger в†’ CRON restarts
 3. Max CRON downtime: ~6 seconds
 
 **`pm2 restart wb-reputation` (main app only):**
-1. Main app restarts → `cronJobsStarted=false`
-2. `start-cron.js` is still running → health check in max 5 min → re-triggers
+1. Main app restarts в†’ `cronJobsStarted=false`
+2. `start-cron.js` is still running в†’ health check in max 5 min в†’ re-triggers
 3. Max CRON downtime: ~5 minutes
 
 **`pm2 restart wb-reputation-cron` (cron manager only):**
 1. CRON jobs continue running in main app (unaffected)
-2. `start-cron.js` restarts → POST trigger → sees "already running" → OK
+2. `start-cron.js` restarts в†’ POST trigger в†’ sees "already running" в†’ OK
 3. Max CRON downtime: 0 seconds
 
 ### Why Fork Mode (Changed 2026-03-14)
 
 Previously main app ran in cluster mode (2 instances). This caused a critical risk:
 - `cronJobsStarted` is per-instance (in-memory, not shared)
-- Health check GET could hit instance without CRON → sees `cronRunning: false`
+- Health check GET could hit instance without CRON в†’ sees `cronRunning: false`
 - Re-trigger POST could start SECOND set of CRON jobs in the other instance
 
 **Solution:** Switched to fork mode (1 instance). 4GB RAM is sufficient.
@@ -118,7 +118,7 @@ pm2 logs wb-reputation-cron | grep "Auto-sequence"
 
 # Health check status
 curl -s localhost:3000/api/cron/trigger -H 'Authorization: Bearer API_KEY'
-# → { "cronRunning": true, "initialized": true }
+# в†’ { "cronRunning": true, "initialized": true }
 ```
 
 **Related Documents:**
@@ -133,14 +133,14 @@ WB Reputation Manager uses **automated background jobs** (CRON) to sync data fro
 
 **Key Features:**
 - Hourly incremental review synchronization
-- **Nightly full review sync** (22:00 MSK, every day) — all 12 chunks (3 years), parallel (concurrency=5)
-- **Midday review catchup** (13:00 MSK, every day) — chunk 0 only, catches WB API indexing delays
+- **Nightly full review sync** (22:00 MSK, every day) вЂ” all 12 chunks (3 years), parallel (concurrency=5)
+- **Midday review catchup** (13:00 MSK, every day) вЂ” chunk 0 only, catches WB API indexing delays
 - **Automatic complaint generation** immediately after sync (zero delay)
 - **Template-based optimization** for empty reviews (zero AI cost)
 - **AI-powered complaints** for reviews with content
 - **Active products filter** - only generates complaints for active products
-- **3-tier adaptive dialogue sync** — 5min (work hours), 15min (morning/evening), 60min (night)
-- **OZON hybrid chat sync** — unread-only every 5min + hourly full scan safety net (9:00-20:00 MSK)
+- **3-tier adaptive dialogue sync** вЂ” 5min (work hours), 15min (morning/evening), 60min (night)
+- **OZON hybrid chat sync** вЂ” unread-only every 5min + hourly full scan safety net (9:00-20:00 MSK)
 
 Jobs are managed using the `node-cron` library and initialize automatically when the Next.js server starts.
 
@@ -187,16 +187,16 @@ graph TD
 
 OZON chat sync uses a **two-tier strategy** to maximize speed while ensuring no messages are missed:
 
-**Tier 1 — Fast unread-only scan (every 5 min via adaptive dialogue sync):**
-- Calls `getChatList(unread_only=true)` → returns 0-20 chats with new buyer messages
+**Tier 1 вЂ” Fast unread-only scan (every 5 min via adaptive dialogue sync):**
+- Calls `getChatList(unread_only=true)` в†’ returns 0-20 chats with new buyer messages
 - Processes only those chats (getChatHistory + AI classification)
 - Completes in seconds instead of 5 minutes
 
-**Tier 2 — Hourly full scan (safety net):**
+**Tier 2 вЂ” Hourly full scan (safety net):**
 - Calls `getChatList()` for ALL 156K+ OPENED chats
 - Needed because: if a seller reads a chat in OZON dashboard before R5 syncs,
   it loses its "unread" flag and would be missed by Tier 1
-- Uses incremental skip (`ozon_last_message_id`) — only actually processes changed chats
+- Uses incremental skip (`ozon_last_message_id`) вЂ” only actually processes changed chats
 - Runs **9:00-20:00 MSK**, all days including weekends
 
 **Job Name:** `ozon-hourly-full-sync`
@@ -204,18 +204,18 @@ OZON chat sync uses a **two-tier strategy** to maximize speed while ensuring no 
 - **Production:** `0 6-17 * * *` (every hour 9:00-20:00 MSK = 6:00-17:00 UTC)
 - **Development:** `*/20 * * * *` (every 20 minutes)
 
-**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `syncStoreDialoguesFull()` + `startOzonHourlyFullSync()`
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” `syncStoreDialoguesFull()` + `startOzonHourlyFullSync()`
 
 **API endpoint called:** `POST /api/stores/{storeId}/dialogues/update?fullScan=true`
 
 **Expected output (full scan):**
 ```
-[CRON] 🔍 Starting OZON hourly full scan at 2026-02-17T06:00:00.000Z
+[CRON] рџ”Ќ Starting OZON hourly full scan at 2026-02-17T06:00:00.000Z
 [CRON] Found 1 OZON stores to full-scan
 [OZON-CHATS] Starting chat sync for store xxx (mode: FULL SCAN)
 [OZON-CHATS] Found 156864 BUYER_SELLER chats (FULL SCAN)
 [OZON-CHATS] Seeded 0 chats, skipped 156863 unchanged, processed 1 new
-[CRON] ✅ Full scan HANIBANI: OZON chats synced: 1 processed
+[CRON] вњ… Full scan HANIBANI: OZON chats synced: 1 processed
 [CRON] Stores: 1/1 success, 0 errors
 ```
 
@@ -244,18 +244,18 @@ OZON chat sync uses a **two-tier strategy** to maximize speed while ensuring no 
 **Example Output:**
 ```
 ========================================
-[CRON] 🚀 Starting daily review sync at 2026-01-16T05:00:00.000Z
+[CRON] рџљЂ Starting daily review sync at 2026-01-16T05:00:00.000Z
 ========================================
 
 [CRON] Found 43 stores to sync
-[CRON] Starting review sync for store: Тайди Центр (UiLCn5HyzRPphSRvR11G)
-[CRON] ✅ Successfully synced reviews for Тайди Центр: Synced 150 new reviews
-[CRON] Starting auto-complaint generation for Тайди Центр...
-[CRON] Found 42 reviews needing complaints for Тайди Центр
-[CRON] ✅ Generated complaints for Тайди Центр: 42 total (18 templates, 24 AI), 0 failed
+[CRON] Starting review sync for store: РўР°Р№РґРё Р¦РµРЅС‚СЂ (UiLCn5HyzRPphSRvR11G)
+[CRON] вњ… Successfully synced reviews for РўР°Р№РґРё Р¦РµРЅС‚СЂ: Synced 150 new reviews
+[CRON] Starting auto-complaint generation for РўР°Р№РґРё Р¦РµРЅС‚СЂ...
+[CRON] Found 42 reviews needing complaints for РўР°Р№РґРё Р¦РµРЅС‚СЂ
+[CRON] вњ… Generated complaints for РўР°Р№РґРё Р¦РµРЅС‚СЂ: 42 total (18 templates, 24 AI), 0 failed
 ...
 ========================================
-[CRON] ✅ Daily review sync + complaint generation completed
+[CRON] вњ… Daily review sync + complaint generation completed
 [CRON] Duration: 284s
 [CRON] Stores synced: 43/43
 [CRON] Errors: 0
@@ -275,10 +275,10 @@ OZON chat sync uses a **two-tier strategy** to maximize speed while ensuring no 
 The CRON job now includes **automatic complaint generation** immediately after each store's review sync:
 
 1. **Review Sync** - Fetch new reviews from Wildberries API
-2. **Find Reviews Without Complaints** - Query database for reviews without complaints (rating ≤3, active products only)
+2. **Find Reviews Without Complaints** - Query database for reviews without complaints (rating в‰¤3, active products only)
 3. **Smart Generation:**
-   - **Empty reviews** (no text, pros, cons) → Use template complaint (0 tokens, instant)
-   - **Reviews with content** → Generate AI complaint via Deepseek API
+   - **Empty reviews** (no text, pros, cons) в†’ Use template complaint (0 tokens, instant)
+   - **Reviews with content** в†’ Generate AI complaint via Deepseek API
 4. **Save to Database** - Store complaint with status `draft`
 
 ### Template-Based Optimization
@@ -293,11 +293,11 @@ The CRON job now includes **automatic complaint generation** immediately after e
 
 **Template Complaint:**
 ```
-Отзыв содержит только числовую оценку без какого-либо текстового описания...
+РћС‚Р·С‹РІ СЃРѕРґРµСЂР¶РёС‚ С‚РѕР»СЊРєРѕ С‡РёСЃР»РѕРІСѓСЋ РѕС†РµРЅРєСѓ Р±РµР· РєР°РєРѕРіРѕ-Р»РёР±Рѕ С‚РµРєСЃС‚РѕРІРѕРіРѕ РѕРїРёСЃР°РЅРёСЏ...
 [Full template text]
 ```
 
-**Reason:** `11 - Отзыв не относится к товару`
+**Reason:** `11 - РћС‚Р·С‹РІ РЅРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє С‚РѕРІР°СЂСѓ`
 
 **Cost Savings:**
 - AI cost: ~$0.0005-0.001 per complaint
@@ -345,7 +345,7 @@ export async function getReviewsWithoutComplaints(
 
 **AI Response Logging:**
 ```
-[AI RAW RESPONSE] Review abc123: Отзыв содержит несоответствие...
+[AI RAW RESPONSE] Review abc123: РћС‚Р·С‹РІ СЃРѕРґРµСЂР¶РёС‚ РЅРµСЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ...
 ```
 
 ---
@@ -381,7 +381,7 @@ export async function getAllStores(): Promise<Store[]> {
 }
 ```
 
-**Impact:** Reduced from 49 → 43 stores (-12% load reduction)
+**Impact:** Reduced from 49 в†’ 43 stores (-12% load reduction)
 
 ---
 
@@ -391,22 +391,22 @@ export async function getAllStores(): Promise<Store[]> {
 
 CRON jobs run inside the main Next.js process (`wb-reputation`), but are **triggered remotely** by the `wb-reputation-cron` manager process via HTTP.
 
-**Step 1 — Main app starts (CRON OFF):**
+**Step 1 вЂ” Main app starts (CRON OFF):**
 1. PM2 starts `wb-reputation` (fork mode, 1 instance)
-2. `instrumentation.ts` → `initializeServer()` → `initialized=true`
-3. `ENABLE_CRON_IN_MAIN_APP` is NOT set → CRON stays OFF
+2. `instrumentation.ts` в†’ `initializeServer()` в†’ `initialized=true`
+3. `ENABLE_CRON_IN_MAIN_APP` is NOT set в†’ CRON stays OFF
 4. `cronJobsStarted` remains `false`
 
-**Step 2 — CRON manager triggers (CRON ON):**
-1. PM2 starts `wb-reputation-cron` → `scripts/start-cron.js`
+**Step 2 вЂ” CRON manager triggers (CRON ON):**
+1. PM2 starts `wb-reputation-cron` в†’ `scripts/start-cron.js`
 2. Waits for main app to be ready (up to 60s)
-3. `POST /api/cron/trigger` → `initializeServer({ forceCron: true })`
-4. Main app starts all 11 CRON jobs → `cronJobsStarted=true`
+3. `POST /api/cron/trigger` в†’ `initializeServer({ forceCron: true })`
+4. Main app starts all 11 CRON jobs в†’ `cronJobsStarted=true`
 
-**Step 3 — Health monitoring (auto-recovery):**
-1. Every 5 minutes: `GET /api/cron/trigger` → checks `cronRunning`
-2. If `cronRunning: false` (e.g. main app restarted) → re-triggers via POST
-3. 10 consecutive failures → `process.exit(1)` → PM2 restarts cron manager
+**Step 3 вЂ” Health monitoring (auto-recovery):**
+1. Every 5 minutes: `GET /api/cron/trigger` в†’ checks `cronRunning`
+2. If `cronRunning: false` (e.g. main app restarted) в†’ re-triggers via POST
+3. 10 consecutive failures в†’ `process.exit(1)` в†’ PM2 restarts cron manager
 
 **Code:** [src/lib/init-server.ts](../src/lib/init-server.ts)
 ```typescript
@@ -461,7 +461,7 @@ ENABLE_CRON_IN_MAIN_APP=true
 npm run dev
 ```
 
-⚠️ **Warning:** Do NOT set `ENABLE_CRON_IN_MAIN_APP=true` in production `.env`!
+вљ пёЏ **Warning:** Do NOT set `ENABLE_CRON_IN_MAIN_APP=true` in production `.env`!
 
 ### 3. CRON Job Registration
 
@@ -476,7 +476,7 @@ export function startDailyReviewSync() {
   });
 
   job.start();
-  console.log('[CRON] ✅ Daily review sync job started successfully');
+  console.log('[CRON] вњ… Daily review sync job started successfully');
 
   return job;
 }
@@ -492,8 +492,8 @@ export function startDailyReviewSync() {
 
 **What Happens on `pm2 restart all`:**
 
-1. Main app restarts → `cronJobsStarted=false` (CRON dies)
-2. `wb-reputation-cron` restarts → waits 3s → POST trigger → CRON restarts
+1. Main app restarts в†’ `cronJobsStarted=false` (CRON dies)
+2. `wb-reputation-cron` restarts в†’ waits 3s в†’ POST trigger в†’ CRON restarts
 3. Max CRON downtime: ~6 seconds
 
 **Verification After Deploy:**
@@ -514,7 +514,7 @@ pm2 logs wb-reputation --lines 50 --nostream | grep "CRON"
 # Should see: "Starting CRON jobs via /api/cron/trigger"
 ```
 
-**No manual intervention required** — health check auto-recovers within 5 minutes
+**No manual intervention required** вЂ” health check auto-recovers within 5 minutes
 
 ---
 
@@ -530,7 +530,7 @@ cron.schedule('...', async () => {
 
   // Prevent concurrent runs
   if (runningJobs[jobName]) {
-    console.log('[CRON] ⚠️  Job already running, skipping this trigger');
+    console.log('[CRON] вљ пёЏ  Job already running, skipping this trigger');
     return;
   }
 
@@ -556,7 +556,7 @@ cron.schedule('...', async () => {
 
 ```bash
 # SSH into server
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 
 # View CRON manager logs
 pm2 logs wb-reputation-cron --lines 30 --nostream
@@ -616,9 +616,9 @@ cd /var/www/wb-reputation
 node scripts/AUDIT-check-duplicate-sends.mjs
 
 # Expected output:
-# ✅ No duplicate messages found
-# ✅ No duplicate active sequences
-# ✅ No rapid sends detected
+# вњ… No duplicate messages found
+# вњ… No duplicate active sequences
+# вњ… No rapid sends detected
 ```
 
 ### Check Job Status (API Endpoint)
@@ -626,7 +626,7 @@ node scripts/AUDIT-check-duplicate-sends.mjs
 **Endpoint:** `GET /api/cron/status`
 
 ```bash
-curl -X GET "http://158.160.229.16/api/cron/status" \
+curl -X GET "http://158.160.139.99/api/cron/status" \
   -H "Authorization: Bearer wbrm_u1512gxsgp1nt1n31fmsj1d31o51jue"
 ```
 
@@ -666,25 +666,25 @@ curl -X POST "http://localhost:9002/api/stores/{storeId}/reviews/update?mode=ful
 
 ## Troubleshooting
 
-### 🚨 Duplicate Auto-Sequence Sends (NEW - Added 2026-03-13)
+### рџљЁ Duplicate Auto-Sequence Sends (NEW - Added 2026-03-13)
 
 **Symptom:** Clients receive same auto-sequence message 2-3 times within minutes
 
 **Root Cause:** CRON running in multiple processes simultaneously:
-- 2× main app instances (cluster mode) + 1× cron process = 3× sends
+- 2Г— main app instances (cluster mode) + 1Г— cron process = 3Г— sends
 
 **Diagnostic:**
 ```bash
 # Check how many times auto-sequence ran
 pm2 logs wb-reputation-cron --lines 200 | grep -A 2 "Auto-sequence"
 
-# ❌ BAD: See 3 entries at same timestamp
-[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
-[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
-[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+# вќЊ BAD: See 3 entries at same timestamp
+[CRON] рџ“Ё Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+[CRON] рџ“Ё Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+[CRON] рџ“Ё Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
 
-# ✅ GOOD: See 1 entry
-[CRON] 📨 Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
+# вњ… GOOD: See 1 entry
+[CRON] рџ“Ё Auto-sequence: 5 sent, 0 stopped, 10 skipped, 0 errors
 ```
 
 **Fix:**
@@ -734,8 +734,8 @@ pm2 logs wb-reputation-cron --lines 20 --nostream | grep -E "triggered|failed|He
 
 # 3. Health check API
 curl -s localhost:3000/api/cron/trigger -H 'Authorization: Bearer API_KEY'
-# → { "cronRunning": true } = OK
-# → { "cronRunning": false } = CRON not running, check main app logs
+# в†’ { "cronRunning": true } = OK
+# в†’ { "cronRunning": false } = CRON not running, check main app logs
 
 # 4. Main app CRON status
 pm2 logs wb-reputation --lines 50 --nostream | grep -E "\[INIT\]|\[CRON\]"
@@ -759,7 +759,7 @@ pm2 save
 
 ### CRON Job Running But Failing
 
-**Symptom:** `[CRON] ❌ Failed to sync reviews`
+**Symptom:** `[CRON] вќЊ Failed to sync reviews`
 
 **Common Causes:**
 1. **Database connection issues**
@@ -822,13 +822,13 @@ export function startDailyChatSync() {
     const jobName = 'daily-chat-sync';
 
     if (runningJobs[jobName]) {
-      console.log(`[CRON] ⚠️  Job ${jobName} already running, skipping`);
+      console.log(`[CRON] вљ пёЏ  Job ${jobName} already running, skipping`);
       return;
     }
 
     runningJobs[jobName] = true;
     try {
-      console.log('[CRON] 🚀 Starting daily chat sync');
+      console.log('[CRON] рџљЂ Starting daily chat sync');
 
       const stores = await dbHelpers.getAllStores();
 
@@ -844,9 +844,9 @@ export function startDailyChatSync() {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
-      console.log('[CRON] ✅ Daily chat sync completed');
+      console.log('[CRON] вњ… Daily chat sync completed');
     } catch (error) {
-      console.error('[CRON] ❌ Chat sync failed:', error);
+      console.error('[CRON] вќЊ Chat sync failed:', error);
     } finally {
       runningJobs[jobName] = false;
     }
@@ -855,7 +855,7 @@ export function startDailyChatSync() {
   });
 
   job.start();
-  console.log('[CRON] ✅ Daily chat sync job started');
+  console.log('[CRON] вњ… Daily chat sync job started');
 
   return job;
 }
@@ -911,13 +911,13 @@ pm2 logs wb-reputation | grep "chat sync"
 
 ```
 * * * * *
-┬ ┬ ┬ ┬ ┬
-│ │ │ │ │
-│ │ │ │ └─── day of week (0 - 7) (Sunday=0 or 7)
-│ │ │ └───── month (1 - 12)
-│ │ └─────── day of month (1 - 31)
-│ └───────── hour (0 - 23)
-└─────────── minute (0 - 59)
+в”¬ в”¬ в”¬ в”¬ в”¬
+в”‚ в”‚ в”‚ в”‚ в”‚
+в”‚ в”‚ в”‚ в”‚ в””в”Ђв”Ђв”Ђ day of week (0 - 7) (Sunday=0 or 7)
+в”‚ в”‚ в”‚ в””в”Ђв”Ђв”Ђв”Ђв”Ђ month (1 - 12)
+в”‚ в”‚ в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ day of month (1 - 31)
+в”‚ в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ hour (0 - 23)
+в””в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ minute (0 - 59)
 ```
 
 ### Common Patterns
@@ -1005,7 +1005,7 @@ node scripts/EMERGENCY-stop-auto-sequences.mjs
 **What It Does:**
 1. Finds all active sequences (`status = 'active'`)
 2. Sets `status = 'stopped'`, `stop_reason = 'emergency_stop_YYYY-MM-DD'`
-3. Transitions chats from `awaiting_reply` → `inbox` or `in_progress` (based on existing `tag`)
+3. Transitions chats from `awaiting_reply` в†’ `inbox` or `in_progress` (based on existing `tag`)
 4. Logs affected chat IDs and sequences
 
 **When to Use:**
@@ -1017,13 +1017,13 @@ node scripts/EMERGENCY-stop-auto-sequences.mjs
 
 **Example Output:**
 ```
-🚨 EMERGENCY: Stopping all active auto-sequences
+рџљЁ EMERGENCY: Stopping all active auto-sequences
 
 Found 2,075 active sequences to stop
-✅ Stopped 2,075 sequences
-✅ Updated chat statuses:
-   - awaiting_reply → inbox: 1,200 chats
-   - awaiting_reply → in_progress: 875 chats
+вњ… Stopped 2,075 sequences
+вњ… Updated chat statuses:
+   - awaiting_reply в†’ inbox: 1,200 chats
+   - awaiting_reply в†’ in_progress: 875 chats
 
 Stop reason: emergency_stop_2026-03-13
 All sequences stopped successfully!
@@ -1051,12 +1051,12 @@ node scripts/AUDIT-check-duplicate-sends.mjs
 
 **Example Output:**
 ```
-🔍 Auditing for duplicate auto-sequence sends...
+рџ”Ќ Auditing for duplicate auto-sequence sends...
 
-✅ No duplicate messages found in last 24 hours
-✅ No duplicate active sequences found
-✅ No rapid sends detected (all ≥5min apart)
-⚠️  Found 2 stale processing locks (released)
+вњ… No duplicate messages found in last 24 hours
+вњ… No duplicate active sequences found
+вњ… No rapid sends detected (all в‰Ґ5min apart)
+вљ пёЏ  Found 2 stale processing locks (released)
 
 Audit complete!
 ```
@@ -1112,7 +1112,7 @@ After emergency stop (2026-03-13), 2,075 sequences were stopped.
 | 5 | 50 | 5 messages | messages[5] (6th) |
 | 6 | 127 | 6 messages | messages[6] (7th) |
 
-**Status:** ⏸️ POSTPONED - see [SEQUENCE-RESTART-ANALYSIS.md](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SEQUENCE-RESTART-ANALYSIS.md)
+**Status:** вЏёпёЏ POSTPONED - see [SEQUENCE-RESTART-ANALYSIS.md](sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SEQUENCE-RESTART-ANALYSIS.md)
 
 **Decision:** Do NOT restart stopped sequences. Create new sequences manually from TG Mini App as needed.
 
@@ -1139,35 +1139,35 @@ After emergency stop (2026-03-13), 2,075 sequences were stopped.
 3. Provides management visibility into active stores and their configurations
 
 **Data Exported (per row, 22 columns A-V):**
-| Магазин | Артикул WB | Название | Статус | Жалобы | ⭐1-4 | Чаты | ⭐1-4 | Стратегия | Компенсация | Тип | Макс ₽ | Кто платит | Обновлено | Работаем от | Комментарий |
+| РњР°РіР°Р·РёРЅ | РђСЂС‚РёРєСѓР» WB | РќР°Р·РІР°РЅРёРµ | РЎС‚Р°С‚СѓСЃ | Р–Р°Р»РѕР±С‹ | в­ђ1-4 | Р§Р°С‚С‹ | в­ђ1-4 | РЎС‚СЂР°С‚РµРіРёСЏ | РљРѕРјРїРµРЅСЃР°С†РёСЏ | РўРёРї | РњР°РєСЃ в‚Ѕ | РљС‚Рѕ РїР»Р°С‚РёС‚ | РћР±РЅРѕРІР»РµРЅРѕ | Р Р°Р±РѕС‚Р°РµРј РѕС‚ | РљРѕРјРјРµРЅС‚Р°СЂРёР№ |
 
 **Columns U-V (migration 025):**
-- **Column U (Работаем от):** Per-product cutoff date (`product_rules.work_from_date`), formatted DD.MM.YYYY. Default: 01.10.2023.
-- **Column V (Комментарий):** Manager comment (`product_rules.comment`) from DB. Single source of truth — no manual comment preservation needed.
+- **Column U (Р Р°Р±РѕС‚Р°РµРј РѕС‚):** Per-product cutoff date (`product_rules.work_from_date`), formatted DD.MM.YYYY. Default: 01.10.2023.
+- **Column V (РљРѕРјРјРµРЅС‚Р°СЂРёР№):** Manager comment (`product_rules.comment`) from DB. Single source of truth вЂ” no manual comment preservation needed.
 
 **Triggers:**
-1. **CRON** — ежедневно в 6:00 MSK
-2. **Manual API** — `POST /api/admin/google-sheets/sync`
-3. **Product rules change** — async hook (non-blocking, debounced 5 sec)
-4. **Product status change** — async hook (non-blocking, debounced 5 sec)
-5. **Store status change** — async hook (non-blocking, debounced 5 sec)
+1. **CRON** вЂ” РµР¶РµРґРЅРµРІРЅРѕ РІ 6:00 MSK
+2. **Manual API** вЂ” `POST /api/admin/google-sheets/sync`
+3. **Product rules change** вЂ” async hook (non-blocking, debounced 5 sec)
+4. **Product status change** вЂ” async hook (non-blocking, debounced 5 sec)
+5. **Store status change** вЂ” async hook (non-blocking, debounced 5 sec)
 
 **Debounce & Deduplication (async triggers):**
-- Triggers 3-5 используют `triggerAsyncSync()` с 5-секундным debounce
-- Если синк уже запущен, новый ставится в очередь (1 pending максимум)
-- 10 изменений за 1 минуту → 1-2 синка вместо 10
+- Triggers 3-5 РёСЃРїРѕР»СЊР·СѓСЋС‚ `triggerAsyncSync()` СЃ 5-СЃРµРєСѓРЅРґРЅС‹Рј debounce
+- Р•СЃР»Рё СЃРёРЅРє СѓР¶Рµ Р·Р°РїСѓС‰РµРЅ, РЅРѕРІС‹Р№ СЃС‚Р°РІРёС‚СЃСЏ РІ РѕС‡РµСЂРµРґСЊ (1 pending РјР°РєСЃРёРјСѓРј)
+- 10 РёР·РјРµРЅРµРЅРёР№ Р·Р° 1 РјРёРЅСѓС‚Сѓ в†’ 1-2 СЃРёРЅРєР° РІРјРµСЃС‚Рѕ 10
 
 **Retry (Google API):**
-- Все Google API вызовы обёрнуты в `withRetry()` (3 попытки, exponential backoff: 1/2/4 сек)
-- Не ретраит 4xx ошибки (кроме 429 rate limit)
+- Р’СЃРµ Google API РІС‹Р·РѕРІС‹ РѕР±С‘СЂРЅСѓС‚С‹ РІ `withRetry()` (3 РїРѕРїС‹С‚РєРё, exponential backoff: 1/2/4 СЃРµРє)
+- РќРµ СЂРµС‚СЂР°РёС‚ 4xx РѕС€РёР±РєРё (РєСЂРѕРјРµ 429 rate limit)
 
 **Configuration (Environment Variables):**
 ```bash
 GOOGLE_SHEETS_SPREADSHEET_ID=1-mxbnv0qkicJMVUCtqDGJH82FhLlDKDvICb-PAVbxfI
-GOOGLE_SHEETS_SHEET_NAME=Артикулы ТЗ
+GOOGLE_SHEETS_SHEET_NAME=РђСЂС‚РёРєСѓР»С‹ РўР—
 GOOGLE_SERVICE_ACCOUNT_EMAIL=r5-automation@r5-wb-bot.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-# Secondary sheets (optional, 1:1 copies for сотрудников)
+# Secondary sheets (optional, 1:1 copies for СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ)
 GOOGLE_SHEETS_SECONDARY_SPREADSHEET_ID=...
 GOOGLE_SHEETS_SECONDARY_SHEETS=Sheet1,Sheet2  # comma-separated
 ```
@@ -1175,10 +1175,10 @@ GOOGLE_SHEETS_SECONDARY_SHEETS=Sheet1,Sheet2  # comma-separated
 **Important:** Share the Google Sheet with the Service Account email (role: Editor)
 
 **Source Files:**
-- [src/services/google-sheets-sync/](../src/services/google-sheets-sync/) — Sync service
-- [src/services/google-sheets-sync/sheets-client.ts](../src/services/google-sheets-sync/sheets-client.ts) — Google API client (JWT auth, retry)
-- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — CRON job definition
-- [src/app/api/admin/google-sheets/sync/route.ts](../src/app/api/admin/google-sheets/sync/route.ts) — Manual sync API
+- [src/services/google-sheets-sync/](../src/services/google-sheets-sync/) вЂ” Sync service
+- [src/services/google-sheets-sync/sheets-client.ts](../src/services/google-sheets-sync/sheets-client.ts) вЂ” Google API client (JWT auth, retry)
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” CRON job definition
+- [src/app/api/admin/google-sheets/sync/route.ts](../src/app/api/admin/google-sheets/sync/route.ts) вЂ” Manual sync API
 
 **Example Output:**
 ```
@@ -1187,13 +1187,13 @@ GOOGLE_SHEETS_SECONDARY_SHEETS=Sheet1,Sheet2  # comma-separated
 ========================================
 
 [GoogleSheetsSync] Starting full sync...
-[GoogleSheetsSync] Target: 1-mxbnv0qkicJMVUCtqDGJH82FhLlDKDvICb-PAVbxfI / "Артикулы ТЗ"
+[GoogleSheetsSync] Target: 1-mxbnv0qkicJMVUCtqDGJH82FhLlDKDvICb-PAVbxfI / "РђСЂС‚РёРєСѓР»С‹ РўР—"
 [GoogleSheetsSync] Found 5 active stores
-[GoogleSheetsSync] Store "Тайди Центр": 42 active products
+[GoogleSheetsSync] Store "РўР°Р№РґРё Р¦РµРЅС‚СЂ": 42 active products
 [GoogleSheetsSync] Store "Test Store": 15 active products
 [GoogleSheetsSync] Total rows to write: 57
 [GoogleSheetsSync] Preserved 12 comments from column U
-[GoogleSheets] Clearing sheet "Артикулы ТЗ"...
+[GoogleSheets] Clearing sheet "РђСЂС‚РёРєСѓР»С‹ РўР—"...
 [GoogleSheets] Sheet cleared. Writing 58 rows...
 [GoogleSheets] Successfully wrote 58 rows
 [GoogleSheetsSync] Restored 12 comments
@@ -1218,34 +1218,34 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync"
 
 ---
 
-## 7. Client Directory Sync (Список клиентов)
+## 7. Client Directory Sync (РЎРїРёСЃРѕРє РєР»РёРµРЅС‚РѕРІ)
 
 **Job Name:** `client-directory-sync`
 **Schedule:**
-- **Production:** `30 4 * * *` (7:30 AM MSK / 4:30 AM UTC — after Product Rules sync at 6:00)
+- **Production:** `30 4 * * *` (7:30 AM MSK / 4:30 AM UTC вЂ” after Product Rules sync at 6:00)
 - **Development:** `*/30 * * * *` (every 30 minutes)
 
 **What It Does:**
-1. Syncs all stores (active + inactive) to sheet "Список клиентов" via **upsert** strategy
+1. Syncs all stores (active + inactive) to sheet "РЎРїРёСЃРѕРє РєР»РёРµРЅС‚РѕРІ" via **upsert** strategy
 2. Updates existing rows (matched by store ID in column A)
 3. Appends new rows for newly created stores
-4. **Preserves INN** (ручной ввод, column C) — never overwritten
+4. **Preserves INN** (СЂСѓС‡РЅРѕР№ РІРІРѕРґ, column C) вЂ” never overwritten
 5. Matches stores to Google Drive folders via fuzzy name matching
 6. Extracts links to report and screenshots folder from Drive
 
 **Data Exported (per row, 13 columns A-M):**
-| ID магазина | Название | ИНН (manual) | Дата подключения | Статус | API | Content API | Feedbacks API | Chat API | Папка клиента | Отчёт | Скриншоты | Обновлено |
+| ID РјР°РіР°Р·РёРЅР° | РќР°Р·РІР°РЅРёРµ | РРќРќ (manual) | Р”Р°С‚Р° РїРѕРґРєР»СЋС‡РµРЅРёСЏ | РЎС‚Р°С‚СѓСЃ | API | Content API | Feedbacks API | Chat API | РџР°РїРєР° РєР»РёРµРЅС‚Р° | РћС‚С‡С‘С‚ | РЎРєСЂРёРЅС€РѕС‚С‹ | РћР±РЅРѕРІР»РµРЅРѕ |
 
 **Triggers:**
-1. **CRON** — ежедневно в 7:30 MSK
-2. **Manual API** — `POST /api/admin/google-sheets/sync-clients`
-3. **After store onboarding** — fire-and-forget (WB + OZON)
+1. **CRON** вЂ” РµР¶РµРґРЅРµРІРЅРѕ РІ 7:30 MSK
+2. **Manual API** вЂ” `POST /api/admin/google-sheets/sync-clients`
+3. **After store onboarding** вЂ” fire-and-forget (WB + OZON)
 
 **Source Files:**
-- [src/services/google-sheets-sync/client-directory/](../src/services/google-sheets-sync/client-directory/) — Sync service
-- [src/services/google-sheets-sync/client-directory/drive-matcher.ts](../src/services/google-sheets-sync/client-directory/drive-matcher.ts) — Fuzzy folder matching
-- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — CRON job definition
-- [src/app/api/admin/google-sheets/sync-clients/route.ts](../src/app/api/admin/google-sheets/sync-clients/route.ts) — Manual sync API
+- [src/services/google-sheets-sync/client-directory/](../src/services/google-sheets-sync/client-directory/) вЂ” Sync service
+- [src/services/google-sheets-sync/client-directory/drive-matcher.ts](../src/services/google-sheets-sync/client-directory/drive-matcher.ts) вЂ” Fuzzy folder matching
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” CRON job definition
+- [src/app/api/admin/google-sheets/sync-clients/route.ts](../src/app/api/admin/google-sheets/sync-clients/route.ts) вЂ” Manual sync API
 
 **Manual Trigger:**
 ```bash
@@ -1280,15 +1280,15 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 |-----|----------------|----------------|-------------|
 | Review Sync + Complaints | Every hour | 0 * * * * | Incremental review sync (WB + OZON) + auto-generate complaints + retry failed stores |
 | **Nightly Full Review Sync** | **22:00 daily** | **0 19 * * *** | **WB: 12 chunks (3 years), concurrency=5; OZON: single full cursor sync** |
-| **Midday Review Catchup** | **13:00 daily** | **0 10 * * *** | **WB-only, chunk 0 (last 90 days) — second daily pass to catch WB API delays** |
+| **Midday Review Catchup** | **13:00 daily** | **0 10 * * *** | **WB-only, chunk 0 (last 90 days) вЂ” second daily pass to catch WB API delays** |
 | Dialogue Sync | Adaptive (3-tier) | 5min work (09-18) / 15min morning-evening / 60min night | Sync chat dialogues (WB + OZON) |
 | Product Sync | 7:00 AM | 0 4 * * * | Sync product catalog (WB + OZON) |
 | Backfill Worker | Every 5 min | */5 * * * * | Process complaint backfill queue (BATCH=200, DAILY_LIMIT=6000) |
 | Google Sheets Sync | 6:00 AM | 0 3 * * * | Export product rules to Google Sheets (22 cols A-V, clear+write, comments from DB) |
-| Client Directory Sync | 7:30 AM | 30 4 * * * | Sync client directory to "Список клиентов" (upsert, preserves INN) |
+| Client Directory Sync | 7:30 AM | 30 4 * * * | Sync client directory to "РЎРїРёСЃРѕРє РєР»РёРµРЅС‚РѕРІ" (upsert, preserves INN) |
 | **Auto-Sequence Processor** | Every 30 min (daytime) | */30 * * * * | Send follow-up messages (100/batch, distributed slots 10-17 MSK) |
 | **Resolved-Review Closer** | Every 30 min (:15/:45) | 15,45 * * * * | Auto-close chats with resolved reviews (200/batch) |
-| ~~Chat Status Transition~~ | ~~Every 30 min~~ | ~~*/30 * * * *~~ | **DISABLED (2026-02-28):** Was auto-moving `in_progress → awaiting_reply` after 2 days. Disabled — sequences are now manual only |
+| ~~Chat Status Transition~~ | ~~Every 30 min~~ | ~~*/30 * * * *~~ | **DISABLED (2026-02-28):** Was auto-moving `in_progress в†’ awaiting_reply` after 2 days. Disabled вЂ” sequences are now manual only |
 
 **Non-CRON Background Process:**
 | Process | Type | Description |
@@ -1300,51 +1300,51 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 
 ---
 
-## 8. Auto-Sequence Processor (Авто-рассылка)
+## 8. Auto-Sequence Processor (РђРІС‚Рѕ-СЂР°СЃСЃС‹Р»РєР°)
 
-> **Обновлено 2026-02-28:** Все auto-launch механизмы удалены. Рассылки запускаются **только вручную** из TG Mini App (кнопка "Запустить рассылку"). Крон `transitionStaleInProgressChats` отключён.
+> **РћР±РЅРѕРІР»РµРЅРѕ 2026-02-28:** Р’СЃРµ auto-launch РјРµС…Р°РЅРёР·РјС‹ СѓРґР°Р»РµРЅС‹. Р Р°СЃСЃС‹Р»РєРё Р·Р°РїСѓСЃРєР°СЋС‚СЃСЏ **С‚РѕР»СЊРєРѕ РІСЂСѓС‡РЅСѓСЋ** РёР· TG Mini App (РєРЅРѕРїРєР° "Р—Р°РїСѓСЃС‚РёС‚СЊ СЂР°СЃСЃС‹Р»РєСѓ"). РљСЂРѕРЅ `transitionStaleInProgressChats` РѕС‚РєР»СЋС‡С‘РЅ.
 
 **Job Name:** `auto-sequence-processor`
 **Schedule:** `*/30 * * * *` (every 30 minutes, UTC)
 **Active hours:** 8:00-22:00 MSK only (skips nighttime)
 **Batch limit:** 100 sequences per run
 
-**Sequence types (актуальные):**
-- `no_reply_followup_30d` — negatives (1-3★), 15 msgs every 2 days (~30 days)
-- `no_reply_followup_4star_30d` — 4★ reviews, 10 msgs every 3 days (~30 days)
+**Sequence types (Р°РєС‚СѓР°Р»СЊРЅС‹Рµ):**
+- `no_reply_followup_30d` вЂ” negatives (1-3в…), 15 msgs every 2 days (~30 days)
+- `no_reply_followup_4star_30d` вЂ” 4в… reviews, 10 msgs every 3 days (~30 days)
 
-> Legacy: `no_reply_followup` / `no_reply_followup_4star` — старая 14-дневная система.
+> Legacy: `no_reply_followup` / `no_reply_followup_4star` вЂ” СЃС‚Р°СЂР°СЏ 14-РґРЅРµРІРЅР°СЏ СЃРёСЃС‚РµРјР°.
 
 **What It Does:**
 1. Queries `chat_auto_sequences` table for active sequences where `next_send_at <= NOW()` (limit 100)
 2. For each pending sequence (safety checks in order):
-   a. **Client replied?** → STOP sequence (`client_replied`), chat → `inbox`
-   b. **Review resolved?** → STOP sequence (`review_resolved`) if complaint approved / review excluded / rating excluded
-   c. **Chat status valid?** → STOP if not `awaiting_reply` or `inbox` (`status_changed`)
-   d. **Seller already sent today?** → SKIP, reschedule to random slot (no step advance)
-   e. **Max steps reached?** → Send СТОП message (per `sequence_type`) + close chat (`no_reply`)
+   a. **Client replied?** в†’ STOP sequence (`client_replied`), chat в†’ `inbox`
+   b. **Review resolved?** в†’ STOP sequence (`review_resolved`) if complaint approved / review excluded / rating excluded
+   c. **Chat status valid?** в†’ STOP if not `awaiting_reply` or `inbox` (`status_changed`)
+   d. **Seller already sent today?** в†’ SKIP, reschedule to random slot (no step advance)
+   e. **Max steps reached?** в†’ Send РЎРўРћРџ message (per `sequence_type`) + close chat (`no_reply`)
    f. Send next follow-up via WB Chat API
    g. Record in `chat_messages`, update chat, advance sequence
    h. **Audit trail (migration 027):** All status/tag changes written to `chat_status_history` with `change_source = 'cron_sequence'`, `closure_type = 'auto'`
 3. Rate limits: 3 seconds between sends
 
 **Review-resolved check (step 2b):** Before each message send, checks `isReviewResolvedForChat()`:
-- `complaint_status = 'approved'` — WB accepted complaint
+- `complaint_status = 'approved'` вЂ” WB accepted complaint
 - `review_status_wb IN ('excluded','unpublished','temporarily_hidden','deleted')`
-- `rating_excluded = true` — transparent stars
+- `rating_excluded = true` вЂ” transparent stars
 
-### Запуск рассылок (MANUAL ONLY, с 2026-02-28)
+### Р—Р°РїСѓСЃРє СЂР°СЃСЃС‹Р»РѕРє (MANUAL ONLY, СЃ 2026-02-28)
 
-Рассылки создаются **только вручную** из TG Mini App:
-- Менеджер открывает чат → нажимает "Запустить рассылку"
+Р Р°СЃСЃС‹Р»РєРё СЃРѕР·РґР°СЋС‚СЃСЏ **С‚РѕР»СЊРєРѕ РІСЂСѓС‡РЅСѓСЋ** РёР· TG Mini App:
+- РњРµРЅРµРґР¶РµСЂ РѕС‚РєСЂС‹РІР°РµС‚ С‡Р°С‚ в†’ РЅР°Р¶РёРјР°РµС‚ "Р—Р°РїСѓСЃС‚РёС‚СЊ СЂР°СЃСЃС‹Р»РєСѓ"
 - API: `POST /api/telegram/chats/[chatId]/sequence/start`
-- Создаёт sequence + ставит `tag='deletion_candidate'`, `status='awaiting_reply'`
+- РЎРѕР·РґР°С‘С‚ sequence + СЃС‚Р°РІРёС‚ `tag='deletion_candidate'`, `status='awaiting_reply'`
 
-> **Удалено:** auto-launch из dialogue sync (Step 5b trigger phrase detection), auto-launch из OZON sync (Step 3.5), auto-create при смене статуса на `awaiting_reply` из веб-дашборда. Файл `auto-sequence-launcher.ts` — dead code, не вызывается.
+> **РЈРґР°Р»РµРЅРѕ:** auto-launch РёР· dialogue sync (Step 5b trigger phrase detection), auto-launch РёР· OZON sync (Step 3.5), auto-create РїСЂРё СЃРјРµРЅРµ СЃС‚Р°С‚СѓСЃР° РЅР° `awaiting_reply` РёР· РІРµР±-РґР°С€Р±РѕСЂРґР°. Р¤Р°Р№Р» `auto-sequence-launcher.ts` вЂ” dead code, РЅРµ РІС‹Р·С‹РІР°РµС‚СЃСЏ.
 
-### Защита статуса awaiting_reply
+### Р—Р°С‰РёС‚Р° СЃС‚Р°С‚СѓСЃР° awaiting_reply
 
-Dialogue sync при обнаружении seller message НЕ переводит `awaiting_reply` → `in_progress`, если `getActiveSequenceForChat()` возвращает активную рассылку. Без этого каждое авто-сообщение cron-а сбрасывало бы статус.
+Dialogue sync РїСЂРё РѕР±РЅР°СЂСѓР¶РµРЅРёРё seller message РќР• РїРµСЂРµРІРѕРґРёС‚ `awaiting_reply` в†’ `in_progress`, РµСЃР»Рё `getActiveSequenceForChat()` РІРѕР·РІСЂР°С‰Р°РµС‚ Р°РєС‚РёРІРЅСѓСЋ СЂР°СЃСЃС‹Р»РєСѓ. Р‘РµР· СЌС‚РѕРіРѕ РєР°Р¶РґРѕРµ Р°РІС‚Рѕ-СЃРѕРѕР±С‰РµРЅРёРµ cron-Р° СЃР±СЂР°СЃС‹РІР°Р»Рѕ Р±С‹ СЃС‚Р°С‚СѓСЃ.
 
 ### Distributed Time Slots
 
@@ -1363,7 +1363,7 @@ Messages are distributed across the day using weighted time slots.
 
 **How it works:**
 - When a sequence is created or advanced, `next_send_at` is set to a **random time** within a weighted slot
-- For 30d sequences: next send = current day + interval (2 days for negatives, 3 days for 4★)
+- For 30d sequences: next send = current day + interval (2 days for negatives, 3 days for 4в…)
 - Random minute (0-59) within each hour for additional scatter
 - Function: `getNextSlotTime(dayOffset)` in `src/lib/auto-sequence-templates.ts`
 
@@ -1372,39 +1372,39 @@ Set `AUTO_SEQUENCE_DRY_RUN=true` in environment. All safety checks run, decision
 
 **Stopping Conditions:**
 - Client replied (detected in dialogue sync and in cron job)
-- Review resolved (complaint approved / review excluded — checked before each send)
+- Review resolved (complaint approved / review excluded вЂ” checked before each send)
 - Chat status changed away from `awaiting_reply`/`inbox` (checked in cron)
 - Seller already sent a message today (skip + reschedule, not stop)
-- All messages sent → СТОП message + close (for base sequences only; funnel sequences just stop)
+- All messages sent в†’ РЎРўРћРџ message + close (for base sequences only; funnel sequences just stop)
 
 **Sequence Types (as of 2026-03-01):**
 
 | sequence_type | Msgs | Period | Tag | Purpose |
 |---|---|---|---|---|
-| `no_reply_followup_30d` | 15 | ~30 дней | `deletion_candidate` | Базовая рассылка (1-3★) |
-| `no_reply_followup_4star_30d` | 10 | ~30 дней | `deletion_candidate` | Базовая рассылка (4★) |
-| `offer_reminder` | 5 | ~14 дней | `deletion_offered` | Напоминание об оффере |
-| `agreement_followup` | 4 | ~10 дней | `deletion_agreed` | Напоминание об инструкции |
+| `no_reply_followup_30d` | 15 | ~30 РґРЅРµР№ | `deletion_candidate` | Р‘Р°Р·РѕРІР°СЏ СЂР°СЃСЃС‹Р»РєР° (1-3в…) |
+| `no_reply_followup_4star_30d` | 10 | ~30 РґРЅРµР№ | `deletion_candidate` | Р‘Р°Р·РѕРІР°СЏ СЂР°СЃСЃС‹Р»РєР° (4в…) |
+| `offer_reminder` | 5 | ~14 РґРЅРµР№ | `deletion_offered` | РќР°РїРѕРјРёРЅР°РЅРёРµ РѕР± РѕС„С„РµСЂРµ |
+| `agreement_followup` | 4 | ~10 РґРЅРµР№ | `deletion_agreed` | РќР°РїРѕРјРёРЅР°РЅРёРµ РѕР± РёРЅСЃС‚СЂСѓРєС†РёРё |
 
 **Database Table:** `chat_auto_sequences`
 - See `migrations/005_create_chat_auto_sequences.sql`
 - Field `sequence_type` determines template set, interval, and stop message
 
 **Source Files:**
-- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — Cron job definition
-- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) — Default templates (30D + funnel sets), `TAG_SEQUENCE_CONFIG` mapping, `getNextSlotTime()` slot distributor
-- [src/lib/auto-sequence-launcher.ts](../src/lib/auto-sequence-launcher.ts) — Auto-launch logic (`maybeStartAutoSequence`) — DEAD CODE
-- [src/db/helpers.ts](../src/db/helpers.ts) — CRUD functions (createAutoSequence, advanceSequence, etc.)
-- [src/db/review-chat-link-helpers.ts](../src/db/review-chat-link-helpers.ts) — `isReviewResolvedForChat()` guard
-- [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) — Auto-launch trigger (Step 3.5) + awaiting_reply protection
-- [scripts/backfill-auto-sequences-30d.mjs](../scripts/backfill-auto-sequences-30d.mjs) — Batch backfill 30d sequences
-- [scripts/migrate-chat-statuses.mjs](../scripts/migrate-chat-statuses.mjs) — One-time status migration (2026-02-28)
-- [scripts/_check_sequences.mjs](../scripts/_check_sequences.mjs) — Diagnostic script
-- [src/lib/auto-sequence-sender.ts](../src/lib/auto-sequence-sender.ts) — Shared sender utility (used by both API immediate send + cron processor)
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” Cron job definition
+- [src/lib/auto-sequence-templates.ts](../src/lib/auto-sequence-templates.ts) вЂ” Default templates (30D + funnel sets), `TAG_SEQUENCE_CONFIG` mapping, `getNextSlotTime()` slot distributor
+- [src/lib/auto-sequence-launcher.ts](../src/lib/auto-sequence-launcher.ts) вЂ” Auto-launch logic (`maybeStartAutoSequence`) вЂ” DEAD CODE
+- [src/db/helpers.ts](../src/db/helpers.ts) вЂ” CRUD functions (createAutoSequence, advanceSequence, etc.)
+- [src/db/review-chat-link-helpers.ts](../src/db/review-chat-link-helpers.ts) вЂ” `isReviewResolvedForChat()` guard
+- [src/app/api/stores/[storeId]/dialogues/update/route.ts](../src/app/api/stores/%5BstoreId%5D/dialogues/update/route.ts) вЂ” Auto-launch trigger (Step 3.5) + awaiting_reply protection
+- [scripts/backfill-auto-sequences-30d.mjs](../scripts/backfill-auto-sequences-30d.mjs) вЂ” Batch backfill 30d sequences
+- [scripts/migrate-chat-statuses.mjs](../scripts/migrate-chat-statuses.mjs) вЂ” One-time status migration (2026-02-28)
+- [scripts/_check_sequences.mjs](../scripts/_check_sequences.mjs) вЂ” Diagnostic script
+- [src/lib/auto-sequence-sender.ts](../src/lib/auto-sequence-sender.ts) вЂ” Shared sender utility (used by both API immediate send + cron processor)
 
 ---
 
-## 8a. Resolved-Review Closer (Авто-закрытие resolved отзывов)
+## 8a. Resolved-Review Closer (РђРІС‚Рѕ-Р·Р°РєСЂС‹С‚РёРµ resolved РѕС‚Р·С‹РІРѕРІ)
 
 **Job Name:** `resolved-review-closer`
 **Schedule:** `15,45 * * * *` (every 30 min, offset at :15/:45 to avoid collision with auto-sequence processor)
@@ -1418,25 +1418,25 @@ Auto-closes chats linked to reviews that no longer affect store rating:
 4. **Audit trail (migration 027):** Writes to `chat_status_history` with `change_source = 'cron_resolved'`, `closure_type = 'auto'`
 
 **Resolved conditions:**
-- `complaint_status = 'approved'` — complaint accepted by WB
-- `review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')` — review hidden/removed
-- `rating_excluded = TRUE` — "transparent stars" (don't affect rating)
+- `complaint_status = 'approved'` вЂ” complaint accepted by WB
+- `review_status_wb IN ('excluded', 'unpublished', 'temporarily_hidden', 'deleted')` вЂ” review hidden/removed
+- `rating_excluded = TRUE` вЂ” "transparent stars" (don't affect rating)
 
 **Differentiated completion_reason (added 2026-03-03):**
-- `review_status_wb = 'temporarily_hidden'` → `completion_reason = 'temporarily_hidden'` (separate for statistics)
-- All other resolved conditions → `completion_reason = 'review_resolved'`
+- `review_status_wb = 'temporarily_hidden'` в†’ `completion_reason = 'temporarily_hidden'` (separate for statistics)
+- All other resolved conditions в†’ `completion_reason = 'review_resolved'`
 
 > **Note:** This cron is a **safety net** (layer 3). Layers 1-2 (Extension chat/opened + Dialogue sync Step 3.5b) close resolved chats instantly. See `docs/domains/chats-ai.md` for full 3-layer architecture.
 
 **Batch limit:** 200 chats per run (safety for first deploy with backlog)
 
 **Source Files:**
-- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startResolvedReviewCloser()`
-- [src/lib/init-server.ts](../src/lib/init-server.ts) — Registration
+- [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” `startResolvedReviewCloser()`
+- [src/lib/init-server.ts](../src/lib/init-server.ts) вЂ” Registration
 
 ---
 
-## 7. Client Directory Sync (Справочник клиентов)
+## 7. Client Directory Sync (РЎРїСЂР°РІРѕС‡РЅРёРє РєР»РёРµРЅС‚РѕРІ)
 
 **Job Name:** `client-directory-sync`
 **Schedule:**
@@ -1444,59 +1444,59 @@ Auto-closes chats linked to reviews that no longer affect store rating:
 - **Manual:** `POST /api/admin/google-sheets/sync-clients`
 
 **What It Does:**
-1. Читает существующие данные листа "Список клиентов"
-2. Строит карту `storeId → rowNumber` для upsert
-3. Загружает все магазины из БД
-4. Загружает папки клиентов из Google Drive (fuzzy-matching по названию)
-5. Для каждого магазина:
-   - Находит папку Drive по fuzzy-match названия
-   - Внутри папки ищет "Отчёт:" и "Скриншоты"
-   - Если store есть в таблице → **UPDATE** строки
-   - Если нет → **APPEND** новой строки
-6. Сохраняет вручную заполненный ИНН (колонка C)
+1. Р§РёС‚Р°РµС‚ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ РґР°РЅРЅС‹Рµ Р»РёСЃС‚Р° "РЎРїРёСЃРѕРє РєР»РёРµРЅС‚РѕРІ"
+2. РЎС‚СЂРѕРёС‚ РєР°СЂС‚Сѓ `storeId в†’ rowNumber` РґР»СЏ upsert
+3. Р—Р°РіСЂСѓР¶Р°РµС‚ РІСЃРµ РјР°РіР°Р·РёРЅС‹ РёР· Р‘Р”
+4. Р—Р°РіСЂСѓР¶Р°РµС‚ РїР°РїРєРё РєР»РёРµРЅС‚РѕРІ РёР· Google Drive (fuzzy-matching РїРѕ РЅР°Р·РІР°РЅРёСЋ)
+5. Р”Р»СЏ РєР°Р¶РґРѕРіРѕ РјР°РіР°Р·РёРЅР°:
+   - РќР°С…РѕРґРёС‚ РїР°РїРєСѓ Drive РїРѕ fuzzy-match РЅР°Р·РІР°РЅРёСЏ
+   - Р’РЅСѓС‚СЂРё РїР°РїРєРё РёС‰РµС‚ "РћС‚С‡С‘С‚:" Рё "РЎРєСЂРёРЅС€РѕС‚С‹"
+   - Р•СЃР»Рё store РµСЃС‚СЊ РІ С‚Р°Р±Р»РёС†Рµ в†’ **UPDATE** СЃС‚СЂРѕРєРё
+   - Р•СЃР»Рё РЅРµС‚ в†’ **APPEND** РЅРѕРІРѕР№ СЃС‚СЂРѕРєРё
+6. РЎРѕС…СЂР°РЅСЏРµС‚ РІСЂСѓС‡РЅСѓСЋ Р·Р°РїРѕР»РЅРµРЅРЅС‹Р№ РРќРќ (РєРѕР»РѕРЅРєР° C)
 
-**Стратегия:** Incremental Upsert (не full-rewrite как Product Rules)
+**РЎС‚СЂР°С‚РµРіРёСЏ:** Incremental Upsert (РЅРµ full-rewrite РєР°Рє Product Rules)
 
-**Колонки:**
-| # | Колонка | Источник |
+**РљРѕР»РѕРЅРєРё:**
+| # | РљРѕР»РѕРЅРєР° | РСЃС‚РѕС‡РЅРёРє |
 |---|---------|----------|
-| A | ID магазина | `store.id` |
-| B | Название | `store.name` |
-| C | ИНН | (заполняется вручную) |
-| D | Дата подключения | `store.created_at` |
-| E | Статус | `store.status` |
-| F | API Main | ✅/❌ |
-| G | API Content | ✅/❌ |
-| H | API Feedbacks | ✅/❌ |
-| I | API Chat | ✅/❌ |
-| J | Папка клиента | Google Drive ссылка |
-| K | Отчёт | Ссылка на "Отчёт: ..." |
-| L | Скриншоты | Ссылка на папку |
-| M | Обновлено | Timestamp |
+| A | ID РјР°РіР°Р·РёРЅР° | `store.id` |
+| B | РќР°Р·РІР°РЅРёРµ | `store.name` |
+| C | РРќРќ | (Р·Р°РїРѕР»РЅСЏРµС‚СЃСЏ РІСЂСѓС‡РЅСѓСЋ) |
+| D | Р”Р°С‚Р° РїРѕРґРєР»СЋС‡РµРЅРёСЏ | `store.created_at` |
+| E | РЎС‚Р°С‚СѓСЃ | `store.status` |
+| F | API Main | вњ…/вќЊ |
+| G | API Content | вњ…/вќЊ |
+| H | API Feedbacks | вњ…/вќЊ |
+| I | API Chat | вњ…/вќЊ |
+| J | РџР°РїРєР° РєР»РёРµРЅС‚Р° | Google Drive СЃСЃС‹Р»РєР° |
+| K | РћС‚С‡С‘С‚ | РЎСЃС‹Р»РєР° РЅР° "РћС‚С‡С‘С‚: ..." |
+| L | РЎРєСЂРёРЅС€РѕС‚С‹ | РЎСЃС‹Р»РєР° РЅР° РїР°РїРєСѓ |
+| M | РћР±РЅРѕРІР»РµРЅРѕ | Timestamp |
 
 **Source Files:**
-- [src/services/google-sheets-sync/client-directory/](../src/services/google-sheets-sync/client-directory/) — Sync module
-- [src/app/api/admin/google-sheets/sync-clients/route.ts](../src/app/api/admin/google-sheets/sync-clients/route.ts) — API endpoint
+- [src/services/google-sheets-sync/client-directory/](../src/services/google-sheets-sync/client-directory/) вЂ” Sync module
+- [src/app/api/admin/google-sheets/sync-clients/route.ts](../src/app/api/admin/google-sheets/sync-clients/route.ts) вЂ” API endpoint
 
-**Google Drive Folder:** `1GelGC6stQVoc5OaJuachXNZtuJvOevyK` (Клиенты)
+**Google Drive Folder:** `1GelGC6stQVoc5OaJuachXNZtuJvOevyK` (РљР»РёРµРЅС‚С‹)
 
 **Fuzzy Matching Algorithm:**
 ```typescript
 function normalizeStoreName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/["'«»""'']/g, '')          // Remove quotes
-    .replace(/^(ооо|ип|зао|пао)\s*/gi, '') // Remove legal forms
+    .replace(/["'В«В»""'']/g, '')          // Remove quotes
+    .replace(/^(РѕРѕРѕ|РёРї|Р·Р°Рѕ|РїР°Рѕ)\s*/gi, '') // Remove legal forms
     .replace(/\s+/g, ' ')
     .trim();
 }
-// Priority: 1) Exact match → 2) Contains → 3) 60%+ word match
+// Priority: 1) Exact match в†’ 2) Contains в†’ 3) 60%+ word match
 ```
 
 **Example Output:**
 ```
 [ClientDirectorySync] Starting incremental sync...
-[ClientDirectorySync] Target: 1-mxbnv... / "Список клиентов"
+[ClientDirectorySync] Target: 1-mxbnv... / "РЎРїРёСЃРѕРє РєР»РёРµРЅС‚РѕРІ"
 [ClientDirectorySync] Found 63 existing rows
 [ClientDirectorySync] Mapped 62 existing stores
 [ClientDirectorySync] Found 63 stores in database
@@ -1504,7 +1504,7 @@ function normalizeStoreName(name: string): string {
 [ClientDirectorySync] Updates: 62, Appends: 1
 [ClientDirectorySync] Updated 806 cells
 [ClientDirectorySync] Appended 1 rows
-[ClientDirectorySync] ✅ Sync completed in 26728ms
+[ClientDirectorySync] вњ… Sync completed in 26728ms
 ```
 
 **Manual Trigger:**
@@ -1518,14 +1518,14 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 
 ---
 
-## 9. Nightly Full Review Sync (Полный синк отзывов)
+## 9. Nightly Full Review Sync (РџРѕР»РЅС‹Р№ СЃРёРЅРє РѕС‚Р·С‹РІРѕРІ)
 
 **Job Name:** `rolling-review-full-sync`
 **Schedule:**
 - **Production:** `0 19 * * *` (22:00 MSK / 19:00 UTC, every day including Sunday)
 - **Development:** `*/30 * * * *` (every 30 minutes)
 
-**Purpose:** Guarantee complete review coverage across all stores. Processes ALL 12 chunks every night — full 3-year history refreshed daily.
+**Purpose:** Guarantee complete review coverage across all stores. Processes ALL 12 chunks every night вЂ” full 3-year history refreshed daily.
 
 **Strategy:** Every night processes all 12 chunks (0-11) sequentially. Within each chunk, stores are processed in parallel (concurrency=5) with 5-minute timeout per store. Estimated duration: ~1-2 hours (within 22:00-07:00 MSK window).
 
@@ -1533,21 +1533,21 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 
 | Chunk # | Date Range (days ago) | Description |
 |---------|----------------------|-------------|
-| 0 | 0–90 | Most recent reviews |
-| 1 | 91–180 | |
-| 2 | 181–270 | |
-| 3 | 271–360 | ~1 year |
-| 4 | 361–450 | |
-| 5 | 451–540 | |
-| 6 | 541–630 | |
-| 7 | 631–720 | ~2 years |
-| 8 | 721–810 | |
-| 9 | 811–900 | |
-| 10 | 901–990 | |
-| 11 | 991–1080 | ~3 years |
+| 0 | 0вЂ“90 | Most recent reviews |
+| 1 | 91вЂ“180 | |
+| 2 | 181вЂ“270 | |
+| 3 | 271вЂ“360 | ~1 year |
+| 4 | 361вЂ“450 | |
+| 5 | 451вЂ“540 | |
+| 6 | 541вЂ“630 | |
+| 7 | 631вЂ“720 | ~2 years |
+| 8 | 721вЂ“810 | |
+| 9 | 811вЂ“900 | |
+| 10 | 901вЂ“990 | |
+| 11 | 991вЂ“1080 | ~3 years |
 
 **What It Does:**
-1. **OZON stores** synced first (one full sync per store — OZON API has no date-range filter, uses cursor pagination)
+1. **OZON stores** synced first (one full sync per store вЂ” OZON API has no date-range filter, uses cursor pagination)
 2. **WB stores:** Iterates through all 12 chunks (0-11)
 3. For each chunk: calculates `dateFrom` and `dateTo` for the 90-day window
 4. Processes WB stores in parallel (concurrency=5, 15-min timeout per store)
@@ -1558,7 +1558,7 @@ curl -X POST "http://localhost:9002/api/admin/google-sheets/sync-clients"
 - **Multi-marketplace:** WB stores use 12-chunk date-range sync; OZON stores do single full cursor-based sync
 - Does NOT interfere with hourly incremental sync (separate job name, separate concurrency lock)
 - Uses existing adaptive chunking logic (splits further if >19k reviews per sub-chunk)
-- Runs at 22:00 MSK — minimal user activity, 9-hour window until morning
+- Runs at 22:00 MSK вЂ” minimal user activity, 9-hour window until morning
 - Parallel processing: concurrency=5 stores, 15-min timeout per store
 - Estimated duration: ~1-2 hours for all 12 chunks across ~47 WB stores + a few minutes for OZON stores
 - **Deletion detection (migration 015):** After syncing each store, compares WB API IDs with DB IDs in the synced date range. Reviews missing from WB are marked as `review_status_wb = 'deleted'`, and their draft complaints are auto-cancelled (`status = 'not_applicable'`). Safeguard: skips if >30% would be marked deleted (likely API issue).
@@ -1574,7 +1574,7 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 
 ---
 
-## 9a. Midday Review Catchup (Дневной досинк отзывов)
+## 9a. Midday Review Catchup (Р”РЅРµРІРЅРѕР№ РґРѕСЃРёРЅРє РѕС‚Р·С‹РІРѕРІ)
 
 **Job Name:** `midday-review-catchup`
 **Schedule:**
@@ -1586,17 +1586,17 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 **What It Does:**
 1. Calculates chunk 0 date range (last 90 days)
 2. For each active **WB** store: calls full sync API with chunk 0 date range
-3. Uses upsert — no duplicates created
+3. Uses upsert вЂ” no duplicates created
 4. Waits 3 seconds between stores
 
 **Key Properties:**
 - **WB-only:** OZON stores are excluded (OZON API has no date-range filter; covered by hourly incremental + nightly full sync)
 - Only processes chunk 0 (no rotational chunks)
-- Idempotent via upsert — safe to run alongside other syncs
+- Idempotent via upsert вЂ” safe to run alongside other syncs
 - Estimated duration: 3-5 minutes for ~65 WB stores
 - Auto-complaint generation triggers automatically for new reviews found
 
-**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startMiddayReviewCatchup()`
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” `startMiddayReviewCatchup()`
 
 ---
 
@@ -1606,10 +1606,10 @@ curl -X POST "http://localhost:3000/api/stores/{storeId}/reviews/update?mode=ful
 
 ### Principles
 
-1. **Idempotency** — re-running a job must be safe (no duplicates, no side effects)
-2. **Logging** — every job logs `[CRON] start/end/errors` with duration
-3. **Overlap protection** — concurrent runs prevented via `runningJobs` flags
-4. **Documentation** — every job documented in this file
+1. **Idempotency** вЂ” re-running a job must be safe (no duplicates, no side effects)
+2. **Logging** вЂ” every job logs `[CRON] start/end/errors` with duration
+3. **Overlap protection** вЂ” concurrent runs prevented via `runningJobs` flags
+4. **Documentation** вЂ” every job documented in this file
 
 ### Prohibited
 
@@ -1654,9 +1654,9 @@ if (!exists.rows.length) {
 
 | Time (MSK) | Interval | Purpose |
 |-----------|----------|---------|
-| 09:00–18:00 | **5 min** | Work hours — high frequency for fast response |
-| 06:00–09:00, 18:00–21:00 | 15 min | Morning/evening — moderate frequency |
-| 21:00–06:00 | 60 min | Night — low frequency |
+| 09:00вЂ“18:00 | **5 min** | Work hours вЂ” high frequency for fast response |
+| 06:00вЂ“09:00, 18:00вЂ“21:00 | 15 min | Morning/evening вЂ” moderate frequency |
+| 21:00вЂ“06:00 | 60 min | Night вЂ” low frequency |
 
 **What It Does (per store):**
 
@@ -1665,15 +1665,15 @@ if (!exists.rows.length) {
 | 1 | Fetch events | WB: cursor-based `chats/events`; OZON: `getChatList()` |
 | 2 | Save messages | Upsert `chat_messages`, update `chats.last_message_*` |
 | 3 | AI classification | `classifyChatDeletion()` for chats with new client messages |
-| **3.5** | **Reconciliation** | `reconcileChatWithLink()` — fills `review_chat_links.chat_id` by matching chat URL patterns. Extracts UUID from WB URL, maps to `rcl.chat_url` |
+| **3.5** | **Reconciliation** | `reconcileChatWithLink()` вЂ” fills `review_chat_links.chat_id` by matching chat URL patterns. Extracts UUID from WB URL, maps to `rcl.chat_url` |
 | **3.5b** | **Instant resolved-close** | Checks ALL synced chats via `isReviewResolvedForChat()`. Closes resolved chats immediately (`review_resolved` or `temporarily_hidden`), stops active sequences. Added 2026-03-03 |
 | 4 | Status updates | Tag changes, counter updates |
 | **5a-tg** | **TG notifications** | Sends push to linked TG users. **Filtered:** WB only for chats with `review_chat_links` record; OZON only for `product_nm_id IS NOT NULL` |
-| ~~5b~~ | ~~Auto-sequence trigger~~ | **REMOVED (2026-02-28).** Was: detects trigger phrases → creates sequences. Now: sequences started manually from TG mini app only |
+| ~~5b~~ | ~~Auto-sequence trigger~~ | **REMOVED (2026-02-28).** Was: detects trigger phrases в†’ creates sequences. Now: sequences started manually from TG mini app only |
 | 6 | Interval recalc | Sets next run timeout based on MSK time tier |
 
 **Load:**
-- 43 stores × 2 sec delay = ~90 seconds per cycle
+- 43 stores Г— 2 sec delay = ~90 seconds per cycle
 - At 5-min intervals: ~3.5 min headroom (sufficient)
 
-**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) — `startAdaptiveDialogueSync()`
+**Source:** [src/lib/cron-jobs.ts](../src/lib/cron-jobs.ts) вЂ” `startAdaptiveDialogueSync()`

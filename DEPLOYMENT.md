@@ -1,29 +1,29 @@
-# 🚀 Production Deployment Guide
+# рџљЂ Production Deployment Guide
 
-Полное руководство по деплою WB Reputation Manager на Yandex Cloud.
+РџРѕР»РЅРѕРµ СЂСѓРєРѕРІРѕРґСЃС‚РІРѕ РїРѕ РґРµРїР»РѕСЋ WB Reputation Manager РЅР° Yandex Cloud.
 
-## 📋 Информация о сервере
+## рџ“‹ РРЅС„РѕСЂРјР°С†РёСЏ Рѕ СЃРµСЂРІРµСЂРµ
 
-- **IP:** `158.160.229.16`
+- **IP:** `158.160.139.99`
 - **OS:** Ubuntu 24.04 LTS
-- **Конфигурация:** 2 vCPU, 4GB RAM, 20GB SSD
-- **Регион:** ru-central1-d
+- **РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ:** 2 vCPU, 4GB RAM, 20GB SSD
+- **Р РµРіРёРѕРЅ:** ru-central1-d
 
-## 🔑 SSH-подключение
+## рџ”‘ SSH-РїРѕРґРєР»СЋС‡РµРЅРёРµ
 
 ```bash
-ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.229.16
+ssh -i ~/.ssh/yandex-cloud-wb-reputation ubuntu@158.160.139.99
 ```
 
-## 📦 Шаг 1: Настройка сервера
+## рџ“¦ РЁР°Рі 1: РќР°СЃС‚СЂРѕР№РєР° СЃРµСЂРІРµСЂР°
 
-### 1.1 Обновление системы
+### 1.1 РћР±РЅРѕРІР»РµРЅРёРµ СЃРёСЃС‚РµРјС‹
 
 ```bash
 sudo apt update && sudo apt upgrade -y
 ```
 
-### 1.2 Установка Node.js 22
+### 1.2 РЈСЃС‚Р°РЅРѕРІРєР° Node.js 22
 
 ```bash
 # Install Node.js 22 LTS
@@ -35,7 +35,7 @@ node --version  # Should show v22.x.x
 npm --version
 ```
 
-### 1.3 Установка PM2 (Process Manager)
+### 1.3 РЈСЃС‚Р°РЅРѕРІРєР° PM2 (Process Manager)
 
 ```bash
 sudo npm install -g pm2
@@ -45,7 +45,7 @@ pm2 startup
 # Copy and run the command that PM2 outputs
 ```
 
-### 1.4 Установка Nginx
+### 1.4 РЈСЃС‚Р°РЅРѕРІРєР° Nginx
 
 ```bash
 sudo apt install -y nginx
@@ -58,14 +58,14 @@ sudo systemctl enable nginx
 sudo systemctl status nginx
 ```
 
-### 1.5 Установка Git
+### 1.5 РЈСЃС‚Р°РЅРѕРІРєР° Git
 
 ```bash
 sudo apt install -y git
 git --version
 ```
 
-## 📂 Шаг 2: Клонирование проекта
+## рџ“‚ РЁР°Рі 2: РљР»РѕРЅРёСЂРѕРІР°РЅРёРµ РїСЂРѕРµРєС‚Р°
 
 ```bash
 # Create app directory
@@ -78,15 +78,15 @@ git clone https://github.com/Klimov-IS/R5-Saas-v-2.0.git wb-reputation
 cd wb-reputation
 ```
 
-## 🔧 Шаг 3: Конфигурация приложения
+## рџ”§ РЁР°Рі 3: РљРѕРЅС„РёРіСѓСЂР°С†РёСЏ РїСЂРёР»РѕР¶РµРЅРёСЏ
 
-### 3.1 Создать `.env.production`
+### 3.1 РЎРѕР·РґР°С‚СЊ `.env.production`
 
 ```bash
 nano .env.production
 ```
 
-Вставьте следующую конфигурацию (замените значения):
+Р’СЃС‚Р°РІСЊС‚Рµ СЃР»РµРґСѓСЋС‰СѓСЋ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ (Р·Р°РјРµРЅРёС‚Рµ Р·РЅР°С‡РµРЅРёСЏ):
 
 ```env
 # Node Environment
@@ -100,43 +100,43 @@ POSTGRES_USER=admin_R5
 POSTGRES_PASSWORD=MyNewPass123
 
 # Next.js
-NEXT_PUBLIC_API_URL=http://158.160.229.16:3000
+NEXT_PUBLIC_API_URL=http://158.160.139.99:3000
 
 # Port
 PORT=3000
 
-# 🚨 CRITICAL: CRON Jobs Configuration (Added 2026-03-13)
+# рџљЁ CRITICAL: CRON Jobs Configuration (Added 2026-03-13)
 # DO NOT set this variable in production!
 # CRON jobs run ONLY in wb-reputation-cron process (see Step 4.5)
 # Setting this to 'true' will cause duplicate sends (main app has 2 instances in cluster mode)
-# ENABLE_CRON_IN_MAIN_APP=false  # ← DO NOT UNCOMMENT in production!
+# ENABLE_CRON_IN_MAIN_APP=false  # в†ђ DO NOT UNCOMMENT in production!
 
-# Deepseek AI (optional - если будете использовать AI)
+# Deepseek AI (optional - РµСЃР»Рё Р±СѓРґРµС‚Рµ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ AI)
 # DEEPSEEK_API_KEY=your-key-here
 ```
 
-Сохраните файл: `Ctrl+X`, затем `Y`, затем `Enter`
+РЎРѕС…СЂР°РЅРёС‚Рµ С„Р°Р№Р»: `Ctrl+X`, Р·Р°С‚РµРј `Y`, Р·Р°С‚РµРј `Enter`
 
-### 3.2 Установить зависимости
+### 3.2 РЈСЃС‚Р°РЅРѕРІРёС‚СЊ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё
 
 ```bash
 npm ci --production=false
 ```
 
-### 3.3 Собрать проект
+### 3.3 РЎРѕР±СЂР°С‚СЊ РїСЂРѕРµРєС‚
 
 ```bash
 npm run build
 ```
 
-## 🚀 Шаг 4: Запуск с PM2
+## рџљЂ РЁР°Рі 4: Р—Р°РїСѓСЃРє СЃ PM2
 
-### 4.1 PM2 ecosystem файл
+### 4.1 PM2 ecosystem С„Р°Р№Р»
 
-Файл `ecosystem.config.js` уже включён в репозиторий. Он содержит все 3 процесса:
+Р¤Р°Р№Р» `ecosystem.config.js` СѓР¶Рµ РІРєР»СЋС‡С‘РЅ РІ СЂРµРїРѕР·РёС‚РѕСЂРёР№. РћРЅ СЃРѕРґРµСЂР¶РёС‚ РІСЃРµ 3 РїСЂРѕС†РµСЃСЃР°:
 
 ```javascript
-// ecosystem.config.js (уже в репозитории)
+// ecosystem.config.js (СѓР¶Рµ РІ СЂРµРїРѕР·РёС‚РѕСЂРёРё)
 module.exports = {
   apps: [
     {
@@ -144,7 +144,7 @@ module.exports = {
       script: "node_modules/next/dist/bin/next",
       args: "start",
       instances: 1,
-      exec_mode: "fork",              // Fork mode (не cluster!) — см. docs/CRON_JOBS.md
+      exec_mode: "fork",              // Fork mode (РЅРµ cluster!) вЂ” СЃРј. docs/CRON_JOBS.md
       // ...
     },
     {
@@ -161,86 +161,86 @@ module.exports = {
 };
 ```
 
-**Почему fork mode (1 instance), а не cluster (2 instances):**
-- `cronJobsStarted` — in-memory флаг, не расшарен между instance'ами cluster
-- При cluster mode health check мог попасть на instance без CRON → re-trigger в другом → дубли
-- Fork mode исключает эту проблему. 4GB RAM достаточно для 1 instance
+**РџРѕС‡РµРјСѓ fork mode (1 instance), Р° РЅРµ cluster (2 instances):**
+- `cronJobsStarted` вЂ” in-memory С„Р»Р°Рі, РЅРµ СЂР°СЃС€Р°СЂРµРЅ РјРµР¶РґСѓ instance'Р°РјРё cluster
+- РџСЂРё cluster mode health check РјРѕРі РїРѕРїР°СЃС‚СЊ РЅР° instance Р±РµР· CRON в†’ re-trigger РІ РґСЂСѓРіРѕРј в†’ РґСѓР±Р»Рё
+- Fork mode РёСЃРєР»СЋС‡Р°РµС‚ СЌС‚Сѓ РїСЂРѕР±Р»РµРјСѓ. 4GB RAM РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РґР»СЏ 1 instance
 
-### 4.2 Создать директорию для логов
+### 4.2 РЎРѕР·РґР°С‚СЊ РґРёСЂРµРєС‚РѕСЂРёСЋ РґР»СЏ Р»РѕРіРѕРІ
 
 ```bash
 mkdir -p logs
 ```
 
-### 4.3 Запустить приложение
+### 4.3 Р—Р°РїСѓСЃС‚РёС‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ
 
 ```bash
 pm2 start ecosystem.config.js
 pm2 save
 ```
 
-### 4.4 Проверить статус
+### 4.4 РџСЂРѕРІРµСЂРёС‚СЊ СЃС‚Р°С‚СѓСЃ
 
 ```bash
 pm2 status
 pm2 logs wb-reputation --lines 50
 ```
 
-### 4.5 Как работает CRON (архитектура)
+### 4.5 РљР°Рє СЂР°Р±РѕС‚Р°РµС‚ CRON (Р°СЂС…РёС‚РµРєС‚СѓСЂР°)
 
-**CRON jobs запускаются ТОЛЬКО в main app (`wb-reputation`), но триггерятся через HTTP:**
+**CRON jobs Р·Р°РїСѓСЃРєР°СЋС‚СЃСЏ РўРћР›Р¬РљРћ РІ main app (`wb-reputation`), РЅРѕ С‚СЂРёРіРіРµСЂСЏС‚СЃСЏ С‡РµСЂРµР· HTTP:**
 
-1. PM2 запускает `wb-reputation` → CRON остаётся ВЫКЛЮЧЕН (ждёт trigger)
-2. PM2 запускает `wb-reputation-cron` → POST `/api/cron/trigger` → `forceCron: true` → CRON ВКЛЮЧЁН
-3. Каждые 5 мин: health check → если CRON упал → re-trigger
+1. PM2 Р·Р°РїСѓСЃРєР°РµС‚ `wb-reputation` в†’ CRON РѕСЃС‚Р°С‘С‚СЃСЏ Р’Р«РљР›Р®Р§Р•Рќ (Р¶РґС‘С‚ trigger)
+2. PM2 Р·Р°РїСѓСЃРєР°РµС‚ `wb-reputation-cron` в†’ POST `/api/cron/trigger` в†’ `forceCron: true` в†’ CRON Р’РљР›Р®Р§РЃРќ
+3. РљР°Р¶РґС‹Рµ 5 РјРёРЅ: health check в†’ РµСЃР»Рё CRON СѓРїР°Р» в†’ re-trigger
 
-**Проверка (после `pm2 start ecosystem.config.js`):**
+**РџСЂРѕРІРµСЂРєР° (РїРѕСЃР»Рµ `pm2 start ecosystem.config.js`):**
 
 ```bash
-# Должны увидеть 3 процесса
+# Р”РѕР»Р¶РЅС‹ СѓРІРёРґРµС‚СЊ 3 РїСЂРѕС†РµСЃСЃР°
 pm2 list
 
-# Ожидаемый вывод:
-# ┌─────┬──────────────────────┬─────────┬─────────┐
-# │ id  │ name                 │ mode    │ status  │
-# ├─────┼──────────────────────┼─────────┼─────────┤
-# │ 0   │ wb-reputation        │ fork    │ online  │ ← Main app (1 instance)
-# │ 1   │ wb-reputation-tg-bot │ fork    │ online  │ ← Telegram bot
-# │ 2   │ wb-reputation-cron   │ fork    │ online  │ ← CRON manager
-# └─────┴──────────────────────┴─────────┴─────────┘
+# РћР¶РёРґР°РµРјС‹Р№ РІС‹РІРѕРґ:
+# в”Њв”Ђв”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¬в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ђ
+# в”‚ id  в”‚ name                 в”‚ mode    в”‚ status  в”‚
+# в”њв”Ђв”Ђв”Ђв”Ђв”Ђв”јв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”јв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”јв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”¤
+# в”‚ 0   в”‚ wb-reputation        в”‚ fork    в”‚ online  в”‚ в†ђ Main app (1 instance)
+# в”‚ 1   в”‚ wb-reputation-tg-bot в”‚ fork    в”‚ online  в”‚ в†ђ Telegram bot
+# в”‚ 2   в”‚ wb-reputation-cron   в”‚ fork    в”‚ online  в”‚ в†ђ CRON manager
+# в””в”Ђв”Ђв”Ђв”Ђв”Ђв”ґв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ґв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”ґв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”
 
-# Проверить логи CRON manager
+# РџСЂРѕРІРµСЂРёС‚СЊ Р»РѕРіРё CRON manager
 pm2 logs wb-reputation-cron --lines 20 --nostream
 
-# Должны увидеть:
-# [START-CRON] ✅ CRON jobs triggered!
-# [START-CRON] 💓 Health OK: CRON running
+# Р”РѕР»Р¶РЅС‹ СѓРІРёРґРµС‚СЊ:
+# [START-CRON] вњ… CRON jobs triggered!
+# [START-CRON] рџ’“ Health OK: CRON running
 
-# Проверить main app
+# РџСЂРѕРІРµСЂРёС‚СЊ main app
 pm2 logs wb-reputation --lines 30 --nostream | grep -E "INIT|CRON"
 
-# Должны увидеть:
+# Р”РѕР»Р¶РЅС‹ СѓРІРёРґРµС‚СЊ:
 # [INIT] CRON jobs DISABLED in main app (waiting for /api/cron/trigger)
 # [INIT] Starting CRON jobs via /api/cron/trigger (dedicated process)
-# [INIT] ✅ CRON jobs started successfully
+# [INIT] вњ… CRON jobs started successfully
 ```
 
-**Подробнее:** см. `docs/CRON_JOBS.md`
+**РџРѕРґСЂРѕР±РЅРµРµ:** СЃРј. `docs/CRON_JOBS.md`
 
-## 🌐 Шаг 5: Настройка Nginx
+## рџЊђ РЁР°Рі 5: РќР°СЃС‚СЂРѕР№РєР° Nginx
 
-### 5.1 Создать конфигурацию Nginx
+### 5.1 РЎРѕР·РґР°С‚СЊ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ Nginx
 
 ```bash
 sudo nano /etc/nginx/sites-available/wb-reputation
 ```
 
-Вставьте:
+Р’СЃС‚Р°РІСЊС‚Рµ:
 
 ```nginx
 server {
     listen 80;
-    server_name 158.160.229.16;
+    server_name 158.160.139.99;
 
     # Gzip compression
     gzip on;
@@ -280,7 +280,7 @@ server {
 }
 ```
 
-### 5.2 Активировать конфигурацию
+### 5.2 РђРєС‚РёРІРёСЂРѕРІР°С‚СЊ РєРѕРЅС„РёРіСѓСЂР°С†РёСЋ
 
 ```bash
 # Create symbolic link
@@ -296,9 +296,9 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## ✅ Шаг 6: Проверка деплоя
+## вњ… РЁР°Рі 6: РџСЂРѕРІРµСЂРєР° РґРµРїР»РѕСЏ
 
-### 6.1 Проверить приложение
+### 6.1 РџСЂРѕРІРµСЂРёС‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ
 
 ```bash
 # Check if app is running
@@ -311,18 +311,18 @@ pm2 logs wb-reputation --lines 100
 curl http://localhost:3000
 ```
 
-### 6.2 Проверить через браузер
+### 6.2 РџСЂРѕРІРµСЂРёС‚СЊ С‡РµСЂРµР· Р±СЂР°СѓР·РµСЂ
 
-Откройте в браузере:
+РћС‚РєСЂРѕР№С‚Рµ РІ Р±СЂР°СѓР·РµСЂРµ:
 ```
-http://158.160.229.16
+http://158.160.139.99
 ```
 
-Вы должны увидеть главную страницу приложения!
+Р’С‹ РґРѕР»Р¶РЅС‹ СѓРІРёРґРµС‚СЊ РіР»Р°РІРЅСѓСЋ СЃС‚СЂР°РЅРёС†Сѓ РїСЂРёР»РѕР¶РµРЅРёСЏ!
 
-## 🔄 Обновление приложения
+## рџ”„ РћР±РЅРѕРІР»РµРЅРёРµ РїСЂРёР»РѕР¶РµРЅРёСЏ
 
-Для обновления приложения после изменений в коде:
+Р”Р»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РїСЂРёР»РѕР¶РµРЅРёСЏ РїРѕСЃР»Рµ РёР·РјРµРЅРµРЅРёР№ РІ РєРѕРґРµ:
 
 ```bash
 cd /var/www/wb-reputation
@@ -340,46 +340,46 @@ npm run build
 pm2 restart all
 ```
 
-### ✅ Post-Deploy Verification Checklist
+### вњ… Post-Deploy Verification Checklist
 
-**Проверить в течение 5 минут после `pm2 restart all`:**
+**РџСЂРѕРІРµСЂРёС‚СЊ РІ С‚РµС‡РµРЅРёРµ 5 РјРёРЅСѓС‚ РїРѕСЃР»Рµ `pm2 restart all`:**
 
 ```bash
-# 1. Все 3 процесса online
+# 1. Р’СЃРµ 3 РїСЂРѕС†РµСЃСЃР° online
 pm2 list
-# → wb-reputation (fork, online), wb-reputation-tg-bot (fork, online), wb-reputation-cron (fork, online)
+# в†’ wb-reputation (fork, online), wb-reputation-tg-bot (fork, online), wb-reputation-cron (fork, online)
 
-# 2. CRON triggered успешно
+# 2. CRON triggered СѓСЃРїРµС€РЅРѕ
 pm2 logs wb-reputation-cron --lines 20 --nostream | grep -E "triggered|Health"
-# → [START-CRON] ✅ CRON jobs triggered!
-# → [START-CRON] 💓 Health OK: CRON running
+# в†’ [START-CRON] вњ… CRON jobs triggered!
+# в†’ [START-CRON] рџ’“ Health OK: CRON running
 
 # 3. Health check API
 curl -s localhost:3000/api/health | python3 -m json.tool
-# → "status": "healthy", "cronJobs": { "cronRunning": true }
+# в†’ "status": "healthy", "cronJobs": { "cronRunning": true }
 
-# 4. Dialogue sync работает
+# 4. Dialogue sync СЂР°Р±РѕС‚Р°РµС‚
 pm2 logs wb-reputation --lines 50 --nostream | grep "dialogue sync"
-# → Свежие записи адаптивного sync
+# в†’ РЎРІРµР¶РёРµ Р·Р°РїРёСЃРё Р°РґР°РїС‚РёРІРЅРѕРіРѕ sync
 
-# 5. Нет критических ошибок
+# 5. РќРµС‚ РєСЂРёС‚РёС‡РµСЃРєРёС… РѕС€РёР±РѕРє
 pm2 logs wb-reputation --lines 50 --nostream | grep -i "error\|failed" | grep -v "backfill"
-# → Пусто или некритичные ошибки
+# в†’ РџСѓСЃС‚Рѕ РёР»Рё РЅРµРєСЂРёС‚РёС‡РЅС‹Рµ РѕС€РёР±РєРё
 
-# 6. TG bot работает
+# 6. TG bot СЂР°Р±РѕС‚Р°РµС‚
 pm2 logs wb-reputation-tg-bot --lines 10 --nostream
-# → Heartbeat или poll entries
+# в†’ Heartbeat РёР»Рё poll entries
 ```
 
-**Если CRON не запустился:** `pm2 restart wb-reputation-cron` (auto-retrigger через 3s)
+**Р•СЃР»Рё CRON РЅРµ Р·Р°РїСѓСЃС‚РёР»СЃСЏ:** `pm2 restart wb-reputation-cron` (auto-retrigger С‡РµСЂРµР· 3s)
 
 **Timing:**
-- `pm2 restart all` → CRON downtime ~6s (cron manager auto-retriggers)
-- `pm2 restart wb-reputation` → CRON downtime ~5min (health check detects)
+- `pm2 restart all` в†’ CRON downtime ~6s (cron manager auto-retriggers)
+- `pm2 restart wb-reputation` в†’ CRON downtime ~5min (health check detects)
 
-### 🤖 Автоматический deploy (рекомендуется)
+### рџ¤– РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРёР№ deploy (СЂРµРєРѕРјРµРЅРґСѓРµС‚СЃСЏ)
 
-Для удобства создан скрипт `scripts/deploy.sh`, который выполняет все шаги автоматически:
+Р”Р»СЏ СѓРґРѕР±СЃС‚РІР° СЃРѕР·РґР°РЅ СЃРєСЂРёРїС‚ `scripts/deploy.sh`, РєРѕС‚РѕСЂС‹Р№ РІС‹РїРѕР»РЅСЏРµС‚ РІСЃРµ С€Р°РіРё Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё:
 
 ```bash
 cd /var/www/wb-reputation
@@ -391,16 +391,16 @@ chmod +x scripts/deploy.sh
 bash scripts/deploy.sh
 ```
 
-Скрипт автоматически:
-1. ✅ Подтягивает изменения из GitHub
-2. ✅ Устанавливает зависимости
-3. ✅ Собирает приложение
-4. ✅ Перезапускает ОБА PM2 процесса
-5. ✅ Проверяет успешность deploy
+РЎРєСЂРёРїС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё:
+1. вњ… РџРѕРґС‚СЏРіРёРІР°РµС‚ РёР·РјРµРЅРµРЅРёСЏ РёР· GitHub
+2. вњ… РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё
+3. вњ… РЎРѕР±РёСЂР°РµС‚ РїСЂРёР»РѕР¶РµРЅРёРµ
+4. вњ… РџРµСЂРµР·Р°РїСѓСЃРєР°РµС‚ РћР‘Рђ PM2 РїСЂРѕС†РµСЃСЃР°
+5. вњ… РџСЂРѕРІРµСЂСЏРµС‚ СѓСЃРїРµС€РЅРѕСЃС‚СЊ deploy
 
-## 📊 Мониторинг и управление
+## рџ“Љ РњРѕРЅРёС‚РѕСЂРёРЅРі Рё СѓРїСЂР°РІР»РµРЅРёРµ
 
-### PM2 команды
+### PM2 РєРѕРјР°РЅРґС‹
 
 ```bash
 # Show status
@@ -436,7 +436,7 @@ pm2 restart wb-reputation-cron      # Restart CRON
 pm2 stop wb-reputation-cron         # Stop CRON (emergencies only!)
 ```
 
-### Nginx команды
+### Nginx РєРѕРјР°РЅРґС‹
 
 ```bash
 # Test config
@@ -455,15 +455,15 @@ sudo tail -f /var/log/nginx/error.log
 sudo tail -f /var/log/nginx/access.log
 ```
 
-## 🔒 Безопасность (Опционально)
+## рџ”’ Р‘РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ (РћРїС†РёРѕРЅР°Р»СЊРЅРѕ)
 
-### Настройка Firewall
+### РќР°СЃС‚СЂРѕР№РєР° Firewall
 
 ```bash
 # Enable UFW
 sudo ufw allow 22/tcp    # SSH
 sudo ufw allow 80/tcp    # HTTP
-sudo ufw allow 443/tcp   # HTTPS (для будущего SSL)
+sudo ufw allow 443/tcp   # HTTPS (РґР»СЏ Р±СѓРґСѓС‰РµРіРѕ SSL)
 sudo ufw enable
 
 # Check status
@@ -477,15 +477,15 @@ sudo apt install unattended-upgrades
 sudo dpkg-reconfigure --priority=low unattended-upgrades
 ```
 
-## 🔐 SSL-сертификат (для домена)
+## рџ”ђ SSL-СЃРµСЂС‚РёС„РёРєР°С‚ (РґР»СЏ РґРѕРјРµРЅР°)
 
-Если в будущем подключите домен, установите Let's Encrypt:
+Р•СЃР»Рё РІ Р±СѓРґСѓС‰РµРј РїРѕРґРєР»СЋС‡РёС‚Рµ РґРѕРјРµРЅ, СѓСЃС‚Р°РЅРѕРІРёС‚Рµ Let's Encrypt:
 
 ```bash
 # Install Certbot
 sudo apt install certbot python3-certbot-nginx
 
-# Get certificate (замените your-domain.com на ваш домен)
+# Get certificate (Р·Р°РјРµРЅРёС‚Рµ your-domain.com РЅР° РІР°С€ РґРѕРјРµРЅ)
 sudo certbot --nginx -d your-domain.com
 
 # Auto-renewal is configured automatically
@@ -493,9 +493,9 @@ sudo certbot --nginx -d your-domain.com
 sudo certbot renew --dry-run
 ```
 
-## 🐛 Troubleshooting
+## рџђ› Troubleshooting
 
-### Приложение не запускается
+### РџСЂРёР»РѕР¶РµРЅРёРµ РЅРµ Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ
 
 ```bash
 # Check PM2 logs
@@ -511,7 +511,7 @@ sudo kill -9 $(sudo lsof -t -i:3000)
 pm2 restart wb-reputation
 ```
 
-### Nginx не работает
+### Nginx РЅРµ СЂР°Р±РѕС‚Р°РµС‚
 
 ```bash
 # Check Nginx status
@@ -524,7 +524,7 @@ sudo nginx -t
 sudo tail -f /var/log/nginx/error.log
 ```
 
-### Проблемы с подключением к PostgreSQL
+### РџСЂРѕР±Р»РµРјС‹ СЃ РїРѕРґРєР»СЋС‡РµРЅРёРµРј Рє PostgreSQL
 
 ```bash
 # Test database connection from server
@@ -532,47 +532,47 @@ cd /var/www/wb-reputation
 npx tsx scripts/test-db-connection.ts
 ```
 
-### CRON jobs запускаются дважды (дубликаты)
+### CRON jobs Р·Р°РїСѓСЃРєР°СЋС‚СЃСЏ РґРІР°Р¶РґС‹ (РґСѓР±Р»РёРєР°С‚С‹)
 
-**Проблема:** Сообщения отправляются 2-3 раза клиентам.
+**РџСЂРѕР±Р»РµРјР°:** РЎРѕРѕР±С‰РµРЅРёСЏ РѕС‚РїСЂР°РІР»СЏСЋС‚СЃСЏ 2-3 СЂР°Р·Р° РєР»РёРµРЅС‚Р°Рј.
 
-**Диагностика:**
+**Р”РёР°РіРЅРѕСЃС‚РёРєР°:**
 ```bash
-# Проверить main app логи
+# РџСЂРѕРІРµСЂРёС‚СЊ main app Р»РѕРіРё
 pm2 logs wb-reputation --lines 100 --nostream | grep "CRON\|INIT"
 
-# ❌ ПЛОХО: "Starting cron jobs" в main app
-# ✅ ХОРОШО: "CRON jobs DISABLED in main app"
+# вќЊ РџР›РћРҐРћ: "Starting cron jobs" РІ main app
+# вњ… РҐРћР РћРЁРћ: "CRON jobs DISABLED in main app"
 
-# Проверить сколько процессов запускают CRON
+# РџСЂРѕРІРµСЂРёС‚СЊ СЃРєРѕР»СЊРєРѕ РїСЂРѕС†РµСЃСЃРѕРІ Р·Р°РїСѓСЃРєР°СЋС‚ CRON
 pm2 list | grep -E "wb-reputation|cron"
 ```
 
-**Решение:**
+**Р РµС€РµРЅРёРµ:**
 ```bash
-# 1. Убедитесь что в .env.production НЕТ строки:
+# 1. РЈР±РµРґРёС‚РµСЃСЊ С‡С‚Рѕ РІ .env.production РќР•Рў СЃС‚СЂРѕРєРё:
 # ENABLE_CRON_IN_MAIN_APP=true
 
-# 2. Перезапустить все процессы
+# 2. РџРµСЂРµР·Р°РїСѓСЃС‚РёС‚СЊ РІСЃРµ РїСЂРѕС†РµСЃСЃС‹
 pm2 restart all
 
-# 3. Проверить логи снова
+# 3. РџСЂРѕРІРµСЂРёС‚СЊ Р»РѕРіРё СЃРЅРѕРІР°
 pm2 logs wb-reputation --lines 20 --nostream | grep INIT
-# Должно быть: "CRON jobs DISABLED"
+# Р”РѕР»Р¶РЅРѕ Р±С‹С‚СЊ: "CRON jobs DISABLED"
 ```
 
-**Если проблема остается:**
+**Р•СЃР»Рё РїСЂРѕР±Р»РµРјР° РѕСЃС‚Р°РµС‚СЃСЏ:**
 ```bash
-# Emergency: остановить все CRON
+# Emergency: РѕСЃС‚Р°РЅРѕРІРёС‚СЊ РІСЃРµ CRON
 pm2 stop wb-reputation-cron
 cd /var/www/wb-reputation
 node scripts/EMERGENCY-stop-auto-sequences.mjs
 
-# Запустить только CRON процесс
+# Р—Р°РїСѓСЃС‚РёС‚СЊ С‚РѕР»СЊРєРѕ CRON РїСЂРѕС†РµСЃСЃ
 pm2 start wb-reputation-cron
 ```
 
-### Проверить использование ресурсов
+### РџСЂРѕРІРµСЂРёС‚СЊ РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ СЂРµСЃСѓСЂСЃРѕРІ
 
 ```bash
 # CPU and Memory
@@ -585,101 +585,101 @@ df -h
 pm2 monit
 ```
 
-## 🚨 Emergency Scripts (Добавлено 2026-03-13)
+## рџљЁ Emergency Scripts (Р”РѕР±Р°РІР»РµРЅРѕ 2026-03-13)
 
-В случае критических проблем с рассылками используйте emergency scripts.
+Р’ СЃР»СѓС‡Р°Рµ РєСЂРёС‚РёС‡РµСЃРєРёС… РїСЂРѕР±Р»РµРј СЃ СЂР°СЃСЃС‹Р»РєР°РјРё РёСЃРїРѕР»СЊР·СѓР№С‚Рµ emergency scripts.
 
-### 1. Остановить все активные рассылки
+### 1. РћСЃС‚Р°РЅРѕРІРёС‚СЊ РІСЃРµ Р°РєС‚РёРІРЅС‹Рµ СЂР°СЃСЃС‹Р»РєРё
 
-**Когда использовать:**
-- Клиенты получают дубликаты сообщений
-- Рассылка отправляет слишком много сообщений
-- Нужно срочно остановить все auto-sequences
+**РљРѕРіРґР° РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ:**
+- РљР»РёРµРЅС‚С‹ РїРѕР»СѓС‡Р°СЋС‚ РґСѓР±Р»РёРєР°С‚С‹ СЃРѕРѕР±С‰РµРЅРёР№
+- Р Р°СЃСЃС‹Р»РєР° РѕС‚РїСЂР°РІР»СЏРµС‚ СЃР»РёС€РєРѕРј РјРЅРѕРіРѕ СЃРѕРѕР±С‰РµРЅРёР№
+- РќСѓР¶РЅРѕ СЃСЂРѕС‡РЅРѕ РѕСЃС‚Р°РЅРѕРІРёС‚СЊ РІСЃРµ auto-sequences
 
-**Команда:**
+**РљРѕРјР°РЅРґР°:**
 ```bash
 cd /var/www/wb-reputation
 node scripts/EMERGENCY-stop-auto-sequences.mjs
 ```
 
-**Что делает:**
-- Останавливает все активные sequences (status = 'stopped')
-- Переводит чаты из `awaiting_reply` → `inbox`/`in_progress`
-- Логирует количество остановленных sequences
+**Р§С‚Рѕ РґРµР»Р°РµС‚:**
+- РћСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РІСЃРµ Р°РєС‚РёРІРЅС‹Рµ sequences (status = 'stopped')
+- РџРµСЂРµРІРѕРґРёС‚ С‡Р°С‚С‹ РёР· `awaiting_reply` в†’ `inbox`/`in_progress`
+- Р›РѕРіРёСЂСѓРµС‚ РєРѕР»РёС‡РµСЃС‚РІРѕ РѕСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… sequences
 
-**Ожидаемый вывод:**
+**РћР¶РёРґР°РµРјС‹Р№ РІС‹РІРѕРґ:**
 ```
-🚨 ========== EMERGENCY AUTO-SEQUENCE STOP ==========
-⚠️  Found 47 active sequences to stop...
-✅ Successfully stopped 47 sequences:
+рџљЁ ========== EMERGENCY AUTO-SEQUENCE STOP ==========
+вљ пёЏ  Found 47 active sequences to stop...
+вњ… Successfully stopped 47 sequences:
    - no_reply_followup: 32 sequences
    - no_reply_followup_4star: 15 sequences
 ```
 
-### 2. Проверить дубликаты и rapid sends
+### 2. РџСЂРѕРІРµСЂРёС‚СЊ РґСѓР±Р»РёРєР°С‚С‹ Рё rapid sends
 
-**Когда использовать:**
-- После emergency stop
-- Для мониторинга качества рассылок
-- Для проверки после deployment
+**РљРѕРіРґР° РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ:**
+- РџРѕСЃР»Рµ emergency stop
+- Р”Р»СЏ РјРѕРЅРёС‚РѕСЂРёРЅРіР° РєР°С‡РµСЃС‚РІР° СЂР°СЃСЃС‹Р»РѕРє
+- Р”Р»СЏ РїСЂРѕРІРµСЂРєРё РїРѕСЃР»Рµ deployment
 
-**Команда:**
+**РљРѕРјР°РЅРґР°:**
 ```bash
 cd /var/www/wb-reputation
 node scripts/AUDIT-check-duplicate-sends.mjs
 ```
 
-**Что проверяет:**
-- Duplicate messages (одинаковый текст в один чат)
-- Multiple active sequences per chat (должно быть max 1)
-- Rapid sends (< 5 min между сообщениями)
+**Р§С‚Рѕ РїСЂРѕРІРµСЂСЏРµС‚:**
+- Duplicate messages (РѕРґРёРЅР°РєРѕРІС‹Р№ С‚РµРєСЃС‚ РІ РѕРґРёРЅ С‡Р°С‚)
+- Multiple active sequences per chat (РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ max 1)
+- Rapid sends (< 5 min РјРµР¶РґСѓ СЃРѕРѕР±С‰РµРЅРёСЏРјРё)
 - Stale processing locks (> 10 min)
 
-**Ожидаемый вывод (здоровая система):**
+**РћР¶РёРґР°РµРјС‹Р№ РІС‹РІРѕРґ (Р·РґРѕСЂРѕРІР°СЏ СЃРёСЃС‚РµРјР°):**
 ```
-✅ No duplicate messages found in last 24 hours
-✅ No duplicate active sequences found
-✅ No rapid sends detected (< 5 min apart)
-⚠️  Found 2 stale processing locks (> 10 min)
+вњ… No duplicate messages found in last 24 hours
+вњ… No duplicate active sequences found
+вњ… No rapid sends detected (< 5 min apart)
+вљ пёЏ  Found 2 stale processing locks (> 10 min)
 ```
 
-### 3. Проверить статус sequences
+### 3. РџСЂРѕРІРµСЂРёС‚СЊ СЃС‚Р°С‚СѓСЃ sequences
 
-**Команда:**
+**РљРѕРјР°РЅРґР°:**
 ```bash
 cd /var/www/wb-reputation
 node scripts/check-sequences-status.mjs
 ```
 
-**Что показывает:**
+**Р§С‚Рѕ РїРѕРєР°Р·С‹РІР°РµС‚:**
 - Distribution by status (active, stopped, completed)
 - Recently stopped sequences (last 24h)
 - Stop reasons
 
-### 4. Автоматический deployment с проверками
+### 4. РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРёР№ deployment СЃ РїСЂРѕРІРµСЂРєР°РјРё
 
-**Рекомендуется для обновлений:**
+**Р РµРєРѕРјРµРЅРґСѓРµС‚СЃСЏ РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёР№:**
 ```bash
 cd /var/www/wb-reputation
 bash scripts/DEPLOY-EMERGENCY-FIX.sh
 ```
 
-**Что делает:**
-1. Останавливает active sequences (безопасность)
-2. Останавливает CRON процесс
-3. Запускает audit (before)
-4. Билдит новую версию
-5. Рестартует main app
-6. Запускает CRON процесс
-7. Проверяет успешность
+**Р§С‚Рѕ РґРµР»Р°РµС‚:**
+1. РћСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ active sequences (Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ)
+2. РћСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ CRON РїСЂРѕС†РµСЃСЃ
+3. Р—Р°РїСѓСЃРєР°РµС‚ audit (before)
+4. Р‘РёР»РґРёС‚ РЅРѕРІСѓСЋ РІРµСЂСЃРёСЋ
+5. Р РµСЃС‚Р°СЂС‚СѓРµС‚ main app
+6. Р—Р°РїСѓСЃРєР°РµС‚ CRON РїСЂРѕС†РµСЃСЃ
+7. РџСЂРѕРІРµСЂСЏРµС‚ СѓСЃРїРµС€РЅРѕСЃС‚СЊ
 
-**⚠️ Используйте только если:**
-- Deployment связан с изменениями в CRON или auto-sequences
-- Нужна дополнительная безопасность
+**вљ пёЏ РСЃРїРѕР»СЊР·СѓР№С‚Рµ С‚РѕР»СЊРєРѕ РµСЃР»Рё:**
+- Deployment СЃРІСЏР·Р°РЅ СЃ РёР·РјРµРЅРµРЅРёСЏРјРё РІ CRON РёР»Рё auto-sequences
+- РќСѓР¶РЅР° РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅР°СЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ
 
-Для обычных deployment используйте стандартный `scripts/deploy.sh`.
+Р”Р»СЏ РѕР±С‹С‡РЅС‹С… deployment РёСЃРїРѕР»СЊР·СѓР№С‚Рµ СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ `scripts/deploy.sh`.
 
-## 📝 Полезные логи
+## рџ“ќ РџРѕР»РµР·РЅС‹Рµ Р»РѕРіРё
 
 ```bash
 # Application logs
@@ -695,55 +695,55 @@ sudo tail -f /var/log/nginx/error.log
 sudo journalctl -u nginx -f
 ```
 
-## 🎯 Итоговый чеклист
+## рџЋЇ РС‚РѕРіРѕРІС‹Р№ С‡РµРєР»РёСЃС‚
 
-- [ ] Сервер настроен (Node.js, PM2, Nginx)
-- [ ] Проект склонирован из GitHub
-- [ ] `.env.production` создан с корректными данными
-- [ ] **⚠️ ENABLE_CRON_IN_MAIN_APP НЕ установлена** (или закомментирована)
-- [ ] Зависимости установлены (`npm ci`)
-- [ ] Проект собран (`npm run build`)
-- [ ] **Main app запущен** (`pm2 start ecosystem.config.js`)
-- [ ] **CRON процесс запущен** (`pm2 start ecosystem-cron.config.js`)
-- [ ] PM2 сохранен (`pm2 save`)
-- [ ] **Проверка: Main app CRON disabled** (см. логи)
-- [ ] **Проверка: CRON process initialized** (см. логи)
-- [ ] Nginx настроен и перезагружен
-- [ ] Приложение доступно по IP: http://158.160.229.16
-- [ ] Логи проверены (нет критических ошибок)
-- [ ] **Emergency scripts протестированы** (AUDIT-check-duplicate-sends.mjs)
-- [ ] Firewall настроен (опционально)
+- [ ] РЎРµСЂРІРµСЂ РЅР°СЃС‚СЂРѕРµРЅ (Node.js, PM2, Nginx)
+- [ ] РџСЂРѕРµРєС‚ СЃРєР»РѕРЅРёСЂРѕРІР°РЅ РёР· GitHub
+- [ ] `.env.production` СЃРѕР·РґР°РЅ СЃ РєРѕСЂСЂРµРєС‚РЅС‹РјРё РґР°РЅРЅС‹РјРё
+- [ ] **вљ пёЏ ENABLE_CRON_IN_MAIN_APP РќР• СѓСЃС‚Р°РЅРѕРІР»РµРЅР°** (РёР»Рё Р·Р°РєРѕРјРјРµРЅС‚РёСЂРѕРІР°РЅР°)
+- [ ] Р—Р°РІРёСЃРёРјРѕСЃС‚Рё СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹ (`npm ci`)
+- [ ] РџСЂРѕРµРєС‚ СЃРѕР±СЂР°РЅ (`npm run build`)
+- [ ] **Main app Р·Р°РїСѓС‰РµРЅ** (`pm2 start ecosystem.config.js`)
+- [ ] **CRON РїСЂРѕС†РµСЃСЃ Р·Р°РїСѓС‰РµРЅ** (`pm2 start ecosystem-cron.config.js`)
+- [ ] PM2 СЃРѕС…СЂР°РЅРµРЅ (`pm2 save`)
+- [ ] **РџСЂРѕРІРµСЂРєР°: Main app CRON disabled** (СЃРј. Р»РѕРіРё)
+- [ ] **РџСЂРѕРІРµСЂРєР°: CRON process initialized** (СЃРј. Р»РѕРіРё)
+- [ ] Nginx РЅР°СЃС‚СЂРѕРµРЅ Рё РїРµСЂРµР·Р°РіСЂСѓР¶РµРЅ
+- [ ] РџСЂРёР»РѕР¶РµРЅРёРµ РґРѕСЃС‚СѓРїРЅРѕ РїРѕ IP: http://158.160.139.99
+- [ ] Р›РѕРіРё РїСЂРѕРІРµСЂРµРЅС‹ (РЅРµС‚ РєСЂРёС‚РёС‡РµСЃРєРёС… РѕС€РёР±РѕРє)
+- [ ] **Emergency scripts РїСЂРѕС‚РµСЃС‚РёСЂРѕРІР°РЅС‹** (AUDIT-check-duplicate-sends.mjs)
+- [ ] Firewall РЅР°СЃС‚СЂРѕРµРЅ (РѕРїС†РёРѕРЅР°Р»СЊРЅРѕ)
 
-## 📚 Related Documents
+## рџ“љ Related Documents
 
 ### Emergency Response (2026-03-13)
-- **[Sprint Emergency CRON Fix](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/README.md)** - Полный спринт с исправлением дубликатов
-- **[Deployment Report](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/DEPLOYMENT-REPORT-2026-03-13.md)** - Отчет о deployment 2026-03-13
-- **[Architecture Audit](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/documentation/ARCHITECTURE-AUDIT-2026-03-13.md)** - Audit системы
-- **[Sequence Restart Analysis](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SEQUENCE-RESTART-ANALYSIS.md)** - Анализ перезапуска sequences
+- **[Sprint Emergency CRON Fix](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/README.md)** - РџРѕР»РЅС‹Р№ СЃРїСЂРёРЅС‚ СЃ РёСЃРїСЂР°РІР»РµРЅРёРµРј РґСѓР±Р»РёРєР°С‚РѕРІ
+- **[Deployment Report](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/DEPLOYMENT-REPORT-2026-03-13.md)** - РћС‚С‡РµС‚ Рѕ deployment 2026-03-13
+- **[Architecture Audit](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/documentation/ARCHITECTURE-AUDIT-2026-03-13.md)** - Audit СЃРёСЃС‚РµРјС‹
+- **[Sequence Restart Analysis](docs/sprints/Sprint-Emergency-CRON-Fix-2026-03-13/SEQUENCE-RESTART-ANALYSIS.md)** - РђРЅР°Р»РёР· РїРµСЂРµР·Р°РїСѓСЃРєР° sequences
 
 ### Documentation
-- **Database Schema:** `docs/database-schema.md` (требует обновления)
-- **CRON Jobs:** `docs/CRON_JOBS.md` (будет создан)
-- **Troubleshooting:** `docs/TROUBLESHOOTING.md` (будет создан)
+- **Database Schema:** `docs/database-schema.md` (С‚СЂРµР±СѓРµС‚ РѕР±РЅРѕРІР»РµРЅРёСЏ)
+- **CRON Jobs:** `docs/CRON_JOBS.md` (Р±СѓРґРµС‚ СЃРѕР·РґР°РЅ)
+- **Troubleshooting:** `docs/TROUBLESHOOTING.md` (Р±СѓРґРµС‚ СЃРѕР·РґР°РЅ)
 
 ### Scripts
 - **Emergency Scripts:** `scripts/EMERGENCY-*.mjs`
 - **Audit Scripts:** `scripts/AUDIT-*.mjs`
 - **Check Scripts:** `scripts/check-*.mjs`
 
-## 🆘 Поддержка
+## рџ† РџРѕРґРґРµСЂР¶РєР°
 
-Если возникли проблемы:
-1. Проверьте PM2 логи: `pm2 logs wb-reputation` и `pm2 logs wb-reputation-cron`
-2. Проверьте Nginx логи: `sudo tail -f /var/log/nginx/error.log`
-3. Проверьте системные ресурсы: `htop`
-4. Запустите audit: `node scripts/AUDIT-check-duplicate-sends.mjs`
-5. Перезапустите процессы: `pm2 restart all`
+Р•СЃР»Рё РІРѕР·РЅРёРєР»Рё РїСЂРѕР±Р»РµРјС‹:
+1. РџСЂРѕРІРµСЂСЊС‚Рµ PM2 Р»РѕРіРё: `pm2 logs wb-reputation` Рё `pm2 logs wb-reputation-cron`
+2. РџСЂРѕРІРµСЂСЊС‚Рµ Nginx Р»РѕРіРё: `sudo tail -f /var/log/nginx/error.log`
+3. РџСЂРѕРІРµСЂСЊС‚Рµ СЃРёСЃС‚РµРјРЅС‹Рµ СЂРµСЃСѓСЂСЃС‹: `htop`
+4. Р—Р°РїСѓСЃС‚РёС‚Рµ audit: `node scripts/AUDIT-check-duplicate-sends.mjs`
+5. РџРµСЂРµР·Р°РїСѓСЃС‚РёС‚Рµ РїСЂРѕС†РµСЃСЃС‹: `pm2 restart all`
 
-**Emergency:** Если рассылки дублируются, см. секцию "Emergency Scripts" выше.
+**Emergency:** Р•СЃР»Рё СЂР°СЃСЃС‹Р»РєРё РґСѓР±Р»РёСЂСѓСЋС‚СЃСЏ, СЃРј. СЃРµРєС†РёСЋ "Emergency Scripts" РІС‹С€Рµ.
 
 ---
 
-**Последнее обновление:** 2026-03-14
-**Версия:** 2.1 (fork mode, CRON trigger architecture, post-deploy checklist)
+**РџРѕСЃР»РµРґРЅРµРµ РѕР±РЅРѕРІР»РµРЅРёРµ:** 2026-03-14
+**Р’РµСЂСЃРёСЏ:** 2.1 (fork mode, CRON trigger architecture, post-deploy checklist)
