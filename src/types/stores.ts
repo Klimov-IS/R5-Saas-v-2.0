@@ -56,3 +56,9 @@ export function isStageAtLeast(current: StoreStage, required: StoreStage): boole
 
 /** Stages where chat work is allowed */
 export const CHAT_ALLOWED_STAGES: StoreStage[] = ['chats_opened', 'monitoring'];
+
+/** Stages where review sync is needed (complaints require reviews) */
+export const REVIEW_SYNC_STAGES: StoreStage[] = ['complaints_submitted', 'chats_opened', 'monitoring'];
+
+/** Stages where dialogue (chat) sync is needed */
+export const DIALOGUE_SYNC_STAGES: StoreStage[] = ['chats_opened', 'monitoring'];

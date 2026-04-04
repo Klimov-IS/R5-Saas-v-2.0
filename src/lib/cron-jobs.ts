@@ -18,7 +18,8 @@ import { DEFAULT_STOP_MESSAGE, DEFAULT_STOP_MESSAGE_4STAR, DEFAULT_OZON_STOP_MES
 import type { SequenceMessage } from '@/lib/auto-sequence-templates';
 import { isReviewResolvedForChat } from '@/db/review-chat-link-helpers';
 import { sendSequenceMessage } from '@/lib/auto-sequence-sender';
-import { CHAT_ALLOWED_STAGES } from '@/types/stores';
+import { CHAT_ALLOWED_STAGES, REVIEW_SYNC_STAGES, DIALOGUE_SYNC_STAGES } from '@/types/stores';
+import type { StoreStage } from '@/types/stores';
 
 // Track running jobs
 const runningJobs: { [jobName: string]: boolean } = {};
@@ -86,9 +87,10 @@ export function startDailyReviewSync() {
       console.log(`[CRON] 🚀 Starting hourly review sync at ${new Date().toISOString()}`);
       console.log('========================================\n');
 
-      // Get all stores
-      const stores = await dbHelpers.getAllStores();
-      console.log(`[CRON] Found ${stores.length} stores to sync`);
+      // Get stores that need review sync (stage-based filtering)
+      const allStores = await dbHelpers.getAllStores();
+      const stores = allStores.filter(s => REVIEW_SYNC_STAGES.includes(s.stage as StoreStage));
+      console.log(`[CRON] Found ${allStores.length} active stores, ${stores.length} in review-sync stages`);
 
       let successCount = 0;
       let errorCount = 0;
@@ -402,9 +404,10 @@ export function startAdaptiveDialogueSync() {
       console.log(`[CRON] Current interval: ${interval} minutes`);
       console.log('========================================\n');
 
-      // Get all stores
-      const stores = await dbHelpers.getAllStores();
-      console.log(`[CRON] Found ${stores.length} stores to sync`);
+      // Get stores that need dialogue sync (stage-based filtering)
+      const allStores = await dbHelpers.getAllStores();
+      const stores = allStores.filter(s => DIALOGUE_SYNC_STAGES.includes(s.stage as StoreStage));
+      console.log(`[CRON] Found ${allStores.length} active stores, ${stores.length} in dialogue-sync stages`);
 
       let successCount = 0;
       let errorCount = 0;
@@ -1387,10 +1390,10 @@ export function startOzonHourlyFullSync() {
       console.log(`[CRON] 🔍 Starting OZON hourly full scan at ${new Date().toISOString()}`);
       console.log('========================================\n');
 
-      // Only process OZON stores
+      // Only process OZON stores in dialogue-sync stages
       const allStores = await dbHelpers.getAllStores();
-      const ozonStores = allStores.filter(s => s.marketplace === 'ozon');
-      console.log(`[CRON] Found ${ozonStores.length} OZON stores to full-scan`);
+      const ozonStores = allStores.filter(s => s.marketplace === 'ozon' && DIALOGUE_SYNC_STAGES.includes(s.stage as StoreStage));
+      console.log(`[CRON] Found ${ozonStores.length} OZON stores in dialogue-sync stages to full-scan`);
 
       let successCount = 0;
       let errorCount = 0;
