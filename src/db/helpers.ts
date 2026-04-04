@@ -614,6 +614,64 @@ export async function deleteStore(id: string): Promise<boolean> {
   });
 }
 
+/**
+ * Cleanup operational data for an inactive store.
+ * Preserves: stores, products, product_rules, review_complaints,
+ *            complaint_details, store_faq, store_guides, review_chat_links.
+ * Deletes: reviews, chats, chat_messages, chat_status_history,
+ *          chat_auto_sequences, ai_logs, questions, complaint_backfill_jobs,
+ *          complaint_daily_limits, review_statuses_from_extension, manager_tasks.
+ */
+export async function cleanupInactiveStoreData(
+  storeId: string
+): Promise<{ deletedRows: Record<string, number> }> {
+  return transaction(async (client) => {
+    const deletedRows: Record<string, number> = {};
+
+    const del = async (table: string) => {
+      const r = await client.query(`DELETE FROM ${table} WHERE store_id = $1`, [storeId]);
+      deletedRows[table] = r.rowCount ?? 0;
+    };
+
+    // Children first, respecting FK order
+    // 1. Audit / logs
+    await del('chat_status_history');
+    await del('ai_logs');
+
+    // 2. Chat-related
+    await del('chat_auto_sequences');
+    await del('chat_messages');
+
+    // 3. Extension data
+    await del('review_statuses_from_extension');
+
+    // 4. Operational complaint data
+    await del('complaint_backfill_jobs');
+    await del('complaint_daily_limits');
+
+    // 5. Chats (FK on review_chat_links.chat_id was dropped in migration 019)
+    await del('chats');
+
+    // 6. Reviews (review_chat_links.review_id → ON DELETE SET NULL, preserving links)
+    await del('reviews');
+
+    // 7. Questions
+    await del('questions');
+
+    // 8. Manager tasks
+    await del('manager_tasks');
+
+    // 9. Reset denormalized counters
+    await client.query(
+      'UPDATE stores SET total_reviews = 0, total_chats = 0, review_count_5star = 0 WHERE id = $1',
+      [storeId]
+    );
+
+    console.log(`[CLEANUP-STORE] Store ${storeId}: cleaned up operational data`, deletedRows);
+    return { deletedRows };
+  });
+}
+
 // ============================================================================
 // Products
 // ============================================================================
