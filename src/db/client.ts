@@ -1,8 +1,9 @@
 /**
  * PostgreSQL Database Client
  *
- * Singleton connection pool for Yandex Cloud Managed PostgreSQL.
+ * Singleton connection pool for PostgreSQL (local or Yandex Cloud Managed).
  * Uses node-postgres (pg) with connection pooling for optimal performance.
+ * SSL is enabled only when POSTGRES_SSL=require (for remote/cloud databases).
  */
 
 import { Pool, PoolClient, QueryResult } from 'pg';
@@ -19,7 +20,12 @@ function validateEnv() {
 
 // Connection pool configuration
 function getPoolConfig() {
-  // Option 1: Use DATABASE_URL if available (preferred for Yandex Cloud)
+  // SSL config: enabled only for remote databases (POSTGRES_SSL=require)
+  const sslConfig = process.env.POSTGRES_SSL === 'require'
+    ? { ssl: { rejectUnauthorized: false } }
+    : {};
+
+  // Option 1: Use DATABASE_URL if available
   if (process.env.DATABASE_URL) {
     // Parse DATABASE_URL to remove sslmode query parameter
     // We'll handle SSL separately to avoid conflicts
@@ -35,9 +41,7 @@ function getPoolConfig() {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
       statement_timeout: 60000, // Kill queries after 60s to prevent pool exhaustion
-      ssl: {
-        rejectUnauthorized: false // Required for Yandex Cloud self-signed certs
-      },
+      ...sslConfig,
       application_name: 'wb-reputation-v2',
       client_encoding: 'UTF8', // Explicit UTF-8 encoding for Cyrillic support
     };
@@ -46,7 +50,7 @@ function getPoolConfig() {
   // Option 2: Use individual parameters
   return {
     host: process.env.POSTGRES_HOST!,
-    port: parseInt(process.env.POSTGRES_PORT || '6432', 10),
+    port: parseInt(process.env.POSTGRES_PORT || '5432', 10),
     database: process.env.POSTGRES_DB!,
     user: process.env.POSTGRES_USER!,
     password: process.env.POSTGRES_PASSWORD!,
@@ -55,9 +59,7 @@ function getPoolConfig() {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     statement_timeout: 60000, // Kill queries after 60s to prevent pool exhaustion
-    ssl: {
-      rejectUnauthorized: false
-    },
+    ...sslConfig,
     application_name: 'wb-reputation-v2',
     client_encoding: 'UTF8', // Explicit UTF-8 encoding for Cyrillic support
   };
