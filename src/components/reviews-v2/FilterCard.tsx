@@ -1,10 +1,15 @@
 /**
  * FilterCard Component
  * Professional SaaS-style filter system with multi-select dropdowns
+ *
+ * Layout: 2 rows + divider
+ *   Row 1 (primary):  Search | Rating pills | Exclude toggle
+ *   ---divider---
+ *   Row 2 (secondary): Product dropdown | 4 status dropdowns | Reset button
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Search, Filter, RefreshCw, ChevronDown, RotateCcw } from 'lucide-react';
+import React from 'react';
+import { Search, RotateCcw } from 'lucide-react';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 
 // Filter options
@@ -62,14 +67,8 @@ type Props = {
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   ratingCounts: { [key: number]: number };
-  onSync?: () => void;
-  onFullSync?: () => void;
-  isSyncing?: boolean;
-  syncMode?: 'incremental' | 'full';
-  // Session persistence features
   onReset?: () => void;
   activeFilterCount?: number;
-  // Product options for dropdown
   products?: ProductOption[];
 };
 
@@ -77,32 +76,15 @@ export const FilterCard: React.FC<Props> = ({
   filters,
   onFiltersChange,
   ratingCounts,
-  onSync,
-  onFullSync,
-  isSyncing = false,
-  syncMode,
   onReset,
   activeFilterCount = 0,
   products = [],
 }) => {
-  // Build product options for dropdown
   const productOptions = products.map(p => ({
     value: String(p.nm_id),
     label: p.name ? `${p.name} (${p.nm_id})` : String(p.nm_id),
   }));
-  const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
-  const syncDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (syncDropdownRef.current && !syncDropdownRef.current.contains(event.target as Node)) {
-        setSyncDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
   const updateFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
     onFiltersChange({ ...filters, [key]: value });
   };
@@ -116,139 +98,78 @@ export const FilterCard: React.FC<Props> = ({
 
   return (
     <div className="filter-card">
-      {/* Header */}
-      <div className="filter-header">
-        <h3 className="filter-title">
-          <Filter style={{ width: '18px', height: '18px' }} />
-          Фильтры
-          {activeFilterCount > 0 && (
-            <span className="filter-badge">{activeFilterCount}</span>
-          )}
-        </h3>
-        <div className="filter-actions">
-          {onReset && activeFilterCount > 0 && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={onReset}
-              title="Сбросить все фильтры"
-            >
-              <RotateCcw style={{ width: '14px', height: '14px' }} />
-              Сбросить
-            </button>
-          )}
-          {(onSync || onFullSync) && (
-            <div style={{ position: 'relative' }} ref={syncDropdownRef}>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => !isSyncing && setSyncDropdownOpen(!syncDropdownOpen)}
-                disabled={isSyncing}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <RefreshCw
-                  style={{ width: '14px', height: '14px' }}
-                  className={isSyncing ? 'spinning' : ''}
-                />
-                {isSyncing
-                  ? (syncMode === 'full' ? 'Полная синхронизация...' : 'Синхронизация...')
-                  : 'Синхронизировать'
-                }
-                <ChevronDown style={{ width: '12px', height: '12px' }} />
-              </button>
-
-              {syncDropdownOpen && !isSyncing && (
-                <div className="sync-dropdown">
-                  {onSync && (
-                    <button
-                      className="sync-dropdown-item"
-                      onClick={() => {
-                        onSync();
-                        setSyncDropdownOpen(false);
-                      }}
-                    >
-                      <RefreshCw style={{ width: '14px', height: '14px' }} />
-                      Инкрементальная
-                      <span className="sync-dropdown-hint">Только новые отзывы</span>
-                    </button>
-                  )}
-                  {onFullSync && (
-                    <button
-                      className="sync-dropdown-item"
-                      onClick={() => {
-                        onFullSync();
-                        setSyncDropdownOpen(false);
-                      }}
-                    >
-                      <RefreshCw style={{ width: '14px', height: '14px' }} />
-                      Полная
-                      <span className="sync-dropdown-hint">Все отзывы с WB API</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Search Row */}
-      <div className="search-section">
-        <div className="search-filters-row">
-          <div className="filter-group search-group">
-            <label className="filter-label">Поиск</label>
-            <div className="search-row">
-              <Search className="search-icon-standalone" style={{ width: '18px', height: '18px' }} />
-              <input
-                type="text"
-                className="search-input-no-icon"
-                placeholder="ID отзыва, текст, автор..."
-                value={filters.search}
-                onChange={(e) => updateFilter('search', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="filter-group search-group products-dropdown-group">
-            <label className="filter-label">Товары</label>
-            <MultiSelectDropdown
-              options={productOptions}
-              selected={filters.productIds}
-              onChange={(selected) => updateFilter('productIds', selected)}
-              allLabel="Все товары"
-              searchable={true}
-              searchPlaceholder="Поиск по названию или артикулу..."
+      {/* Row 1: Search + Rating pills + Exclude toggle */}
+      <div className="filter-row-primary">
+        {/* Search */}
+        <div className="filter-group search-group">
+          <label className="filter-label">Поиск</label>
+          <div className="search-wrapper">
+            <Search className="search-icon" style={{ width: '16px', height: '16px' }} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="ID, текст, автор..."
+              value={filters.search}
+              onChange={(e) => updateFilter('search', e.target.value)}
             />
           </div>
         </div>
-      </div>
 
-      {/* Rating Filters - inline checkboxes */}
-      <div className="filter-section">
-        <label className="filter-label">Рейтинг отзыва</label>
-        <div className="checkbox-group">
-          {[1, 2, 3, 4, 5].map((rating) => (
-            <label
-              key={rating}
-              className={`filter-checkbox ${filters.ratings.includes(rating) ? 'checked' : ''}`}
-            >
-              <input
-                type="checkbox"
-                checked={filters.ratings.includes(rating)}
-                onChange={() => toggleRating(rating)}
-              />
-              <span>{'⭐'.repeat(rating)} {rating}</span>
-              <span className="filter-count">
-                ({(ratingCounts[rating] || 0).toLocaleString('ru-RU')})
-              </span>
-            </label>
-          ))}
+        {/* Rating pills */}
+        <div className="filter-group rating-group">
+          <label className="filter-label">Рейтинг</label>
+          <div className="rating-pills">
+            {[1, 2, 3, 4, 5].map((rating) => (
+              <button
+                key={rating}
+                type="button"
+                className={`rating-pill ${filters.ratings.includes(rating) ? 'active' : ''}`}
+                onClick={() => toggleRating(rating)}
+              >
+                <span className="star">★</span>
+                {rating}
+                <span className="count">
+                  {(ratingCounts[rating] || 0).toLocaleString('ru-RU')}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Hide rating-excluded toggle — logically next to rating */}
+        <div className="filter-group toggle-group">
+          <label className="filter-label">&nbsp;</label>
+          <label className={`toggle-pill ${filters.hideRatingExcluded ? 'active' : ''}`}>
+            <input
+              type="checkbox"
+              checked={filters.hideRatingExcluded}
+              onChange={(e) => updateFilter('hideRatingExcluded', e.target.checked)}
+            />
+            Без исключённых
+          </label>
         </div>
       </div>
 
-      {/* Status Dropdowns Row */}
-      <div className="dropdowns-row">
+      <div className="filter-divider" />
+
+      {/* Row 2: All dropdowns + Reset */}
+      <div className="filter-row-secondary">
+        {/* Product */}
+        <div className="filter-group products-group">
+          <label className="filter-label">Товар</label>
+          <MultiSelectDropdown
+            options={productOptions}
+            selected={filters.productIds}
+            onChange={(selected) => updateFilter('productIds', selected)}
+            allLabel="Все товары"
+            searchable={true}
+            searchPlaceholder="Поиск по названию или артикулу..."
+          />
+        </div>
+
         {/* Complaint Status */}
-        <div className="dropdown-group">
-          <label className="filter-label">Статус жалобы</label>
+        <div className="filter-group dropdown-group">
+          <label className="filter-label">Жалоба</label>
           <MultiSelectDropdown
             options={COMPLAINT_STATUS_OPTIONS}
             selected={filters.complaintStatuses}
@@ -258,7 +179,7 @@ export const FilterCard: React.FC<Props> = ({
         </div>
 
         {/* Product Status */}
-        <div className="dropdown-group">
+        <div className="filter-group dropdown-group">
           <label className="filter-label">Статус товара</label>
           <MultiSelectDropdown
             options={PRODUCT_STATUS_OPTIONS}
@@ -269,38 +190,41 @@ export const FilterCard: React.FC<Props> = ({
         </div>
 
         {/* Review Status WB */}
-        <div className="dropdown-group">
-          <label className="filter-label">Статус на WB</label>
+        <div className="filter-group dropdown-group">
+          <label className="filter-label">Видимость (WB)</label>
           <MultiSelectDropdown
             options={REVIEW_STATUS_OPTIONS}
             selected={filters.reviewStatusesWB}
             onChange={(selected) => updateFilter('reviewStatusesWB', selected)}
-            allLabel="Все статусы"
+            allLabel="Все"
           />
         </div>
 
         {/* Chat Status */}
-        <div className="dropdown-group">
-          <label className="filter-label">Статус чата</label>
+        <div className="filter-group dropdown-group">
+          <label className="filter-label">Чат</label>
           <MultiSelectDropdown
             options={CHAT_STATUS_OPTIONS}
             selected={filters.chatStatuses}
             onChange={(selected) => updateFilter('chatStatuses', selected)}
-            allLabel="Все статусы"
+            allLabel="Все"
           />
         </div>
-      </div>
 
-      {/* Rating Excluded Toggle */}
-      <div className="filter-section" style={{ marginTop: 'var(--spacing-md)' }}>
-        <label className="filter-checkbox" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-          <input
-            type="checkbox"
-            checked={filters.hideRatingExcluded}
-            onChange={(e) => updateFilter('hideRatingExcluded', e.target.checked)}
-          />
-          <span style={{ fontSize: '13px', color: 'var(--color-foreground-muted)' }}>Скрыть исключённые из рейтинга</span>
-        </label>
+        {/* Reset — at the end of the dropdowns row */}
+        {onReset && activeFilterCount > 0 && (
+          <div className="filter-group reset-group">
+            <label className="filter-label">&nbsp;</label>
+            <button
+              className="btn-reset"
+              onClick={onReset}
+              title="Сбросить все фильтры"
+            >
+              <RotateCcw style={{ width: '14px', height: '14px' }} />
+              Сбросить
+            </button>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -308,292 +232,262 @@ export const FilterCard: React.FC<Props> = ({
           background: white;
           border: 1px solid var(--color-border-light);
           border-radius: var(--radius-lg);
-          padding: var(--spacing-2xl) var(--spacing-3xl);
+          padding: var(--spacing-xl) var(--spacing-2xl);
           margin-bottom: var(--spacing-2xl);
           box-shadow: var(--shadow-sm);
         }
 
-        .filter-header {
+        /* === Row 1: Primary filters === */
+        .filter-row-primary {
           display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: var(--spacing-lg);
-        }
-
-        .filter-title {
-          font-size: var(--font-size-lg);
-          font-weight: 600;
-          color: var(--color-foreground);
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-sm);
-        }
-
-        .filter-actions {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-sm);
-        }
-
-        .btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: var(--spacing-xs);
-          padding: var(--spacing-sm) var(--spacing-md);
-          border-radius: var(--radius-md);
-          font-size: var(--font-size-sm);
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border: none;
-          outline: none;
-        }
-
-        .btn-sm {
-          padding: var(--spacing-xs) var(--spacing-md);
-          font-size: var(--font-size-xs);
-        }
-
-        .btn-primary {
-          background-color: var(--color-primary);
-          color: white;
-          box-shadow: var(--shadow-sm);
-        }
-
-        .btn-primary:hover:not(:disabled) {
-          background-color: var(--color-primary-hover);
-          box-shadow: var(--shadow-md);
-          transform: translateY(-1px);
-        }
-
-        .btn-primary:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .btn-ghost {
-          background: transparent;
-          color: var(--color-muted);
-          border: 1px solid var(--color-border);
-        }
-
-        .btn-ghost:hover {
-          background: var(--color-border-light);
-          color: var(--color-foreground);
-          border-color: var(--color-border);
-        }
-
-        .filter-badge {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 20px;
-          height: 20px;
-          padding: 0 6px;
-          background: var(--color-primary);
-          color: white;
-          font-size: 11px;
-          font-weight: 600;
-          border-radius: 10px;
-          margin-left: 4px;
-        }
-
-        .spinning {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .search-section {
-          margin-bottom: var(--spacing-lg);
-        }
-
-        .filter-section {
+          align-items: flex-end;
+          gap: var(--spacing-2xl);
           margin-bottom: var(--spacing-lg);
         }
 
         .filter-group {
           display: flex;
           flex-direction: column;
-          gap: var(--spacing-xs);
-        }
-
-        .search-group {
-          gap: 0;
         }
 
         .filter-label {
-          font-size: var(--font-size-xs);
+          font-size: 11px;
           font-weight: 600;
           color: var(--color-muted);
           text-transform: uppercase;
           letter-spacing: 0.5px;
           margin-bottom: var(--spacing-sm);
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-sm);
         }
 
-        .search-row {
-          display: flex;
-          align-items: center;
-          gap: var(--spacing-sm);
+        /* Search */
+        .search-group {
+          flex: 0 1 360px;
+          min-width: 200px;
         }
 
-        .search-icon-standalone {
+        .search-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 10px;
           color: var(--color-muted);
-          flex-shrink: 0;
+          pointer-events: none;
         }
 
-        .search-input-no-icon {
+        .search-input {
           width: 100%;
-          max-width: 400px;
           height: 36px;
-          padding: var(--spacing-sm) var(--spacing-md);
+          padding: 0 12px 0 34px;
           border: 1px solid var(--color-border);
           border-radius: var(--radius-md);
           font-size: var(--font-size-sm);
-          transition: all 0.15s;
+          color: var(--color-foreground);
           outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
           box-sizing: border-box;
         }
 
-        .search-input-no-icon:focus {
+        .search-input:focus {
           border-color: var(--color-primary);
           box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
 
-        .search-filters-row {
-          display: flex;
-          gap: var(--spacing-xl);
-          flex-wrap: wrap;
+        .search-input::placeholder {
+          color: #94A3B8;
         }
 
-        .products-dropdown-group {
-          min-width: 280px;
-          flex: 1;
-          max-width: 400px;
+        /* Rating pills */
+        .rating-group {
+          flex: 0 0 auto;
         }
 
-        .checkbox-group {
+        .rating-pills {
           display: flex;
-          gap: var(--spacing-sm);
-          flex-wrap: wrap;
+          gap: 6px;
         }
 
-        .filter-checkbox {
-          display: flex;
+        .rating-pill {
+          display: inline-flex;
           align-items: center;
-          gap: var(--spacing-xs);
-          padding: var(--spacing-xs) var(--spacing-md);
-          background: white;
+          gap: 4px;
+          height: 36px;
+          padding: 0 12px;
           border: 1px solid var(--color-border);
           border-radius: var(--radius-md);
+          background: white;
+          font-size: var(--font-size-sm);
+          color: var(--color-foreground);
           cursor: pointer;
           transition: all 0.15s;
           user-select: none;
+          white-space: nowrap;
+          outline: none;
+        }
+
+        .rating-pill:hover {
+          border-color: var(--color-primary);
+          background: #eff6ff;
+        }
+
+        .rating-pill.active {
+          border-color: var(--color-primary);
+          background: #eff6ff;
+          color: var(--color-primary);
+          font-weight: 600;
+        }
+
+        .rating-pill .star {
+          color: #F59E0B;
+          font-size: 14px;
+          line-height: 1;
+        }
+
+        .rating-pill .count {
+          font-size: 11px;
+          color: var(--color-muted);
+          font-weight: 400;
+        }
+
+        .rating-pill.active .count {
+          color: #60A5FA;
+        }
+
+        /* Exclude toggle */
+        .toggle-group {
+          flex: 0 0 auto;
+          align-self: flex-end;
+        }
+
+        .toggle-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          height: 36px;
+          padding: 0 14px;
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          background: white;
           font-size: var(--font-size-sm);
+          color: var(--color-foreground-muted, #475569);
+          cursor: pointer;
+          transition: all 0.15s;
+          user-select: none;
+          white-space: nowrap;
         }
 
-        .filter-checkbox:hover {
+        .toggle-pill:hover {
+          border-color: var(--color-primary);
+        }
+
+        .toggle-pill.active {
           border-color: var(--color-primary);
           background: #eff6ff;
+          color: var(--color-primary);
         }
 
-        .filter-checkbox.checked {
-          border-color: var(--color-primary);
-          background: #eff6ff;
-        }
-
-        .filter-checkbox input[type='checkbox'] {
+        .toggle-pill input[type='checkbox'] {
           width: 14px;
           height: 14px;
+          accent-color: var(--color-primary);
           cursor: pointer;
         }
 
-        .filter-count {
-          font-size: var(--font-size-xs);
-          color: var(--color-muted);
-          margin-left: 2px;
+        /* === Divider === */
+        .filter-divider {
+          height: 1px;
+          background: var(--color-border-light);
+          margin-bottom: var(--spacing-lg);
         }
 
-        .dropdowns-row {
+        /* === Row 2: Secondary filters (dropdowns) === */
+        .filter-row-secondary {
           display: flex;
-          gap: var(--spacing-xl);
+          align-items: flex-end;
+          gap: var(--spacing-lg);
           flex-wrap: wrap;
         }
 
-        .dropdown-group {
-          display: flex;
-          flex-direction: column;
-          min-width: 180px;
-        }
-
-        .sync-dropdown {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          margin-top: 4px;
-          background: white;
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-md);
-          box-shadow: var(--shadow-lg);
+        .products-group {
+          flex: 1;
           min-width: 220px;
-          z-index: 100;
-          overflow: hidden;
+          max-width: 320px;
         }
 
-        .sync-dropdown-item {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 2px;
-          width: 100%;
-          padding: 12px 16px;
-          font-size: var(--font-size-sm);
-          color: var(--color-foreground);
-          background: transparent;
-          border: none;
-          border-bottom: 1px solid var(--color-border-light);
-          cursor: pointer;
-          transition: background 0.15s;
-          text-align: left;
+        .dropdown-group {
+          flex: 1;
+          min-width: 150px;
+          max-width: 200px;
         }
 
-        .sync-dropdown-item:last-child {
-          border-bottom: none;
+        /* Reset button */
+        .reset-group {
+          flex: 0 0 auto;
+          align-self: flex-end;
         }
 
-        .sync-dropdown-item:hover {
-          background: #f8fafc;
-        }
-
-        .sync-dropdown-hint {
+        .btn-reset {
+          display: inline-flex;
+          align-items: center;
+          gap: var(--spacing-xs);
+          height: 36px;
+          padding: 0 var(--spacing-md);
+          border-radius: var(--radius-md);
           font-size: var(--font-size-xs);
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+          background: transparent;
           color: var(--color-muted);
+          border: 1px solid var(--color-border);
+          outline: none;
         }
 
+        .btn-reset:hover {
+          background: var(--color-border-light);
+          color: var(--color-foreground);
+        }
+
+        /* === Responsive === */
         @media (max-width: 1200px) {
-          .checkbox-group {
+          .filter-row-primary {
+            flex-wrap: wrap;
+          }
+
+          .search-group {
+            flex: 1 1 100%;
+            max-width: none;
+          }
+
+          .rating-pills {
+            flex-wrap: wrap;
+          }
+
+          .filter-row-secondary {
             flex-direction: column;
           }
 
-          .filter-checkbox {
-            width: fit-content;
+          .products-group,
+          .dropdown-group {
+            max-width: none;
+            width: 100%;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .filter-card {
+            padding: var(--spacing-lg);
           }
 
-          .dropdowns-row {
-            flex-direction: column;
+          .filter-row-primary {
             gap: var(--spacing-lg);
           }
 
-          .dropdown-group {
-            width: 100%;
-            max-width: 300px;
+          .rating-pills {
+            flex-wrap: wrap;
           }
         }
       `}</style>

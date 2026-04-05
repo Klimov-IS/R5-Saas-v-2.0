@@ -5,8 +5,8 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useQuery, useInfiniteQuery, keepPreviousData } from '@tanstack/react-query';
+import { useState, useRef, useEffect } from 'react';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { RefreshCw, ChevronDown } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -178,7 +178,20 @@ export default function ReviewsPageV2() {
   // Sync handlers
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMode, setSyncMode] = useState<'incremental' | 'full'>('incremental');
+  const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
+  const syncDropdownRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Close sync dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (syncDropdownRef.current && !syncDropdownRef.current.contains(event.target as Node)) {
+        setSyncDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -270,15 +283,69 @@ export default function ReviewsPageV2() {
 
   return (
     <div className="reviews-page">
-      {/* Filters */}
+      {/* Toolbar: count + page size + sync (moved out of FilterCard) */}
+      <div className="toolbar">
+        <div className="toolbar-left">
+          <span className="results-count">
+            Загружено: <strong>{allReviews.length.toLocaleString('ru-RU')} отзывов</strong>
+            {hasNextPage && <span className="has-more-hint"> (есть ещё)</span>}
+            {isFetching && !isLoading && !isFetchingNextPage && <span className="refetch-indicator">Обновление...</span>}
+          </span>
+        </div>
+        <div className="toolbar-right">
+          <div className="page-size-selector">
+            <label>Загружать по:</label>
+            <select value={take} onChange={(e) => setTake(parseInt(e.target.value))}>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </div>
+          <div className="sync-wrapper" ref={syncDropdownRef}>
+            <button
+              className="btn-sync"
+              onClick={() => !isSyncing && setSyncDropdownOpen(!syncDropdownOpen)}
+              disabled={isSyncing}
+            >
+              <RefreshCw
+                style={{ width: '14px', height: '14px' }}
+                className={isSyncing ? 'spinning' : ''}
+              />
+              {isSyncing
+                ? (syncMode === 'full' ? 'Полная синхронизация...' : 'Синхронизация...')
+                : 'Синхронизировать'
+              }
+              <ChevronDown style={{ width: '12px', height: '12px' }} />
+            </button>
+            {syncDropdownOpen && !isSyncing && (
+              <div className="sync-dropdown">
+                <button
+                  className="sync-dropdown-item"
+                  onClick={() => { handleSync(); setSyncDropdownOpen(false); }}
+                >
+                  <RefreshCw style={{ width: '14px', height: '14px' }} />
+                  Инкрементальная
+                  <span className="sync-dropdown-hint">Только новые отзывы</span>
+                </button>
+                <button
+                  className="sync-dropdown-item"
+                  onClick={() => { handleFullSync(); setSyncDropdownOpen(false); }}
+                >
+                  <RefreshCw style={{ width: '14px', height: '14px' }} />
+                  Полная
+                  <span className="sync-dropdown-hint">Все отзывы с WB API</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Filters (only filters, no actions) */}
       <FilterCard
         filters={filters}
         onFiltersChange={setFilters}
         ratingCounts={ratingCounts}
-        onSync={handleSync}
-        onFullSync={handleFullSync}
-        isSyncing={isSyncing}
-        syncMode={syncMode}
         onReset={resetFilters}
         activeFilterCount={activeFilterCount}
         products={productsData || []}
@@ -292,23 +359,6 @@ export default function ReviewsPageV2() {
         onGenerateComplaints={handleGenerateComplaints}
         isGenerating={isGenerating}
       />
-
-      {/* Results Bar */}
-      <div className="results-bar">
-        <div className="results-count">
-          Загружено: <strong>{allReviews.length.toLocaleString('ru-RU')} отзывов</strong>
-          {hasNextPage && <span className="has-more-hint"> (есть ещё)</span>}
-          {isFetching && !isLoading && !isFetchingNextPage && <span className="refetch-indicator">Обновление...</span>}
-        </div>
-        <div className="page-size-selector">
-          <label>Загружать по:</label>
-          <select value={take} onChange={(e) => setTake(parseInt(e.target.value))}>
-            <option value="50">50</option>
-            <option value="100">100</option>
-            <option value="200">200</option>
-          </select>
-        </div>
-      </div>
 
       {/* Loading State (initial) */}
       {isLoading && (
@@ -405,12 +455,23 @@ export default function ReviewsPageV2() {
           /* Inherits from parent layout */
         }
 
-        .results-bar {
+        /* === Toolbar === */
+        .toolbar {
           display: flex;
           align-items: center;
           justify-content: space-between;
           margin-bottom: var(--spacing-lg);
-          padding: var(--spacing-md) 0;
+        }
+
+        .toolbar-left {
+          display: flex;
+          align-items: center;
+        }
+
+        .toolbar-right {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-md);
         }
 
         .results-count {
@@ -456,6 +517,93 @@ export default function ReviewsPageV2() {
           cursor: pointer;
         }
 
+        /* === Sync button + dropdown (moved from FilterCard) === */
+        .sync-wrapper {
+          position: relative;
+        }
+
+        .btn-sync {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          height: 32px;
+          padding: 0 14px;
+          background: var(--color-primary);
+          color: white;
+          border: none;
+          border-radius: var(--radius-md);
+          font-size: var(--font-size-xs);
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+          outline: none;
+          box-shadow: var(--shadow-xs);
+        }
+
+        .btn-sync:hover:not(:disabled) {
+          background: var(--color-primary-hover);
+          box-shadow: var(--shadow-sm);
+        }
+
+        .btn-sync:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .spinning {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .sync-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 4px;
+          background: white;
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          box-shadow: var(--shadow-lg);
+          min-width: 220px;
+          z-index: 100;
+          overflow: hidden;
+        }
+
+        .sync-dropdown-item {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          width: 100%;
+          padding: 12px 16px;
+          font-size: var(--font-size-sm);
+          color: var(--color-foreground);
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--color-border-light);
+          cursor: pointer;
+          transition: background 0.15s;
+          text-align: left;
+        }
+
+        .sync-dropdown-item:last-child {
+          border-bottom: none;
+        }
+
+        .sync-dropdown-item:hover {
+          background: #f8fafc;
+        }
+
+        .sync-dropdown-hint {
+          font-size: var(--font-size-xs);
+          color: var(--color-muted);
+        }
+
+        /* === Table & States === */
         .loading-state, .error-state {
           background: white;
           border: 1px solid var(--color-border-light);
@@ -471,15 +619,6 @@ export default function ReviewsPageV2() {
           align-items: center;
           gap: var(--spacing-md);
           color: var(--color-muted);
-        }
-
-        .spinner {
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
         }
 
         .error-state {
